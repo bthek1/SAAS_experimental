@@ -7,7 +7,8 @@ Rules for AI coding agents working in this repository. This is the only agent in
 
 ## What this repo is
 
-A **template** for new Django + DRF + React projects, as a decoupled monorepo:
+**test_repo**, a Django + DRF + React project created from the `django_react_template` starter,
+as a decoupled monorepo:
 
 - **`backend/`**: Django REST Framework API (Python 3.14, PostgreSQL, Celery + Redis)
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router + Query)
@@ -16,8 +17,7 @@ A **template** for new Django + DRF + React projects, as a decoupled monorepo:
 The backend exposes only `/api/` endpoints. The frontend consumes them over HTTP. The two halves
 share no code. The API contract is the only interface between them.
 
-Because this is a starter template, keep everything generic and reusable. Do not hardcode
-project-specific names, domains or data. Prefer documented conventions over one-off solutions.
+Prefer documented conventions over one-off solutions.
 
 ---
 

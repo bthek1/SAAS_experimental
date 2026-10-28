@@ -326,69 +326,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-react-template"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "celery", extra = ["redis"] },
-    { name = "django" },
-    { name = "django-celery-beat" },
-    { name = "django-celery-results" },
-    { name = "django-cors-headers" },
-    { name = "django-environ" },
-    { name = "djangorestframework" },
-    { name = "djangorestframework-simplejwt" },
-    { name = "gunicorn" },
-    { name = "psycopg", extra = ["binary"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "django-stubs", extra = ["compatible-mypy"] },
-    { name = "djangorestframework-stubs", extra = ["compatible-mypy"] },
-    { name = "factory-boy" },
-    { name = "faker" },
-    { name = "flower" },
-    { name = "freezegun" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pytest-django" },
-    { name = "pytest-mock" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "celery", extras = ["redis"], specifier = "~=5.6" },
-    { name = "django", specifier = "~=6.0" },
-    { name = "django-celery-beat", specifier = ">=2.9.0" },
-    { name = "django-celery-results", specifier = ">=2.6.0" },
-    { name = "django-cors-headers", specifier = "~=4.9" },
-    { name = "django-environ", specifier = "~=0.14" },
-    { name = "djangorestframework", specifier = "~=3.18" },
-    { name = "djangorestframework-simplejwt", specifier = "~=5.5" },
-    { name = "gunicorn", specifier = "~=26.2" },
-    { name = "psycopg", extras = ["binary"], specifier = "~=3.3" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "django-stubs", extras = ["compatible-mypy"], specifier = ">=6.1" },
-    { name = "djangorestframework-stubs", extras = ["compatible-mypy"], specifier = ">=3.18" },
-    { name = "factory-boy", specifier = ">=3.3" },
-    { name = "faker", specifier = ">=40.0" },
-    { name = "flower", specifier = ">=2.2" },
-    { name = "freezegun", specifier = ">=1.5" },
-    { name = "mypy", specifier = ">=2.0" },
-    { name = "pytest", specifier = ">=9.1" },
-    { name = "pytest-cov", specifier = ">=7.1" },
-    { name = "pytest-django", specifier = ">=4.14" },
-    { name = "pytest-mock", specifier = ">=3.16" },
-    { name = "ruff", specifier = ">=0.17" },
-]
-
-[[package]]
 name = "django-stubs"
 version = "6.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -945,6 +882,69 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5f/d3/3f06a1006f2261d1342aefb3c71eed02f5d4ca5bdbecd86ebc12ad38306e/sqlparse-0.6.0.tar.gz", hash = "sha256:113c35c75365ab9cc9c7231d68c6428fb11c085fc8e9eb1ad659b7ddbf6cd2b9", size = 178477, upload-time = "2026-08-13T19:16:06.396Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/50/f00935da0ec7cbf325f8dc4f772ae46fbc7b672dd62876e73f0a94adda57/sqlparse-0.6.0-py3-none-any.whl", hash = "sha256:b861c0288ce2fa56209a9a6412d2e066ac664b3873b89c26c9d8415e8e32996f", size = 50070, upload-time = "2026-08-13T19:16:04.062Z" },
+]
+
+[[package]]
+name = "test-repo"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "celery", extra = ["redis"] },
+    { name = "django" },
+    { name = "django-celery-beat" },
+    { name = "django-celery-results" },
+    { name = "django-cors-headers" },
+    { name = "django-environ" },
+    { name = "djangorestframework" },
+    { name = "djangorestframework-simplejwt" },
+    { name = "gunicorn" },
+    { name = "psycopg", extra = ["binary"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "django-stubs", extra = ["compatible-mypy"] },
+    { name = "djangorestframework-stubs", extra = ["compatible-mypy"] },
+    { name = "factory-boy" },
+    { name = "faker" },
+    { name = "flower" },
+    { name = "freezegun" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "pytest-django" },
+    { name = "pytest-mock" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "celery", extras = ["redis"], specifier = "~=5.6" },
+    { name = "django", specifier = "~=6.0" },
+    { name = "django-celery-beat", specifier = ">=2.9.0" },
+    { name = "django-celery-results", specifier = ">=2.6.0" },
+    { name = "django-cors-headers", specifier = "~=4.9" },
+    { name = "django-environ", specifier = "~=0.14" },
+    { name = "djangorestframework", specifier = "~=3.18" },
+    { name = "djangorestframework-simplejwt", specifier = "~=5.5" },
+    { name = "gunicorn", specifier = "~=26.2" },
+    { name = "psycopg", extras = ["binary"], specifier = "~=3.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "django-stubs", extras = ["compatible-mypy"], specifier = ">=6.1" },
+    { name = "djangorestframework-stubs", extras = ["compatible-mypy"], specifier = ">=3.18" },
+    { name = "factory-boy", specifier = ">=3.3" },
+    { name = "faker", specifier = ">=40.0" },
+    { name = "flower", specifier = ">=2.2" },
+    { name = "freezegun", specifier = ">=1.5" },
+    { name = "mypy", specifier = ">=2.0" },
+    { name = "pytest", specifier = ">=9.1" },
+    { name = "pytest-cov", specifier = ">=7.1" },
+    { name = "pytest-django", specifier = ">=4.14" },
+    { name = "pytest-mock", specifier = ">=3.16" },
+    { name = "ruff", specifier = ">=0.17" },
 ]
 
 [[package]]

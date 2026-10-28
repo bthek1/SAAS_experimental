@@ -1,7 +1,7 @@
 [project]
-name = "django-react-template"
+name = "test-repo"
 version = "0.1.0"
-description = "Django REST Framework + React template"
+description = "test_repo: Django REST Framework + React"
 authors = [{ name = "Benedict Thekkel", email = "bthekkel1@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.14"

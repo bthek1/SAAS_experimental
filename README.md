@@ -1,6 +1,6 @@
-# django_react_template
+# test_repo
 
-A monorepo starter for a decoupled web application:
+A decoupled web application, created from the `django_react_template` starter:
 
 - **`backend/`** — Django REST Framework API (Python 3.14, PostgreSQL, Celery)
 - **`frontend/`** — React 19 SPA (TypeScript, Vite, TanStack Router, TanStack Query)
@@ -11,7 +11,7 @@ A monorepo starter for a decoupled web application:
 
 ```bash
 # 1. Clone
-git clone <repo-url> && cd django_react_template
+git clone git@github.com:bthek1/test_repo.git && cd test_repo
 
 # 2. Create the env file (one .env in the repo root, shared by backend and frontend)
 cp .env.example .env

@@ -49,6 +49,8 @@ install:
     cd backend && uv sync --group dev
     cd frontend && npm install
 
+alias setup := install
+
 # --- Docker ---
 
 # Start all services (db, redis, celery, backend, frontend)
