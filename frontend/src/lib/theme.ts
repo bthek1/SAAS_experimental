@@ -1,6 +1,6 @@
 /**
  * CSS variable token names for the design system.
- * Use getCSSVar() to read resolved values at runtime (e.g. for ECharts/Recharts theming).
+ * Use getCSSVar() to read resolved values at runtime (e.g. for ECharts theming).
  */
 export const themeTokens = {
   background: "--background",

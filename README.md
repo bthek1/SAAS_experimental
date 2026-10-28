@@ -126,6 +126,6 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | Forms | React Hook Form + Zod |
 | Global state | Zustand |
 | Testing (frontend) | Vitest + React Testing Library + MSW |
-| Utilities | date-fns, ECharts, Recharts, react-markdown |
+| Utilities | date-fns, ECharts, react-markdown |
 | Container | Docker Compose |
 | Task runner | [just](https://github.com/casey/just) |

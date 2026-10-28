@@ -139,6 +139,9 @@ check and Celery task demo endpoints).
 - All DB access goes through the ORM. Raw SQL only when unavoidable, and always parameterised.
 - Run `makemigrations` with an explicit app name after model changes. Never edit or delete
   migration files by hand.
+- Datetimes are timezone-aware (`USE_TZ = True`, `TIME_ZONE = "UTC"`). Use
+  `django.utils.timezone.now()`, or `datetime.now(UTC)` outside the ORM. Never naive
+  `datetime.now()` or `datetime.utcnow()`. Freeze time in tests with `freezegun`.
 
 **Settings:** split into `core/settings/{base,dev,prod,test}.py`. `manage.py` defaults
 `DJANGO_SETTINGS_MODULE` to `core.settings`, whose `__init__.py` picks `dev`, `test` or `prod` from
@@ -170,7 +173,7 @@ hand-written contract.
 
 **Stack:** React 19, TypeScript ~6.0 (strict), Vite 8, TanStack Router, TanStack Query v5, Axios,
 Tailwind CSS v4, shadcn/ui (`base-nova` style on `@base-ui/react`), React Hook Form + Zod,
-Zustand + Immer, date-fns, ECharts + Recharts, react-markdown, Vitest 5 + Testing Library + MSW 3,
+Zustand + Immer, date-fns, ECharts, react-markdown, Vitest 5 + Testing Library + MSW 3,
 ESLint 10. Node 24 LTS (`frontend/.nvmrc`; `engines` allows 22.12+, 24, 26+. Odd releases like 25 are
 unsupported by Vitest 5).
 TypeScript stays on 6.0 until `typescript-eslint` supports 7 (it requires `typescript <6.1`). npm runs only in `frontend/` (the only `package.json` and
@@ -215,8 +218,8 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 
 **Utilities**
 - Dates: always through the `src/lib/date.ts` wrappers, never `date-fns` directly in components.
-- Charts: ECharts through the lazy-loaded `src/components/charts/EChart.tsx` wrapper (keep it
-  code-split), or Recharts inline for light SVG charts.
+- Charts: ECharts only, through the lazy-loaded `src/components/charts/EChart.tsx` wrapper (keep
+  it code-split). Do not add another chart library.
 - Markdown / LLM output: render with `src/components/Markdown.tsx`.
 
 **Testing**
@@ -278,6 +281,9 @@ Any change touching more than one file needs a plan issue before implementation.
 - When all phases are done, close the issue as completed (`Closes #<n>` in the final PR, or
   `gh issue close <n> --reason completed`). Close abandoned plans as `not planned` with a reason.
 - Reference the issue (`#<n>`) in related commits and PRs. Never delete plan issues.
+- Run a phase's **Validation** and confirm it passes before starting the next phase. Say what
+  you ran and the result.
+- Larger plans get a milestone, with a sub-issue for each phase.
 
 ---
 
@@ -295,12 +301,37 @@ Any change touching more than one file needs a plan issue before implementation.
   untracked tool output; leave them.
 - Prefer explicit, readable code over clever code.
 
+## Working alongside other agents
+
+Other agents may edit this working tree at the same time.
+
+- Claims live in `.agents/claims.md` (repo root). Before editing a file, check it. If another
+  agent claimed the file, stop and tell the user. Otherwise add `<file path> - <task>`, and
+  remove your lines when done.
+- Lint, format and test only what you changed. `just be-lint` and `just be-fmt` rewrite the
+  whole backend (`fix = true`), so run them only when asked. Scoped equivalents:
+
+  ```bash
+  cd backend && uv run ruff check <paths> && uv run ruff format <paths>
+  cd backend && uv run pytest <path>[::<test>]
+  cd frontend && npx eslint <paths> && npx vitest run <paths>
+  ```
+
+- Always pass an app to `just be-makemigrations <app>`. Do not run `just dev` or `just be-dev`:
+  they run a bare `makemigrations` and start shared dev servers.
+- At the end, list every file you changed so the user can commit them separately.
+
 ## Never do without explicit confirmation
 
-- Git: `commit`, `push` (any form), `reset --hard`, `rebase` / `merge` on shared branches,
-  `branch -D`.
+- Git: no write operations (`add`, `commit`, `push`, `merge`, `rebase`, branch `checkout` /
+  `switch`, `branch -D`). Make the change and give the user the commands to run. Never run
+  `git stash`, `git checkout -- <file>`, `git restore`, `git reset` or `git clean`: they discard
+  other agents' work.
 - Files: `rm -rf` on non-temporary directories, deleting migration files.
-- Infrastructure: `docker compose down -v` (destroys DB volumes), editing shared `.env` files.
+- Infrastructure: `docker compose down -v` or `just db-reset` (destroy DB volumes), editing
+  shared `.env` files.
+- Shared services: restarting, stopping or resetting Postgres, Redis, Celery or the dev servers
+  (`just down`, `just up`, `just compose restart|stop|down`).
 - Process: bypassing hooks (`--no-verify`), dropping or truncating tables directly.
 
 `.claude/settings.json` allows all `Bash(*)` commands to keep the dev loop free of prompts.
