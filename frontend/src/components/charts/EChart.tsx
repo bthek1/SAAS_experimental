@@ -18,12 +18,15 @@ export default function EChart({
   className,
   notMerge = true,
 }: EChartProps) {
+  // Size comes from `className` on the outer div. An inline height on
+  // ReactECharts itself would override any Tailwind height class.
   return (
-    <ReactECharts
-      option={option}
-      notMerge={notMerge}
-      style={{ height: "100%", width: "100%" }}
-      className={className}
-    />
+    <div className={className}>
+      <ReactECharts
+        option={option}
+        notMerge={notMerge}
+        style={{ height: "100%", width: "100%" }}
+      />
+    </div>
   )
 }
