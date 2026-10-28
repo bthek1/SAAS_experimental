@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     # Local
     "apps.accounts",
     "apps.utils",
+    "apps.questionnaires",
 ]
 
 MIDDLEWARE = [
@@ -101,6 +102,10 @@ CELERY_TASK_SOFT_TIME_LIMIT = 300  # raises SoftTimeLimitExceeded at 5 min
 CELERY_TASK_TIME_LIMIT = 360  # hard kill at 6 min
 
 AUTH_USER_MODEL = "accounts.CustomUser"
+
+# Let the SPA (a different origin) read the filename of file downloads such as
+# the questionnaire PDF. Allowed origins are set per environment.
+CORS_EXPOSE_HEADERS = ["Content-Disposition"]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

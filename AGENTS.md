@@ -120,9 +120,17 @@ pytest-django, factory-boy, faker, freezegun, pytest-mock.
 Django is held at 6.0.x because `django-celery-beat` 2.9.0 requires `django<6.1`. Upgrade with
 `uv lock --upgrade` from `backend/`; it moves to 6.1 once celery-beat allows it.
 
+WeasyPrint (questionnaire PDF export) needs Pango, HarfBuzz and a font at runtime. Both backend
+Dockerfiles install them, and `tests/test_infra_docker.py` checks that they still do. Hosts need
+them too (see README). `apps/questionnaires/pdf.py` imports `weasyprint` inside the function, so
+the rest of the backend runs without those libraries. File downloads return `HttpResponse`, not
+DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOSE_HEADERS` in
+`base.py`.
+
 **Layout:** project package `core/` (settings, `celery.py`, `urls.py`), one app per domain under
-`apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`) and `utils` (health
-check and Celery task demo endpoints).
+`apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`), `questionnaires`
+(user-owned questionnaire/battery types and instances, public share-link completion) and `utils`
+(health check and Celery task demo endpoints).
 
 **Views and URLs**
 - All endpoints are under `/api/`.
@@ -181,7 +189,7 @@ hand-written contract.
 
 **Stack:** React 19, TypeScript ~6.0 (strict), Vite 8, TanStack Router, TanStack Query v5, Axios,
 Tailwind CSS v4, shadcn/ui (`base-nova` style on `@base-ui/react`), React Hook Form + Zod,
-Zustand + Immer, date-fns, ECharts, react-markdown, Vitest 5 + Testing Library + MSW 3, Playwright,
+Zustand + Immer, date-fns, ECharts, react-markdown, SurveyJS (`survey-core` + `survey-react-ui`), Vitest 5 + Testing Library + MSW 3, Playwright,
 ESLint 10. Node 24 LTS (`frontend/.nvmrc`; `engines` allows 22.12+, 24, 26+. Odd releases like 25 are
 unsupported by Vitest 5).
 TypeScript stays on 6.0 until `typescript-eslint` supports 7 (it requires `typescript <6.1`). npm runs only in `frontend/` (the only `package.json` and
@@ -199,7 +207,13 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 - Global UI state lives in Zustand stores in `src/store/`, one file per concern, with the `immer`
   middleware. Never put server data in Zustand. Local state uses `useState` / `useReducer`.
 - Routing is file-based under `src/routes/`. Use TanStack Router's typed `useParams()` /
-  `useSearch()`. Loaders prefetch with `queryClient.ensureQueryData(...)`.
+  `useSearch()`. Loaders prefetch with `context.queryClient.ensureQueryData(...)` (the
+  `QueryClient` is router context, see `createRootRouteWithContext` in `__root.tsx`). Hooks export
+  `queryOptions` factories (e.g. `questionnaireTypesQuery()`) for loaders to reuse.
+- Pages that need a logged-in user go under `src/routes/_authed/` (pathless layout; its
+  `beforeLoad` redirects to `/login?redirect=…`). Pages without the app shell are listed in
+  `src/components/layout/publicPaths.ts`. Route components are code-split (`autoCodeSplitting`,
+  disabled under Vitest).
 - Forms use React Hook Form + `zodResolver`, with schemas in `src/schemas/` (one file per
   domain) and the shadcn `Form`, `FormField`, `FormItem`, `FormMessage` primitives.
 - No `any`. API response types go in `src/types/`, matching the API contract.
@@ -229,6 +243,9 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 - Charts: ECharts only, through the lazy-loaded `src/components/charts/EChart.tsx` wrapper (keep
   it code-split). Do not add another chart library.
 - Markdown / LLM output: render with `src/components/Markdown.tsx`.
+- Surveys: render with `src/components/survey/SurveyRenderer.tsx`. It maps SurveyJS's CSS
+  variables onto the shadcn tokens. Read a submitted response against its
+  `questionnaireJsonSnapshot` (`src/lib/responses.ts`), not the live type.
 
 **Testing**
 - Environment is `happy-dom`. `src/test/setup.ts` loads jest-dom (`@testing-library/jest-dom/vitest`,
@@ -238,7 +255,11 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   made in `beforeAll` (e.g. at module import) are gone by the time a test runs, so record what you
   need inside `beforeAll` (see `src/api/client.test.ts`).
 - Mock HTTP with MSW (default handlers in `src/test/handlers.ts`, override with
-  `server.use(...)`) or mock Axios at module level. Never make real HTTP calls.
+  `server.use(...)`) or mock Axios at module level. Never make real HTTP calls. `vite.config.ts`
+  sets happy-dom's `disableSameOriginPolicy`; without it every request starts with a CORS
+  preflight that no handler answers, so MSW silently passes it through.
+- Route tests can render the real router at a path with `renderRoute(path, { authed })` from
+  `src/test/renderRoute.tsx` (loaders, guards and links all run).
 - Co-locate tests with the code they test (`Button.test.tsx` next to `button.tsx`). Route tests
   live in `src/__tests__/routes/`. Zod schemas get plain unit tests.
 - End-to-end tests use Playwright and live in `frontend/e2e/*.spec.ts` (outside `src/`, excluded
@@ -253,6 +274,9 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   Vite on :5184 pointed at it, and never reuses running servers. It never touches the dev stack.
   Each test registers its own user with a unique email, so tests do not share state. Use them for
   the API contract (auth, real responses); keep UI-only checks in the mocked suite.
+  `e2e/integration/helpers.ts` has `registerUser` / `loginAs` (log in by storing the JWT, skipping
+  the form), an owner-side `api()` caller, and a scored test survey with `answerScoredSurvey`.
+  Test anonymous respondents in a separate `browser.newContext()` so no token leaks in.
 
 ---
 

@@ -1,21 +1,22 @@
+import type { QueryClient } from "@tanstack/react-query";
 import {
-  createRootRoute,
+  createRootRouteWithContext,
   Outlet,
   useRouterState,
 } from "@tanstack/react-router";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { isPublicPath } from "@/components/layout/publicPaths";
 
-// These paths render without the app shell (no navbar/sidebar)
-const PUBLIC_PATHS = ["/", "/login", "/signup"];
+export interface RouterContext {
+  queryClient: QueryClient;
+}
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootComponent,
 });
 
 function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isPublic = PUBLIC_PATHS.includes(pathname);
-
-  if (isPublic) return <Outlet />;
+  if (isPublicPath(pathname)) return <Outlet />;
   return <AppLayout />;
 }

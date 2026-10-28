@@ -4,7 +4,7 @@ import type { EChartsOption } from "echarts"
 
 const EChart = lazy(() => import("@/components/charts/EChart"))
 
-export const Route = createFileRoute("/demo/chart")({
+export const Route = createFileRoute("/_authed/demo/chart")({
   component: ChartDemoPage,
 })
 
