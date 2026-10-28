@@ -1,7 +1,7 @@
 [project]
-name = "test-repo"
+name = "saas-experimental"
 version = "0.1.0"
-description = "test_repo: Django REST Framework + React"
+description = "SAAS_experimental: Django REST Framework + React"
 authors = [{ name = "Benedict Thekkel", email = "bthekkel1@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.14"
@@ -49,7 +49,8 @@ dev = [
 [tool.pytest.ini_options]
 log_cli = false
 log_cli_level = "INFO"
-addopts = "--tb=short --show-capture=no -ra"
+# --ds beats a DJANGO_SETTINGS_MODULE env var (the root .env sets it to dev); the ini key does not.
+addopts = "--tb=short --show-capture=no -ra --ds=core.settings.test"
 DJANGO_SETTINGS_MODULE = "core.settings.test"
 python_files = ["*test*.py", "tests/*.py"]
 python_classes = ["Test*"]

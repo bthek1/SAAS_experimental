@@ -7,7 +7,7 @@ Rules for AI coding agents working in this repository. This is the only agent in
 
 ## What this repo is
 
-**test_repo**, a Django + DRF + React project created from the `django_react_template` starter,
+**SAAS_experimental**, a Django + DRF + React project created from the `django_react_template` starter,
 as a decoupled monorepo:
 
 - **`backend/`**: Django REST Framework API (Python 3.14, PostgreSQL, Celery + Redis)
@@ -149,7 +149,9 @@ check and Celery task demo endpoints).
 
 **Settings:** split into `core/settings/{base,dev,prod,test,e2e}.py`. `manage.py` defaults
 `DJANGO_SETTINGS_MODULE` to `core.settings`, whose `__init__.py` picks `dev`, `test` or `prod` from
-the `SETTINGS` env var (default `dev`). pytest uses `core.settings.test` directly. `e2e` extends
+the `SETTINGS` env var (default `dev`). pytest always uses `core.settings.test`: `addopts` passes
+`--ds`, which beats the `DJANGO_SETTINGS_MODULE=core.settings.dev` that direnv or VS Code load from
+`.env` (the env var would otherwise override the ini key). `e2e` extends
 `test` with its own `e2e.sqlite3` and CORS for :5184; only the Playwright integration config
 selects it (via `DJANGO_SETTINGS_MODULE`). All config comes from env vars via `django-environ`, loaded from the
 repo-root `.env` (`base.py` reads `BASE_DIR.parent / ".env"`). Never hardcode secrets or

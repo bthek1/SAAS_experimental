@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
 test("landing page renders", async ({ page }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /welcome to my app/i }),
+    page.getByRole("heading", { name: /welcome to saas_experimental/i }),
   ).toBeVisible();
 });
 

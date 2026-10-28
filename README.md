@@ -1,4 +1,4 @@
-# test_repo
+# SAAS_experimental
 
 A decoupled web application, created from the `django_react_template` starter:
 
@@ -11,7 +11,7 @@ A decoupled web application, created from the `django_react_template` starter:
 
 ```bash
 # 1. Clone
-git clone git@github.com:bthek1/test_repo.git && cd test_repo
+git clone git@github.com:bthek1/SAAS_experimental.git && cd SAAS_experimental
 
 # 2. Create the env file (one .env in the repo root, shared by backend and frontend)
 cp .env.example .env

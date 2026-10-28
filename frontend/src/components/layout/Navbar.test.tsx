@@ -50,7 +50,7 @@ describe("Navbar", () => {
 
   it("renders the app name", () => {
     render(<Navbar />);
-    expect(screen.getAllByText("My App").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SAAS_experimental").length).toBeGreaterThan(0);
   });
 
   it("renders the mobile hamburger button", () => {
