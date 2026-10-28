@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "e2e": "playwright test",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "e2e:integration": "playwright test --config playwright.integration.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

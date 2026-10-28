@@ -58,6 +58,7 @@ cd frontend
 npx playwright install chromium   # first time only: downloads the browser
 npm run e2e             # end-to-end tests (Playwright); starts Vite itself, API is mocked
 npm run e2e:ui          # same, in Playwright's UI mode
+npm run e2e:integration # end-to-end against a real Django backend (fresh SQLite, ports 8015 / 5184)
 ```
 
 ---

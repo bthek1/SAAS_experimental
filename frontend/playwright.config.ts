@@ -6,6 +6,8 @@ const BASE_URL = `http://localhost:${PORT}`;
 // https://playwright.dev/docs/test-configuration
 export default defineConfig({
   testDir: "./e2e",
+  // Needs a real backend: run with `npm run e2e:integration`.
+  testIgnore: "integration/**",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

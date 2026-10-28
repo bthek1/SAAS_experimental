@@ -81,6 +81,7 @@ Rarer tasks have no recipe. Run them directly:
 | Vitest UI | `cd frontend && npm run test:ui` |
 | Frontend e2e (Playwright) | `cd frontend && npm run e2e` (first time: `npx playwright install chromium`) |
 | Playwright UI / report | `cd frontend && npm run e2e:ui` / `npx playwright show-report` |
+| Frontend e2e against a real backend | `cd frontend && npm run e2e:integration` (needs `uv sync` in `backend/`, no Docker) |
 
 ### Local services and ports
 
@@ -93,6 +94,7 @@ Host ports are offset so they do not clash with a locally installed Postgres or 
 | `backend` | `8005` | Django dev server |
 | `celery_worker`, `celery_beat` | none | beat uses `DatabaseScheduler` |
 | `frontend` | `5174` | Vite dev server |
+| e2e backend, e2e frontend | `8015`, `5184` | Started by `npm run e2e:integration` only (dev + 10) |
 
 All Docker files live in `infra/docker/`: `docker-compose.yml` (dev stack),
 `docker-compose.prod.yml` (gunicorn backend + db), `<service>[.prod].Dockerfile`, and a
@@ -145,9 +147,11 @@ check and Celery task demo endpoints).
   `django.utils.timezone.now()`, or `datetime.now(UTC)` outside the ORM. Never naive
   `datetime.now()` or `datetime.utcnow()`. Freeze time in tests with `freezegun`.
 
-**Settings:** split into `core/settings/{base,dev,prod,test}.py`. `manage.py` defaults
+**Settings:** split into `core/settings/{base,dev,prod,test,e2e}.py`. `manage.py` defaults
 `DJANGO_SETTINGS_MODULE` to `core.settings`, whose `__init__.py` picks `dev`, `test` or `prod` from
-the `SETTINGS` env var (default `dev`). pytest uses `core.settings.test` directly. All config comes from env vars via `django-environ`, loaded from the
+the `SETTINGS` env var (default `dev`). pytest uses `core.settings.test` directly. `e2e` extends
+`test` with its own `e2e.sqlite3` and CORS for :5184; only the Playwright integration config
+selects it (via `DJANGO_SETTINGS_MODULE`). All config comes from env vars via `django-environ`, loaded from the
 repo-root `.env` (`base.py` reads `BASE_DIR.parent / ".env"`). Never hardcode secrets or
 credentials. `DATABASE_URL` configures the database.
 
@@ -241,6 +245,12 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   starts with `/api/` (a `**/api/**` glob also matches Vite's `/src/api/*.ts` modules), so they run
   without Docker. Prefer role-based locators (`getByRole`, `getByLabel`). Behaviour that happy-dom
   can test belongs in Vitest, not Playwright.
+- Full-stack specs live in `frontend/e2e/integration/` and run only with `npm run e2e:integration`
+  (`playwright.integration.config.ts`; the mocked config ignores that folder). That config starts
+  its own Django on :8015 (`core.settings.e2e`, database deleted and re-migrated every run) and
+  Vite on :5184 pointed at it, and never reuses running servers. It never touches the dev stack.
+  Each test registers its own user with a unique email, so tests do not share state. Use them for
+  the API contract (auth, real responses); keep UI-only checks in the mocked suite.
 
 ---
 
