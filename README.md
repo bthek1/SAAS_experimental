@@ -48,6 +48,18 @@ just dev                # db + redis + celery in Docker, backend and frontend lo
 
 The backend runs on `:8005` and the frontend on `:5174`. Run `just --list` for every command.
 
+### Tests
+
+```bash
+just be-test            # backend (pytest)
+just fe-test            # frontend unit and route tests (Vitest)
+
+cd frontend
+npx playwright install chromium   # first time only: downloads the browser
+npm run e2e             # end-to-end tests (Playwright); starts Vite itself, API is mocked
+npm run e2e:ui          # same, in Playwright's UI mode
+```
+
 ---
 
 ## API
@@ -91,6 +103,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 │   ├── tests/        Repo-level tests (infra/docker layout)
 │   └── manage.py
 ├── frontend/         React SPA
+│   ├── e2e/          Playwright end-to-end specs
 │   └── src/
 │       ├── api/      Axios client, query keys, API functions
 │       ├── components/ui/  shadcn/ui components
@@ -125,7 +138,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | Styling | Tailwind CSS v4 + shadcn/ui |
 | Forms | React Hook Form + Zod |
 | Global state | Zustand |
-| Testing (frontend) | Vitest + React Testing Library + MSW |
+| Testing (frontend) | Vitest + React Testing Library + MSW, Playwright (e2e) |
 | Utilities | date-fns, ECharts, react-markdown |
 | Container | Docker Compose |
 | Task runner | [just](https://github.com/casey/just) |

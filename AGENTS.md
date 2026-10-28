@@ -79,6 +79,8 @@ Rarer tasks have no recipe. Run them directly:
 | psql shell | `just compose exec db psql -U appuser -d appdb` |
 | Prod backend image | `docker build -f infra/docker/backend.prod.Dockerfile backend` |
 | Vitest UI | `cd frontend && npm run test:ui` |
+| Frontend e2e (Playwright) | `cd frontend && npm run e2e` (first time: `npx playwright install chromium`) |
+| Playwright UI / report | `cd frontend && npm run e2e:ui` / `npx playwright show-report` |
 
 ### Local services and ports
 
@@ -173,7 +175,7 @@ hand-written contract.
 
 **Stack:** React 19, TypeScript ~6.0 (strict), Vite 8, TanStack Router, TanStack Query v5, Axios,
 Tailwind CSS v4, shadcn/ui (`base-nova` style on `@base-ui/react`), React Hook Form + Zod,
-Zustand + Immer, date-fns, ECharts, react-markdown, Vitest 5 + Testing Library + MSW 3,
+Zustand + Immer, date-fns, ECharts, react-markdown, Vitest 5 + Testing Library + MSW 3, Playwright,
 ESLint 10. Node 24 LTS (`frontend/.nvmrc`; `engines` allows 22.12+, 24, 26+. Odd releases like 25 are
 unsupported by Vitest 5).
 TypeScript stays on 6.0 until `typescript-eslint` supports 7 (it requires `typescript <6.1`). npm runs only in `frontend/` (the only `package.json` and
@@ -233,6 +235,12 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   `server.use(...)`) or mock Axios at module level. Never make real HTTP calls.
 - Co-locate tests with the code they test (`Button.test.tsx` next to `button.tsx`). Route tests
   live in `src/__tests__/routes/`. Zod schemas get plain unit tests.
+- End-to-end tests use Playwright and live in `frontend/e2e/*.spec.ts` (outside `src/`, excluded
+  from Vitest in `vite.config.ts`). `playwright.config.ts` starts Vite on :5174, or reuses a dev
+  server already running there. Specs mock the backend with `page.route` on URLs whose pathname
+  starts with `/api/` (a `**/api/**` glob also matches Vite's `/src/api/*.ts` modules), so they run
+  without Docker. Prefer role-based locators (`getByRole`, `getByLabel`). Behaviour that happy-dom
+  can test belongs in Vitest, not Playwright.
 
 ---
 
