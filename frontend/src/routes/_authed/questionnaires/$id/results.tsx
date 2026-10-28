@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
+import { Download } from "lucide-react"
 import { useMemo } from "react"
 import { ListSkeleton } from "@/components/questionnaire/ListSkeleton"
 import { MetricCards } from "@/components/questionnaire/MetricCards"
@@ -6,7 +7,11 @@ import { RawResponsesTable } from "@/components/questionnaire/RawResponsesTable"
 import { StatusBadge } from "@/components/questionnaire/StatusBadge"
 import { SurveyDashboard } from "@/components/survey/SurveyDashboard"
 import { Button } from "@/components/ui/button"
-import { questionnaireQuery, useQuestionnaire } from "@/hooks/useQuestionnaires"
+import {
+  questionnaireQuery,
+  useDownloadQuestionnairePdf,
+  useQuestionnaire,
+} from "@/hooks/useQuestionnaires"
 import { resolveMetrics } from "@/lib/metrics"
 import { responseDefinition } from "@/lib/responses"
 
@@ -19,6 +24,7 @@ export const Route = createFileRoute("/_authed/questionnaires/$id/results")({
 function ResultsPage() {
   const { id } = Route.useParams()
   const { data: q, isLoading } = useQuestionnaire(id)
+  const downloadPdf = useDownloadQuestionnairePdf(id)
 
   const definition = useMemo(() => (q ? responseDefinition(q) : null), [q])
   const metrics = useMemo(
@@ -39,6 +45,16 @@ function ResultsPage() {
         </h1>
         <StatusBadge submittedAt={q.submittedAt} />
         <div className="ml-auto flex gap-2">
+          {q.submittedAt && (
+            <Button
+              variant="outline"
+              onClick={() => downloadPdf.mutate()}
+              disabled={downloadPdf.isPending}
+            >
+              <Download />
+              {downloadPdf.isPending ? "Preparing…" : "Download PDF"}
+            </Button>
+          )}
           <Button variant="outline" render={<Link to="/questionnaires/$id/view" params={{ id }} />}>
             View as form
           </Button>
@@ -47,6 +63,12 @@ function ResultsPage() {
           </Button>
         </div>
       </div>
+
+      {downloadPdf.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          The PDF could not be created. Please try again.
+        </p>
+      )}
 
       {!q.submittedAt ? (
         <p className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">

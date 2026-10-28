@@ -2,6 +2,7 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import {
   createQuestionnaire,
   deleteQuestionnaire,
+  downloadQuestionnairePdf,
   getQuestionnaire,
   getQuestionnaireByToken,
   getQuestionnaires,
@@ -9,6 +10,7 @@ import {
   updateQuestionnaire,
 } from "@/api/questionnaires"
 import { queryKeys } from "@/api/queryKeys"
+import { saveBlob } from "@/lib/download"
 import type { QuestionnairePayload, SubmitPayload } from "@/types/questionnaires"
 
 const keys = queryKeys.questionnaires
@@ -75,5 +77,13 @@ export function useSubmitQuestionnaire(shareToken: string) {
       // A battery taker re-reads slot status after each submit.
       return queryClient.invalidateQueries({ queryKey: ["public", "batteries"] })
     },
+  })
+}
+
+/** Download a submitted response as a PDF file. */
+export function useDownloadQuestionnairePdf(id: string) {
+  return useMutation({
+    mutationFn: () => downloadQuestionnairePdf(id),
+    onSuccess: ({ blob, filename }) => saveBlob(blob, filename),
   })
 }

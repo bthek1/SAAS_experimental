@@ -33,6 +33,18 @@ export async function deleteQuestionnaire(id: string): Promise<void> {
   await apiClient.delete(`/api/questionnaires/${id}/`)
 }
 
+/** A submitted response as a PDF, with the filename the server suggests. */
+export async function downloadQuestionnairePdf(
+  id: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(`/api/questionnaires/${id}/pdf/`, {
+    responseType: "blob",
+  })
+  const disposition = String(response.headers["content-disposition"] ?? "")
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "response.pdf"
+  return { blob: response.data, filename }
+}
+
 // Public share-link endpoints. The backend ignores credentials on these, so a
 // stale token in localStorage cannot make them fail.
 

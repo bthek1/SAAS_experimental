@@ -1,13 +1,20 @@
+import json
+import re
+
 from django.db.models import Prefetch, RestrictedError
+from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import AllowAny
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 
 from . import services
 from .models import Battery, BatteryType, Questionnaire, QuestionnaireType
+from .pdf import generate_response_pdf
 from .serializers import (
     BatterySerializer,
     BatteryTypeSerializer,
@@ -22,6 +29,18 @@ BY_TOKEN = r"by-token/(?P<share_token>[0-9a-fA-F-]+)"
 # Share-link endpoints: no authentication at all, so a stale JWT left in the
 # respondent's browser cannot turn into a 401.
 PUBLIC = {"permission_classes": [AllowAny], "authentication_classes": []}
+
+
+class PDFRenderer(BaseRenderer):
+    """Lets clients ask for `Accept: application/pdf`; errors still render as JSON."""
+
+    media_type = "application/pdf"
+    format = "pdf"
+    charset = None
+    render_style = "binary"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):  # noqa: ARG002
+        return data if isinstance(data, bytes) else json.dumps(data).encode()
 
 
 class InUse(APIException):
@@ -85,6 +104,24 @@ class QuestionnaireViewSet(OwnedModelViewSet):
 
     def get_queryset(self):
         return super().get_queryset().select_related("questionnaire_type")
+
+    @action(detail=True, methods=["get"], renderer_classes=[JSONRenderer, PDFRenderer])
+    def pdf(self, request, pk=None):  # noqa: ARG002
+        instance = self.get_object()
+        if instance.submitted_at is None:
+            raise ValidationError(
+                {"detail": "This questionnaire has not been submitted."}
+            )
+        safe_title = re.sub(r"[^A-Za-z0-9_-]+", "-", instance.questionnaire_type.title)
+        filename = (
+            f"{safe_title.strip('-')[:60] or 'response'}-{timezone.now().date()}.pdf"
+        )
+        # A binary download, so a plain HttpResponse rather than DRF's Response.
+        response = HttpResponse(
+            generate_response_pdf(instance), content_type="application/pdf"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
     def _get_by_token(self, share_token: str) -> Questionnaire:
         return get_object_or_404(

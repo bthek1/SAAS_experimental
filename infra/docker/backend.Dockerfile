@@ -8,6 +8,12 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# System libraries for WeasyPrint (PDF export) and a font, since slim images ship none
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first for layer caching
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \

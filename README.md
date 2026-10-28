@@ -48,6 +48,11 @@ just dev                # db + redis + celery in Docker, backend and frontend lo
 
 The backend runs on `:8005` and the frontend on `:5174`. Run `just --list` for every command.
 
+PDF export (WeasyPrint) needs Pango and a font on the host. The Docker images already include
+them. On Debian/Ubuntu run `sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
+fonts-dejavu-core`; on macOS run `brew install pango`. Without them, everything except
+`GET /api/questionnaires/<id>/pdf/` still works.
+
 ### Tests
 
 ```bash
@@ -60,6 +65,10 @@ npm run e2e             # end-to-end tests (Playwright); starts Vite itself, API
 npm run e2e:ui          # same, in Playwright's UI mode
 npm run e2e:integration # end-to-end against a real Django backend (fresh SQLite, ports 8015 / 5184)
 ```
+
+The integration suite (`frontend/e2e/integration/questionnaires.spec.ts`) walks the questionnaire
+flow end to end: build a type, share a link, answer it logged out, see the score, step through a
+battery, and check that one user cannot see another's data.
 
 ---
 
@@ -87,6 +96,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | `GET` | `/api/questionnaires/` | JWT | | `200 [Questionnaire]` (own only) |
 | `POST` | `/api/questionnaires/` | JWT | `{questionnaireTypeId, name?}` | `201 {id, questionnaireTypeId, questionnaireType, batteryId, batteryOrder, name, shareToken, answers, metrics, submittedAt, questionnaireJsonSnapshot, createdAt, updatedAt}` |
 | `GET` / `PATCH` / `DELETE` | `/api/questionnaires/<id>/` | JWT | `PATCH`: `{name}` | `200 Questionnaire` / `204` |
+| `GET` | `/api/questionnaires/<id>/pdf/` | JWT | | `200 application/pdf` download (`Content-Disposition: attachment; filename="<Title>-<YYYY-MM-DD>.pdf"`); `400 {detail}` if not submitted |
 | `GET` | `/api/questionnaires/by-token/<shareToken>/` | Public | | `200 {id, name, questionnaireTypeTitle, questionnaireJson, submittedAt}` |
 | `PATCH` | `/api/questionnaires/by-token/<shareToken>/submit/` | Public | `{answers: {}, metrics?: {}}` | `200` same shape as `GET by-token`; `409` if already submitted |
 | `GET` | `/api/batteries/` | JWT | | `200 [Battery]` (own only) |
@@ -112,6 +122,8 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
   `answers` and `metrics` (the survey's `calculatedValues`, computed client-side) and snapshots
   the type's definition into `questionnaireJsonSnapshot`, so later edits to the type do not
   change how a response reads. After submit, `GET by-token` returns the snapshot.
+- The PDF renders the submitted snapshot (answers plus labelled metrics). `Content-Disposition`
+  is exposed to the browser via CORS (`CORS_EXPOSE_HEADERS`), so the SPA can read the filename.
 - Share tokens are bearer secrets: anyone holding the link can submit once. They do not expire.
 
 ---

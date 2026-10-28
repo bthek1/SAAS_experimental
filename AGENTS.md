@@ -120,6 +120,13 @@ pytest-django, factory-boy, faker, freezegun, pytest-mock.
 Django is held at 6.0.x because `django-celery-beat` 2.9.0 requires `django<6.1`. Upgrade with
 `uv lock --upgrade` from `backend/`; it moves to 6.1 once celery-beat allows it.
 
+WeasyPrint (questionnaire PDF export) needs Pango, HarfBuzz and a font at runtime. Both backend
+Dockerfiles install them, and `tests/test_infra_docker.py` checks that they still do. Hosts need
+them too (see README). `apps/questionnaires/pdf.py` imports `weasyprint` inside the function, so
+the rest of the backend runs without those libraries. File downloads return `HttpResponse`, not
+DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOSE_HEADERS` in
+`base.py`.
+
 **Layout:** project package `core/` (settings, `celery.py`, `urls.py`), one app per domain under
 `apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`), `questionnaires`
 (user-owned questionnaire/battery types and instances, public share-link completion) and `utils`
@@ -267,6 +274,9 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   Vite on :5184 pointed at it, and never reuses running servers. It never touches the dev stack.
   Each test registers its own user with a unique email, so tests do not share state. Use them for
   the API contract (auth, real responses); keep UI-only checks in the mocked suite.
+  `e2e/integration/helpers.ts` has `registerUser` / `loginAs` (log in by storing the JWT, skipping
+  the form), an owner-side `api()` caller, and a scored test survey with `answerScoredSurvey`.
+  Test anonymous respondents in a separate `browser.newContext()` so no token leaks in.
 
 ---
 

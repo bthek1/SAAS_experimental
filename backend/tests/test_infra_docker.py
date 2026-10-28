@@ -174,3 +174,21 @@ def test_dev_host_ports_match_docs() -> None:
         if svc.get("ports")
     }
     assert published == DEV_HOST_PORTS
+
+
+WEASYPRINT_PACKAGES = (
+    "libpango-1.0-0",
+    "libpangoft2-1.0-0",
+    "libharfbuzz0b",
+    "fonts-dejavu-core",
+)
+
+
+@pytest.mark.parametrize(
+    "dockerfile", ["backend.Dockerfile", "backend.prod.Dockerfile"]
+)
+def test_backend_images_install_weasyprint_libs(dockerfile: str) -> None:
+    # PDF export (apps/questionnaires/pdf.py) needs Pango and a font at runtime.
+    text = (DOCKER_DIR / dockerfile).read_text()
+    for package in WEASYPRINT_PACKAGES:
+        assert package in text, f"{dockerfile} does not install {package}"

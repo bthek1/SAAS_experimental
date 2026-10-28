@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   createQuestionnaire,
   deleteQuestionnaire,
+  downloadQuestionnairePdf,
   getQuestionnaire,
   getQuestionnaireByToken,
   getQuestionnaires,
@@ -67,5 +68,25 @@ describe("questionnaires API", () => {
       answers: { q1: 1 },
       metrics: {},
     })
+  })
+
+  it("downloads a PDF as a blob with the server's filename", async () => {
+    const blob = new Blob(["%PDF"])
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: blob,
+      headers: { "content-disposition": 'attachment; filename="Check-in-2026-03-04.pdf"' },
+    })
+    expect(await downloadQuestionnairePdf("q-2")).toEqual({
+      blob,
+      filename: "Check-in-2026-03-04.pdf",
+    })
+    expect(apiClient.get).toHaveBeenCalledWith("/api/questionnaires/q-2/pdf/", {
+      responseType: "blob",
+    })
+  })
+
+  it("falls back to a default filename", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ data: new Blob(), headers: {} })
+    expect((await downloadQuestionnairePdf("q-2")).filename).toBe("response.pdf")
   })
 })
