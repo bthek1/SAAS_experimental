@@ -1,6 +1,12 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useSearch,
+} from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useLogin } from "@/hooks/useAuth";
 import { loginSchema, type LoginSchema } from "@/schemas/auth";
 import {
@@ -22,13 +28,16 @@ import {
 } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { BackendStatus } from "@/components/ui/BackendStatus";
+import { safeRedirect } from "@/lib/auth";
 
 export const Route = createFileRoute("/login")({
+  validateSearch: z.object({ redirect: z.string().optional() }),
   component: LoginPage,
 });
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { redirect } = useSearch({ from: "/login" });
   const login = useLogin();
 
   const form = useForm<LoginSchema>({
@@ -38,7 +47,7 @@ function LoginPage() {
 
   function onSubmit(values: LoginSchema) {
     login.mutate(values, {
-      onSuccess: () => navigate({ to: "/demo/chart" }),
+      onSuccess: () => navigate({ href: safeRedirect(redirect) }),
       onError: () =>
         form.setError("root", {
           message: "Invalid credentials. Please try again.",

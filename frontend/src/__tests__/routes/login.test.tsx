@@ -9,6 +9,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   return {
     ...actual,
     useNavigate: vi.fn().mockReturnValue(vi.fn()),
+    useSearch: vi.fn().mockReturnValue({}),
     Link: ({
       children,
       to,
@@ -72,5 +73,47 @@ describe("Login page", () => {
     render(<LoginComponent />, { wrapper });
     await user.click(screen.getByRole("button", { name: /sign in/i }));
     expect(await screen.findByText(/valid email/i)).toBeInTheDocument();
+  });
+
+  it("returns to the redirect target after signing in", async () => {
+    if (!LoginComponent) return;
+    const router = await import("@tanstack/react-router");
+    const auth = await import("@/hooks/useAuth");
+    const navigate = vi.fn();
+    vi.mocked(router.useNavigate).mockReturnValue(navigate);
+    vi.mocked(router.useSearch).mockReturnValue({ redirect: "/questionnaires" });
+    vi.mocked(auth.useLogin).mockReturnValue({
+      mutate: (_values: unknown, opts: { onSuccess: () => void }) => opts.onSuccess(),
+      isPending: false,
+    } as unknown as ReturnType<typeof auth.useLogin>);
+
+    const user = userEvent.setup();
+    render(<LoginComponent />, { wrapper });
+    await user.type(screen.getByLabelText(/email/i), "a@example.com");
+    await user.type(screen.getByLabelText(/password/i), "secret123");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(navigate).toHaveBeenCalledWith({ href: "/questionnaires" });
+  });
+
+  it("ignores an off-site redirect target", async () => {
+    if (!LoginComponent) return;
+    const router = await import("@tanstack/react-router");
+    const auth = await import("@/hooks/useAuth");
+    const navigate = vi.fn();
+    vi.mocked(router.useNavigate).mockReturnValue(navigate);
+    vi.mocked(router.useSearch).mockReturnValue({ redirect: "https://evil.example" });
+    vi.mocked(auth.useLogin).mockReturnValue({
+      mutate: (_values: unknown, opts: { onSuccess: () => void }) => opts.onSuccess(),
+      isPending: false,
+    } as unknown as ReturnType<typeof auth.useLogin>);
+
+    const user = userEvent.setup();
+    render(<LoginComponent />, { wrapper });
+    await user.type(screen.getByLabelText(/email/i), "a@example.com");
+    await user.type(screen.getByLabelText(/password/i), "secret123");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(navigate).toHaveBeenCalledWith({ href: "/demo/chart" });
   });
 });

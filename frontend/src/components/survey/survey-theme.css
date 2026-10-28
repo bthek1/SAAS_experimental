@@ -1,0 +1,40 @@
+/*
+ * Map SurveyJS v3's design tokens (--sjs2-*) onto the shadcn tokens in
+ * src/index.css, so surveys follow the app's colours and light/dark theme.
+ * survey-core declares its tokens on :where(.sd-theme-root) (zero
+ * specificity), so these win. A survey with its own themeJson still overrides
+ * them: SurveyRenderer then calls applyTheme, which sets variables inline.
+ * Tints such as the panel background derive from the brand colour.
+ */
+
+.sd-theme-root {
+  --sjs2-color-project-brand-600: var(--primary);
+  --sjs2-color-fg-brand-on-primary: var(--primary-foreground);
+  --sjs2-color-border-brand-on-primary: var(--primary-foreground);
+
+  --sjs2-color-utility-body: var(--background);
+  --sjs2-color-utility-sheet: var(--card);
+  /* Survey backdrop; survey-core hardcodes a light teal here, not a brand tint */
+  --sjs2-color-utility-surface-survey: var(--muted);
+  --sjs2-color-bg-basic-primary: var(--card);
+  --sjs2-color-bg-basic-primary-dim: var(--muted);
+  --sjs2-color-bg-basic-secondary: var(--muted);
+  --sjs2-color-bg-basic-secondary-dim: var(--accent);
+  --sjs2-color-bg-basic-tertiary: var(--accent);
+
+  --sjs2-color-fg-basic-primary: var(--foreground);
+  --sjs2-color-border-basic-secondary: var(--border);
+
+  --sjs2-typography-font-family-text: var(--font-sans);
+  font-family: var(--font-sans);
+}
+
+/* Horizontal options (radiogroup / checkbox with colCount: -1) */
+.sd-theme-root .sd-selectbase--row {
+  gap: 0.5rem 1.25rem;
+  align-items: center;
+}
+
+.sd-theme-root .sd-selectbase--row .sd-item {
+  flex: 0 0 auto;
+}

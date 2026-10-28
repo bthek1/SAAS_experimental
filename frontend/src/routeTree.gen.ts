@@ -10,13 +10,34 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
-import { Route as DemoChartRouteImport } from './routes/demo.chart'
+import { Route as TakeBatteryShareTokenRouteImport } from './routes/take-battery/$shareToken'
+import { Route as TakeShareTokenRouteImport } from './routes/take/$shareToken'
+import { Route as AuthedBatteriesIndexRouteImport } from './routes/_authed/batteries/index'
+import { Route as AuthedBatteriesIdRouteImport } from './routes/_authed/batteries/$id'
+import { Route as AuthedBatteriesNewRouteImport } from './routes/_authed/batteries/new'
+import { Route as AuthedBatteryTypesIndexRouteImport } from './routes/_authed/battery-types/index'
+import { Route as AuthedBatteryTypesIdRouteImport } from './routes/_authed/battery-types/$id'
+import { Route as AuthedBatteryTypesNewRouteImport } from './routes/_authed/battery-types/new'
+import { Route as AuthedDemoChartRouteImport } from './routes/_authed/demo.chart'
+import { Route as AuthedQuestionnaireTypesIndexRouteImport } from './routes/_authed/questionnaire-types/index'
+import { Route as AuthedQuestionnaireTypesNewRouteImport } from './routes/_authed/questionnaire-types/new'
+import { Route as AuthedQuestionnairesIndexRouteImport } from './routes/_authed/questionnaires/index'
+import { Route as AuthedQuestionnairesNewRouteImport } from './routes/_authed/questionnaires/new'
+import { Route as AuthedQuestionnaireTypesIdJsonRouteImport } from './routes/_authed/questionnaire-types/$id/json'
+import { Route as AuthedQuestionnairesIdIndexRouteImport } from './routes/_authed/questionnaires/$id/index'
+import { Route as AuthedQuestionnairesIdResultsRouteImport } from './routes/_authed/questionnaires/$id/results'
+import { Route as AuthedQuestionnairesIdViewRouteImport } from './routes/_authed/questionnaires/$id/view'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedRoute = AuthedRouteImport.update({
+  id: '/_authed',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -29,44 +50,244 @@ const SignupRoute = SignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoChartRoute = DemoChartRouteImport.update({
-  id: '/demo/chart',
-  path: '/demo/chart',
+const TakeBatteryShareTokenRoute = TakeBatteryShareTokenRouteImport.update({
+  id: '/take-battery/$shareToken',
+  path: '/take-battery/$shareToken',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TakeShareTokenRoute = TakeShareTokenRouteImport.update({
+  id: '/take/$shareToken',
+  path: '/take/$shareToken',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedBatteriesIndexRoute = AuthedBatteriesIndexRouteImport.update({
+  id: '/batteries/',
+  path: '/batteries/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedBatteriesIdRoute = AuthedBatteriesIdRouteImport.update({
+  id: '/batteries/$id',
+  path: '/batteries/$id',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedBatteriesNewRoute = AuthedBatteriesNewRouteImport.update({
+  id: '/batteries/new',
+  path: '/batteries/new',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedBatteryTypesIndexRoute = AuthedBatteryTypesIndexRouteImport.update({
+  id: '/battery-types/',
+  path: '/battery-types/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedBatteryTypesIdRoute = AuthedBatteryTypesIdRouteImport.update({
+  id: '/battery-types/$id',
+  path: '/battery-types/$id',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedBatteryTypesNewRoute = AuthedBatteryTypesNewRouteImport.update({
+  id: '/battery-types/new',
+  path: '/battery-types/new',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedDemoChartRoute = AuthedDemoChartRouteImport.update({
+  id: '/demo/chart',
+  path: '/demo/chart',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedQuestionnaireTypesIndexRoute =
+  AuthedQuestionnaireTypesIndexRouteImport.update({
+    id: '/questionnaire-types/',
+    path: '/questionnaire-types/',
+    getParentRoute: () => AuthedRoute,
+  } as any)
+const AuthedQuestionnaireTypesNewRoute =
+  AuthedQuestionnaireTypesNewRouteImport.update({
+    id: '/questionnaire-types/new',
+    path: '/questionnaire-types/new',
+    getParentRoute: () => AuthedRoute,
+  } as any)
+const AuthedQuestionnairesIndexRoute =
+  AuthedQuestionnairesIndexRouteImport.update({
+    id: '/questionnaires/',
+    path: '/questionnaires/',
+    getParentRoute: () => AuthedRoute,
+  } as any)
+const AuthedQuestionnairesNewRoute = AuthedQuestionnairesNewRouteImport.update({
+  id: '/questionnaires/new',
+  path: '/questionnaires/new',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedQuestionnaireTypesIdJsonRoute =
+  AuthedQuestionnaireTypesIdJsonRouteImport.update({
+    id: '/questionnaire-types/$id/json',
+    path: '/questionnaire-types/$id/json',
+    getParentRoute: () => AuthedRoute,
+  } as any)
+const AuthedQuestionnairesIdIndexRoute =
+  AuthedQuestionnairesIdIndexRouteImport.update({
+    id: '/questionnaires/$id/',
+    path: '/questionnaires/$id/',
+    getParentRoute: () => AuthedRoute,
+  } as any)
+const AuthedQuestionnairesIdResultsRoute =
+  AuthedQuestionnairesIdResultsRouteImport.update({
+    id: '/questionnaires/$id/results',
+    path: '/questionnaires/$id/results',
+    getParentRoute: () => AuthedRoute,
+  } as any)
+const AuthedQuestionnairesIdViewRoute =
+  AuthedQuestionnairesIdViewRouteImport.update({
+    id: '/questionnaires/$id/view',
+    path: '/questionnaires/$id/view',
+    getParentRoute: () => AuthedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
-  '/demo/chart': typeof DemoChartRoute
+  '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
+  '/take/$shareToken': typeof TakeShareTokenRoute
+  '/batteries/$id': typeof AuthedBatteriesIdRoute
+  '/batteries/new': typeof AuthedBatteriesNewRoute
+  '/battery-types/$id': typeof AuthedBatteryTypesIdRoute
+  '/battery-types/new': typeof AuthedBatteryTypesNewRoute
+  '/demo/chart': typeof AuthedDemoChartRoute
+  '/questionnaire-types/new': typeof AuthedQuestionnaireTypesNewRoute
+  '/questionnaires/new': typeof AuthedQuestionnairesNewRoute
+  '/batteries/': typeof AuthedBatteriesIndexRoute
+  '/battery-types/': typeof AuthedBatteryTypesIndexRoute
+  '/questionnaire-types/': typeof AuthedQuestionnaireTypesIndexRoute
+  '/questionnaires/': typeof AuthedQuestionnairesIndexRoute
+  '/questionnaire-types/$id/json': typeof AuthedQuestionnaireTypesIdJsonRoute
+  '/questionnaires/$id/results': typeof AuthedQuestionnairesIdResultsRoute
+  '/questionnaires/$id/view': typeof AuthedQuestionnairesIdViewRoute
+  '/questionnaires/$id/': typeof AuthedQuestionnairesIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
-  '/demo/chart': typeof DemoChartRoute
+  '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
+  '/take/$shareToken': typeof TakeShareTokenRoute
+  '/batteries/$id': typeof AuthedBatteriesIdRoute
+  '/batteries/new': typeof AuthedBatteriesNewRoute
+  '/battery-types/$id': typeof AuthedBatteryTypesIdRoute
+  '/battery-types/new': typeof AuthedBatteryTypesNewRoute
+  '/demo/chart': typeof AuthedDemoChartRoute
+  '/questionnaire-types/new': typeof AuthedQuestionnaireTypesNewRoute
+  '/questionnaires/new': typeof AuthedQuestionnairesNewRoute
+  '/batteries': typeof AuthedBatteriesIndexRoute
+  '/battery-types': typeof AuthedBatteryTypesIndexRoute
+  '/questionnaire-types': typeof AuthedQuestionnaireTypesIndexRoute
+  '/questionnaires': typeof AuthedQuestionnairesIndexRoute
+  '/questionnaire-types/$id/json': typeof AuthedQuestionnaireTypesIdJsonRoute
+  '/questionnaires/$id/results': typeof AuthedQuestionnairesIdResultsRoute
+  '/questionnaires/$id/view': typeof AuthedQuestionnairesIdViewRoute
+  '/questionnaires/$id': typeof AuthedQuestionnairesIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
-  '/demo/chart': typeof DemoChartRoute
+  '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
+  '/take/$shareToken': typeof TakeShareTokenRoute
+  '/_authed/batteries/$id': typeof AuthedBatteriesIdRoute
+  '/_authed/batteries/new': typeof AuthedBatteriesNewRoute
+  '/_authed/battery-types/$id': typeof AuthedBatteryTypesIdRoute
+  '/_authed/battery-types/new': typeof AuthedBatteryTypesNewRoute
+  '/_authed/demo/chart': typeof AuthedDemoChartRoute
+  '/_authed/questionnaire-types/new': typeof AuthedQuestionnaireTypesNewRoute
+  '/_authed/questionnaires/new': typeof AuthedQuestionnairesNewRoute
+  '/_authed/batteries/': typeof AuthedBatteriesIndexRoute
+  '/_authed/battery-types/': typeof AuthedBatteryTypesIndexRoute
+  '/_authed/questionnaire-types/': typeof AuthedQuestionnaireTypesIndexRoute
+  '/_authed/questionnaires/': typeof AuthedQuestionnairesIndexRoute
+  '/_authed/questionnaire-types/$id/json': typeof AuthedQuestionnaireTypesIdJsonRoute
+  '/_authed/questionnaires/$id/results': typeof AuthedQuestionnairesIdResultsRoute
+  '/_authed/questionnaires/$id/view': typeof AuthedQuestionnairesIdViewRoute
+  '/_authed/questionnaires/$id/': typeof AuthedQuestionnairesIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup' | '/demo/chart'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/take-battery/$shareToken'
+    | '/take/$shareToken'
+    | '/batteries/$id'
+    | '/batteries/new'
+    | '/battery-types/$id'
+    | '/battery-types/new'
+    | '/demo/chart'
+    | '/questionnaire-types/new'
+    | '/questionnaires/new'
+    | '/batteries/'
+    | '/battery-types/'
+    | '/questionnaire-types/'
+    | '/questionnaires/'
+    | '/questionnaire-types/$id/json'
+    | '/questionnaires/$id/results'
+    | '/questionnaires/$id/view'
+    | '/questionnaires/$id/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/signup' | '/demo/chart'
-  id: '__root__' | '/' | '/login' | '/signup' | '/demo/chart'
+  to:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/take-battery/$shareToken'
+    | '/take/$shareToken'
+    | '/batteries/$id'
+    | '/batteries/new'
+    | '/battery-types/$id'
+    | '/battery-types/new'
+    | '/demo/chart'
+    | '/questionnaire-types/new'
+    | '/questionnaires/new'
+    | '/batteries'
+    | '/battery-types'
+    | '/questionnaire-types'
+    | '/questionnaires'
+    | '/questionnaire-types/$id/json'
+    | '/questionnaires/$id/results'
+    | '/questionnaires/$id/view'
+    | '/questionnaires/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authed'
+    | '/login'
+    | '/signup'
+    | '/take-battery/$shareToken'
+    | '/take/$shareToken'
+    | '/_authed/batteries/$id'
+    | '/_authed/batteries/new'
+    | '/_authed/battery-types/$id'
+    | '/_authed/battery-types/new'
+    | '/_authed/demo/chart'
+    | '/_authed/questionnaire-types/new'
+    | '/_authed/questionnaires/new'
+    | '/_authed/batteries/'
+    | '/_authed/battery-types/'
+    | '/_authed/questionnaire-types/'
+    | '/_authed/questionnaires/'
+    | '/_authed/questionnaire-types/$id/json'
+    | '/_authed/questionnaires/$id/results'
+    | '/_authed/questionnaires/$id/view'
+    | '/_authed/questionnaires/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
-  DemoChartRoute: typeof DemoChartRoute
+  TakeBatteryShareTokenRoute: typeof TakeBatteryShareTokenRoute
+  TakeShareTokenRoute: typeof TakeShareTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -76,6 +297,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed': {
+      id: '/_authed'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -92,21 +320,174 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/chart': {
-      id: '/demo/chart'
+    '/take-battery/$shareToken': {
+      id: '/take-battery/$shareToken'
+      path: '/take-battery/$shareToken'
+      fullPath: '/take-battery/$shareToken'
+      preLoaderRoute: typeof TakeBatteryShareTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/take/$shareToken': {
+      id: '/take/$shareToken'
+      path: '/take/$shareToken'
+      fullPath: '/take/$shareToken'
+      preLoaderRoute: typeof TakeShareTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/batteries/': {
+      id: '/_authed/batteries/'
+      path: '/batteries'
+      fullPath: '/batteries/'
+      preLoaderRoute: typeof AuthedBatteriesIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/batteries/$id': {
+      id: '/_authed/batteries/$id'
+      path: '/batteries/$id'
+      fullPath: '/batteries/$id'
+      preLoaderRoute: typeof AuthedBatteriesIdRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/batteries/new': {
+      id: '/_authed/batteries/new'
+      path: '/batteries/new'
+      fullPath: '/batteries/new'
+      preLoaderRoute: typeof AuthedBatteriesNewRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/battery-types/': {
+      id: '/_authed/battery-types/'
+      path: '/battery-types'
+      fullPath: '/battery-types/'
+      preLoaderRoute: typeof AuthedBatteryTypesIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/battery-types/$id': {
+      id: '/_authed/battery-types/$id'
+      path: '/battery-types/$id'
+      fullPath: '/battery-types/$id'
+      preLoaderRoute: typeof AuthedBatteryTypesIdRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/battery-types/new': {
+      id: '/_authed/battery-types/new'
+      path: '/battery-types/new'
+      fullPath: '/battery-types/new'
+      preLoaderRoute: typeof AuthedBatteryTypesNewRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/demo/chart': {
+      id: '/_authed/demo/chart'
       path: '/demo/chart'
       fullPath: '/demo/chart'
-      preLoaderRoute: typeof DemoChartRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthedDemoChartRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaire-types/': {
+      id: '/_authed/questionnaire-types/'
+      path: '/questionnaire-types'
+      fullPath: '/questionnaire-types/'
+      preLoaderRoute: typeof AuthedQuestionnaireTypesIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaire-types/new': {
+      id: '/_authed/questionnaire-types/new'
+      path: '/questionnaire-types/new'
+      fullPath: '/questionnaire-types/new'
+      preLoaderRoute: typeof AuthedQuestionnaireTypesNewRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaires/': {
+      id: '/_authed/questionnaires/'
+      path: '/questionnaires'
+      fullPath: '/questionnaires/'
+      preLoaderRoute: typeof AuthedQuestionnairesIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaires/new': {
+      id: '/_authed/questionnaires/new'
+      path: '/questionnaires/new'
+      fullPath: '/questionnaires/new'
+      preLoaderRoute: typeof AuthedQuestionnairesNewRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaire-types/$id/json': {
+      id: '/_authed/questionnaire-types/$id/json'
+      path: '/questionnaire-types/$id/json'
+      fullPath: '/questionnaire-types/$id/json'
+      preLoaderRoute: typeof AuthedQuestionnaireTypesIdJsonRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaires/$id/': {
+      id: '/_authed/questionnaires/$id/'
+      path: '/questionnaires/$id'
+      fullPath: '/questionnaires/$id/'
+      preLoaderRoute: typeof AuthedQuestionnairesIdIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaires/$id/results': {
+      id: '/_authed/questionnaires/$id/results'
+      path: '/questionnaires/$id/results'
+      fullPath: '/questionnaires/$id/results'
+      preLoaderRoute: typeof AuthedQuestionnairesIdResultsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/questionnaires/$id/view': {
+      id: '/_authed/questionnaires/$id/view'
+      path: '/questionnaires/$id/view'
+      fullPath: '/questionnaires/$id/view'
+      preLoaderRoute: typeof AuthedQuestionnairesIdViewRouteImport
+      parentRoute: typeof AuthedRoute
     }
   }
 }
 
+interface AuthedRouteChildren {
+  AuthedBatteriesIdRoute: typeof AuthedBatteriesIdRoute
+  AuthedBatteriesNewRoute: typeof AuthedBatteriesNewRoute
+  AuthedBatteryTypesIdRoute: typeof AuthedBatteryTypesIdRoute
+  AuthedBatteryTypesNewRoute: typeof AuthedBatteryTypesNewRoute
+  AuthedDemoChartRoute: typeof AuthedDemoChartRoute
+  AuthedQuestionnaireTypesNewRoute: typeof AuthedQuestionnaireTypesNewRoute
+  AuthedQuestionnairesNewRoute: typeof AuthedQuestionnairesNewRoute
+  AuthedBatteriesIndexRoute: typeof AuthedBatteriesIndexRoute
+  AuthedBatteryTypesIndexRoute: typeof AuthedBatteryTypesIndexRoute
+  AuthedQuestionnaireTypesIndexRoute: typeof AuthedQuestionnaireTypesIndexRoute
+  AuthedQuestionnairesIndexRoute: typeof AuthedQuestionnairesIndexRoute
+  AuthedQuestionnaireTypesIdJsonRoute: typeof AuthedQuestionnaireTypesIdJsonRoute
+  AuthedQuestionnairesIdResultsRoute: typeof AuthedQuestionnairesIdResultsRoute
+  AuthedQuestionnairesIdViewRoute: typeof AuthedQuestionnairesIdViewRoute
+  AuthedQuestionnairesIdIndexRoute: typeof AuthedQuestionnairesIdIndexRoute
+}
+
+const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedBatteriesIdRoute: AuthedBatteriesIdRoute,
+  AuthedBatteriesNewRoute: AuthedBatteriesNewRoute,
+  AuthedBatteryTypesIdRoute: AuthedBatteryTypesIdRoute,
+  AuthedBatteryTypesNewRoute: AuthedBatteryTypesNewRoute,
+  AuthedDemoChartRoute: AuthedDemoChartRoute,
+  AuthedQuestionnaireTypesNewRoute: AuthedQuestionnaireTypesNewRoute,
+  AuthedQuestionnairesNewRoute: AuthedQuestionnairesNewRoute,
+  AuthedBatteriesIndexRoute: AuthedBatteriesIndexRoute,
+  AuthedBatteryTypesIndexRoute: AuthedBatteryTypesIndexRoute,
+  AuthedQuestionnaireTypesIndexRoute: AuthedQuestionnaireTypesIndexRoute,
+  AuthedQuestionnairesIndexRoute: AuthedQuestionnairesIndexRoute,
+  AuthedQuestionnaireTypesIdJsonRoute: AuthedQuestionnaireTypesIdJsonRoute,
+  AuthedQuestionnairesIdResultsRoute: AuthedQuestionnairesIdResultsRoute,
+  AuthedQuestionnairesIdViewRoute: AuthedQuestionnairesIdViewRoute,
+  AuthedQuestionnairesIdIndexRoute: AuthedQuestionnairesIdIndexRoute,
+}
+
+const AuthedRouteWithChildren =
+  AuthedRoute._addFileChildren(AuthedRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
-  DemoChartRoute: DemoChartRoute,
+  TakeBatteryShareTokenRoute: TakeBatteryShareTokenRoute,
+  TakeShareTokenRoute: TakeShareTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
