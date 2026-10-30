@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as AuthedDashboardRouteImport } from './routes/_authed/dashboard'
 import { Route as TakeBatteryShareTokenRouteImport } from './routes/take-battery/$shareToken'
 import { Route as TakeShareTokenRouteImport } from './routes/take/$shareToken'
 import { Route as AuthedBatteriesIndexRouteImport } from './routes/_authed/batteries/index'
@@ -21,7 +22,6 @@ import { Route as AuthedBatteriesNewRouteImport } from './routes/_authed/batteri
 import { Route as AuthedBatteryTypesIndexRouteImport } from './routes/_authed/battery-types/index'
 import { Route as AuthedBatteryTypesIdRouteImport } from './routes/_authed/battery-types/$id'
 import { Route as AuthedBatteryTypesNewRouteImport } from './routes/_authed/battery-types/new'
-import { Route as AuthedDemoChartRouteImport } from './routes/_authed/demo.chart'
 import { Route as AuthedQuestionnaireTypesIndexRouteImport } from './routes/_authed/questionnaire-types/index'
 import { Route as AuthedQuestionnaireTypesNewRouteImport } from './routes/_authed/questionnaire-types/new'
 import { Route as AuthedQuestionnairesIndexRouteImport } from './routes/_authed/questionnaires/index'
@@ -49,6 +49,11 @@ const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedDashboardRoute = AuthedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthedRoute,
 } as any)
 const TakeBatteryShareTokenRoute = TakeBatteryShareTokenRouteImport.update({
   id: '/take-battery/$shareToken',
@@ -88,11 +93,6 @@ const AuthedBatteryTypesIdRoute = AuthedBatteryTypesIdRouteImport.update({
 const AuthedBatteryTypesNewRoute = AuthedBatteryTypesNewRouteImport.update({
   id: '/battery-types/new',
   path: '/battery-types/new',
-  getParentRoute: () => AuthedRoute,
-} as any)
-const AuthedDemoChartRoute = AuthedDemoChartRouteImport.update({
-  id: '/demo/chart',
-  path: '/demo/chart',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedQuestionnaireTypesIndexRoute =
@@ -147,13 +147,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/dashboard': typeof AuthedDashboardRoute
   '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
   '/take/$shareToken': typeof TakeShareTokenRoute
   '/batteries/$id': typeof AuthedBatteriesIdRoute
   '/batteries/new': typeof AuthedBatteriesNewRoute
   '/battery-types/$id': typeof AuthedBatteryTypesIdRoute
   '/battery-types/new': typeof AuthedBatteryTypesNewRoute
-  '/demo/chart': typeof AuthedDemoChartRoute
   '/questionnaire-types/new': typeof AuthedQuestionnaireTypesNewRoute
   '/questionnaires/new': typeof AuthedQuestionnairesNewRoute
   '/batteries/': typeof AuthedBatteriesIndexRoute
@@ -169,13 +169,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/dashboard': typeof AuthedDashboardRoute
   '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
   '/take/$shareToken': typeof TakeShareTokenRoute
   '/batteries/$id': typeof AuthedBatteriesIdRoute
   '/batteries/new': typeof AuthedBatteriesNewRoute
   '/battery-types/$id': typeof AuthedBatteryTypesIdRoute
   '/battery-types/new': typeof AuthedBatteryTypesNewRoute
-  '/demo/chart': typeof AuthedDemoChartRoute
   '/questionnaire-types/new': typeof AuthedQuestionnaireTypesNewRoute
   '/questionnaires/new': typeof AuthedQuestionnairesNewRoute
   '/batteries': typeof AuthedBatteriesIndexRoute
@@ -193,13 +193,13 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/_authed/dashboard': typeof AuthedDashboardRoute
   '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
   '/take/$shareToken': typeof TakeShareTokenRoute
   '/_authed/batteries/$id': typeof AuthedBatteriesIdRoute
   '/_authed/batteries/new': typeof AuthedBatteriesNewRoute
   '/_authed/battery-types/$id': typeof AuthedBatteryTypesIdRoute
   '/_authed/battery-types/new': typeof AuthedBatteryTypesNewRoute
-  '/_authed/demo/chart': typeof AuthedDemoChartRoute
   '/_authed/questionnaire-types/new': typeof AuthedQuestionnaireTypesNewRoute
   '/_authed/questionnaires/new': typeof AuthedQuestionnairesNewRoute
   '/_authed/batteries/': typeof AuthedBatteriesIndexRoute
@@ -217,13 +217,13 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/signup'
+    | '/dashboard'
     | '/take-battery/$shareToken'
     | '/take/$shareToken'
     | '/batteries/$id'
     | '/batteries/new'
     | '/battery-types/$id'
     | '/battery-types/new'
-    | '/demo/chart'
     | '/questionnaire-types/new'
     | '/questionnaires/new'
     | '/batteries/'
@@ -239,13 +239,13 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/signup'
+    | '/dashboard'
     | '/take-battery/$shareToken'
     | '/take/$shareToken'
     | '/batteries/$id'
     | '/batteries/new'
     | '/battery-types/$id'
     | '/battery-types/new'
-    | '/demo/chart'
     | '/questionnaire-types/new'
     | '/questionnaires/new'
     | '/batteries'
@@ -262,13 +262,13 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/login'
     | '/signup'
+    | '/_authed/dashboard'
     | '/take-battery/$shareToken'
     | '/take/$shareToken'
     | '/_authed/batteries/$id'
     | '/_authed/batteries/new'
     | '/_authed/battery-types/$id'
     | '/_authed/battery-types/new'
-    | '/_authed/demo/chart'
     | '/_authed/questionnaire-types/new'
     | '/_authed/questionnaires/new'
     | '/_authed/batteries/'
@@ -319,6 +319,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authed/dashboard': {
+      id: '/_authed/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthedDashboardRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/take-battery/$shareToken': {
       id: '/take-battery/$shareToken'
@@ -374,13 +381,6 @@ declare module '@tanstack/react-router' {
       path: '/battery-types/new'
       fullPath: '/battery-types/new'
       preLoaderRoute: typeof AuthedBatteryTypesNewRouteImport
-      parentRoute: typeof AuthedRoute
-    }
-    '/_authed/demo/chart': {
-      id: '/_authed/demo/chart'
-      path: '/demo/chart'
-      fullPath: '/demo/chart'
-      preLoaderRoute: typeof AuthedDemoChartRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/questionnaire-types/': {
@@ -443,11 +443,11 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthedRouteChildren {
+  AuthedDashboardRoute: typeof AuthedDashboardRoute
   AuthedBatteriesIdRoute: typeof AuthedBatteriesIdRoute
   AuthedBatteriesNewRoute: typeof AuthedBatteriesNewRoute
   AuthedBatteryTypesIdRoute: typeof AuthedBatteryTypesIdRoute
   AuthedBatteryTypesNewRoute: typeof AuthedBatteryTypesNewRoute
-  AuthedDemoChartRoute: typeof AuthedDemoChartRoute
   AuthedQuestionnaireTypesNewRoute: typeof AuthedQuestionnaireTypesNewRoute
   AuthedQuestionnairesNewRoute: typeof AuthedQuestionnairesNewRoute
   AuthedBatteriesIndexRoute: typeof AuthedBatteriesIndexRoute
@@ -461,11 +461,11 @@ interface AuthedRouteChildren {
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedDashboardRoute: AuthedDashboardRoute,
   AuthedBatteriesIdRoute: AuthedBatteriesIdRoute,
   AuthedBatteriesNewRoute: AuthedBatteriesNewRoute,
   AuthedBatteryTypesIdRoute: AuthedBatteryTypesIdRoute,
   AuthedBatteryTypesNewRoute: AuthedBatteryTypesNewRoute,
-  AuthedDemoChartRoute: AuthedDemoChartRoute,
   AuthedQuestionnaireTypesNewRoute: AuthedQuestionnaireTypesNewRoute,
   AuthedQuestionnairesNewRoute: AuthedQuestionnairesNewRoute,
   AuthedBatteriesIndexRoute: AuthedBatteriesIndexRoute,

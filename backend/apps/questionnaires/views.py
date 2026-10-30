@@ -11,13 +11,16 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import AllowAny
 from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from . import services
+from . import dashboard, services
 from .models import Battery, BatteryType, Questionnaire, QuestionnaireType
 from .pdf import generate_response_pdf
 from .serializers import (
     BatterySerializer,
     BatteryTypeSerializer,
+    DashboardQuerySerializer,
+    DashboardScoresQuerySerializer,
     PublicBatterySerializer,
     PublicQuestionnaireSerializer,
     QuestionnaireSerializer,
@@ -183,4 +186,34 @@ class BatteryViewSet(OwnedModelViewSet):
         battery = self.get_queryset().get(pk=battery.pk)
         return Response(
             self.get_serializer(battery).data, status=status.HTTP_201_CREATED
+        )
+
+
+class DashboardView(APIView):
+    def get(self, request):
+        query = DashboardQuerySerializer(
+            data=request.query_params, context={"request": request}
+        )
+        query.is_valid(raise_exception=True)
+        return Response(
+            dashboard.dashboard_summary(
+                request.user,
+                days=query.validated_data.get("days"),
+                questionnaire_type=query.validated_data.get("questionnaireType"),
+            )
+        )
+
+
+class DashboardScoresView(APIView):
+    def get(self, request):
+        query = DashboardScoresQuerySerializer(
+            data=request.query_params, context={"request": request}
+        )
+        query.is_valid(raise_exception=True)
+        return Response(
+            dashboard.dashboard_scores(
+                request.user,
+                query.validated_data["questionnaireType"],
+                days=query.validated_data.get("days"),
+            )
         )
