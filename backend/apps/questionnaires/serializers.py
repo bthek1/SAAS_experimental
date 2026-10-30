@@ -211,3 +211,16 @@ class PublicBatterySerializer(serializers.ModelSerializer):
 class SubmitSerializer(serializers.Serializer):
     answers = serializers.DictField()
     metrics = serializers.DictField(required=False, default=dict)
+
+
+class DashboardQuerySerializer(serializers.Serializer):
+    days = serializers.ChoiceField(choices=[7, 30, 90], required=False)
+    questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815
+        queryset=QuestionnaireType.objects.all(), required=False
+    )
+
+
+class DashboardScoresQuerySerializer(DashboardQuerySerializer):
+    questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815
+        queryset=QuestionnaireType.objects.all()
+    )

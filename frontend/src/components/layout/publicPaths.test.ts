@@ -7,7 +7,7 @@ describe("isPublicPath", () => {
     (path) => expect(isPublicPath(path)).toBe(true),
   );
 
-  it.each(["/demo/chart", "/questionnaires", "/take", "/loginx"])(
+  it.each(["/dashboard", "/questionnaires", "/take", "/loginx"])(
     "%s renders inside the shell",
     (path) => expect(isPublicPath(path)).toBe(false),
   );

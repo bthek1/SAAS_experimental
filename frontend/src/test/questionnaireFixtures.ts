@@ -1,3 +1,4 @@
+import type { DashboardScores, DashboardSummary } from "@/types/dashboard"
 import type {
   Battery,
   BatteryType,
@@ -112,4 +113,91 @@ export const publicBattery: PublicBattery = {
     }),
   ),
   isComplete: false,
+}
+
+export const dashboardSummary: DashboardSummary = {
+  range: { days: 30, from: "2026-10-01T00:00:00Z", to: "2026-10-30T12:00:00Z" },
+  kpis: {
+    questionnairesSent: 12,
+    questionnairesSubmitted: 9,
+    questionnairesPending: 3,
+    completionRate: 0.75,
+    medianHoursToComplete: 5.5,
+    batteriesTotal: 4,
+    batteriesComplete: 2,
+    batteriesInProgress: 1,
+    batteriesNotStarted: 1,
+  },
+  submissionsByDay: [
+    { date: "2026-10-28", count: 2 },
+    { date: "2026-10-29", count: 0 },
+    { date: "2026-10-30", count: 1 },
+  ],
+  byQuestionnaireType: [{ id: "qt-1", title: "Wellbeing", sent: 12, submitted: 9, pending: 3 }],
+  byBatteryType: [{ id: "bt-1", title: "Intake", complete: 2, inProgress: 1, notStarted: 1 }],
+  recentSubmissions: [
+    {
+      id: "q-2",
+      name: "Bob",
+      questionnaireTypeTitle: "Wellbeing",
+      submittedAt: "2026-10-30T10:00:00Z",
+    },
+  ],
+  stalePending: [
+    {
+      id: "q-1",
+      name: "Alice",
+      questionnaireTypeTitle: "Wellbeing",
+      shareToken: "11111111-1111-1111-1111-111111111111",
+      createdAt: "2026-10-01T00:00:00Z",
+      ageDays: 29,
+    },
+  ],
+}
+
+export const dashboardScores: DashboardScores = {
+  questionnaireTypeId: "qt-1",
+  metrics: [
+    {
+      name: "total",
+      label: "Total score",
+      kind: "numeric",
+      mean: 7,
+      points: [
+        { questionnaireId: "q-2", name: "Bob", submittedAt: "2026-10-28T10:00:00Z", value: 4 },
+        { questionnaireId: "q-5", name: "Dee", submittedAt: "2026-10-29T10:00:00Z", value: 10 },
+      ],
+    },
+    {
+      name: "severity",
+      label: "Severity",
+      kind: "categorical",
+      distribution: [
+        { value: "Mild", count: 1 },
+        { value: "Moderate", count: 1 },
+      ],
+      points: [
+        { questionnaireId: "q-2", name: "Bob", submittedAt: "2026-10-28T10:00:00Z", value: "Mild" },
+        {
+          questionnaireId: "q-5",
+          name: "Dee",
+          submittedAt: "2026-10-29T10:00:00Z",
+          value: "Moderate",
+        },
+      ],
+    },
+    {
+      name: "flag",
+      label: "Needs follow-up",
+      kind: "boolean",
+      distribution: [
+        { value: false, count: 1 },
+        { value: true, count: 1 },
+      ],
+      points: [
+        { questionnaireId: "q-2", name: "Bob", submittedAt: "2026-10-28T10:00:00Z", value: false },
+        { questionnaireId: "q-5", name: "Dee", submittedAt: "2026-10-29T10:00:00Z", value: true },
+      ],
+    },
+  ],
 }

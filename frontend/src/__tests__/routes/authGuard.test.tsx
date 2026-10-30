@@ -29,18 +29,18 @@ describe("auth guard", () => {
   beforeEach(() => localStorage.clear());
 
   it("redirects anonymous user to /login", async () => {
-    const router = renderAt("/demo/chart");
+    const router = renderAt("/dashboard");
     await waitFor(() =>
       expect(router.state.location.pathname).toBe("/login"),
     );
-    expect(router.state.location.search).toEqual({ redirect: "/demo/chart" });
+    expect(router.state.location.search).toEqual({ redirect: "/dashboard" });
   });
 
   it("lets a user with a token through", async () => {
     localStorage.setItem("access_token", "token");
-    const router = renderAt("/demo/chart");
+    const router = renderAt("/dashboard");
     await waitFor(() => expect(router.state.status).toBe("idle"));
-    expect(router.state.location.pathname).toBe("/demo/chart");
+    expect(router.state.location.pathname).toBe("/dashboard");
   });
 
   it("leaves public pages alone", async () => {
