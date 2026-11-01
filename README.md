@@ -103,6 +103,8 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | `POST` | `/api/batteries/` | JWT | `{batteryTypeId, name?}` | `201 {id, batteryTypeId, batteryTypeName, name, shareToken, questionnaires: [{order, questionnaireId, shareToken, questionnaireTypeName, submittedAt}], isComplete, createdAt, updatedAt}` |
 | `GET` / `DELETE` | `/api/batteries/<id>/` | JWT | | `200 Battery` / `204` |
 | `GET` | `/api/batteries/by-token/<shareToken>/` | Public | | `200 {id, name, batteryTypeName, questionnaires: [{order, shareToken, questionnaireTypeName, submittedAt}], isComplete}` |
+| `GET` | `/api/dashboard/?days=&questionnaireType=` | JWT | | `200 {range: {days, from, to}, kpis: {questionnairesSent, questionnairesSubmitted, questionnairesPending, completionRate, medianHoursToComplete, batteriesTotal, batteriesComplete, batteriesInProgress, batteriesNotStarted}, submissionsByDay: [{date, count}], byQuestionnaireType: [{id, title, sent, submitted, pending}], byBatteryType: [{id, title, complete, inProgress, notStarted}], recentSubmissions: [{id, name, questionnaireTypeTitle, submittedAt}], stalePending: [{id, name, questionnaireTypeTitle, shareToken, createdAt, ageDays}]}` |
+| `GET` | `/api/dashboard/scores/?questionnaireType=&days=` | JWT | | `200 {questionnaireTypeId, metrics: [{name, label, kind: "numeric" \| "categorical" \| "boolean", points: [{questionnaireId, name, submittedAt, value}], mean?, distribution?: [{value, count}]}]}` |
 
 - Validation errors return `400` with DRF's `{field: [messages]}` shape. Missing or bad JWTs return `401`.
 - The `/api/tasks/` endpoints are a Celery demo (`apps/utils/tasks.py`). They are public so the
@@ -125,6 +127,21 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 - The PDF renders the submitted snapshot (answers plus labelled metrics). `Content-Disposition`
   is exposed to the browser via CORS (`CORS_EXPOSE_HEADERS`), so the SPA can read the filename.
 - Share tokens are bearer secrets: anyone holding the link can submit once. They do not expire.
+- **Dashboard.** `days` is `7`, `30` or `90` (omit for all time; anything else is `400`). A
+  window starts at UTC midnight `days - 1` days ago, and day buckets are UTC. KPIs and
+  `byQuestionnaireType` count the questionnaires *created* in the window and how many of those
+  are submitted, so `completionRate` (0-1) never exceeds 1. `submissionsByDay` (zero-filled) and
+  `recentSubmissions` (latest 10) go by `submittedAt`. `stalePending` lists up to 10 unsubmitted
+  questionnaires older than 7 days, whatever the window. `questionnaireType` must be one of your
+  types (`400` otherwise); it narrows batteries to those containing that type, but a battery's
+  status still counts all of its questionnaires. `medianHoursToComplete` is `null` with no
+  submissions.
+- **Dashboard scores.** `questionnaireType` is required. Covers that type's submitted
+  questionnaires (by `submittedAt` in the window), grouped by `metrics` key. A metric's `kind`
+  comes from its first value; later values of another kind are skipped. Numeric metrics get
+  `mean`; categorical and boolean ones get `distribution` (most common first). Labels and order
+  follow the type's current `calculatedValues` (`title`, else `name`), then names only older
+  responses have.
 
 ---
 

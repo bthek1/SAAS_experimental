@@ -2,6 +2,8 @@ import { http, HttpResponse } from "msw"
 import {
   battery,
   batteryType,
+  dashboardScores,
+  dashboardSummary,
   publicBattery,
   publicQuestionnaire,
   questionnaire,
@@ -64,4 +66,7 @@ export const handlers = [
   http.get(`${API}/api/batteries/:id/`, () => HttpResponse.json(battery)),
   http.post(`${API}/api/batteries/`, () => HttpResponse.json(battery, { status: 201 })),
   http.delete(`${API}/api/batteries/:id/`, () => new HttpResponse(null, { status: 204 })),
+
+  http.get(`${API}/api/dashboard/`, () => HttpResponse.json(dashboardSummary)),
+  http.get(`${API}/api/dashboard/scores/`, () => HttpResponse.json(dashboardScores)),
 ]

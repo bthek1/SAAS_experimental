@@ -22,7 +22,7 @@ describe("safeRedirect", () => {
   it.each([undefined, "", "https://evil.example", "//evil.example", "javascript:alert(1)"])(
     "falls back for %s",
     (target) => {
-      expect(safeRedirect(target)).toBe("/demo/chart")
+      expect(safeRedirect(target)).toBe("/dashboard")
     },
   )
 })

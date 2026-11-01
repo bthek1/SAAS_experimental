@@ -1,3 +1,5 @@
+import type { DashboardParams, DashboardScoresParams } from "@/types/dashboard";
+
 export const queryKeys = {
   auth: {
     me: ["auth", "me"] as const,
@@ -24,5 +26,10 @@ export const queryKeys = {
     all: ["batteries"] as const,
     detail: (id: string) => ["batteries", id] as const,
     byToken: (token: string) => ["public", "batteries", token] as const,
+  },
+  dashboard: {
+    all: ["dashboard"] as const,
+    summary: (params: DashboardParams) => ["dashboard", "summary", params] as const,
+    scores: (params: DashboardScoresParams) => ["dashboard", "scores", params] as const,
   },
 } as const;

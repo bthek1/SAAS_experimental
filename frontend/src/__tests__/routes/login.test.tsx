@@ -114,6 +114,6 @@ describe("Login page", () => {
     await user.type(screen.getByLabelText(/password/i), "secret123");
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
-    expect(navigate).toHaveBeenCalledWith({ href: "/demo/chart" });
+    expect(navigate).toHaveBeenCalledWith({ href: "/dashboard" });
   });
 });

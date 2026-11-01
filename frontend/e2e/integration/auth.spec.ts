@@ -9,7 +9,7 @@ function uniqueEmail() {
   return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
 }
 
-test("new user signs up, logs in and sees the dashboard chart", async ({ page }) => {
+test("new user signs up, logs in and lands on the dashboard", async ({ page }) => {
   const email = uniqueEmail();
 
   await page.goto("/signup");
@@ -22,14 +22,11 @@ test("new user signs up, logs in and sees the dashboard chart", async ({ page })
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/demo\/chart$/);
-  await expect(page.getByRole("heading", { name: "Chart Demo" })).toBeVisible();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-  // The chart must get its h-96 (384px) height, not collapse.
-  const canvas = page.locator("canvas").first();
-  await expect(canvas).toBeVisible();
-  const box = await canvas.boundingBox();
-  expect(box?.height).toBeGreaterThanOrEqual(380);
+  // A new account has nothing to chart yet (chart sizing is covered in dashboard.spec.ts).
+  await expect(page.getByRole("link", { name: "New questionnaire type" })).toBeVisible();
 });
 
 test("login rejects a wrong password for a real user", async ({ page, request }) => {
