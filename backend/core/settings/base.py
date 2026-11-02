@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_celery_results",
     "django_celery_beat",
+    "django_prometheus",
     # Local
     "apps.accounts",
     "apps.utils",
@@ -32,6 +33,10 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # First: answers /metrics before the HTTPS redirect and host validation,
+    # since Prometheus scrapes by IP. See apps/utils/metrics.py.
+    "apps.utils.metrics.MetricsEndpointMiddleware",
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -40,7 +45,19 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
+
+# Peers allowed to scrape /metrics (Prometheus). Anyone else gets a 404.
+METRICS_ALLOWED_CIDRS = env.list(
+    "METRICS_ALLOWED_CIDRS", default=["127.0.0.1/32", "::1/128"]
+)
+
+# gunicorn's on_starting hook empties this directory (gunicorn.conf.py), but
+# management commands such as migrate run before gunicorn and write metrics
+# there too, which fails if it does not exist yet.
+if _multiproc_dir := env("PROMETHEUS_MULTIPROC_DIR", default=""):
+    Path(_multiproc_dir).mkdir(parents=True, exist_ok=True)
 
 ROOT_URLCONF = "core.urls"
 WSGI_APPLICATION = "core.wsgi.application"

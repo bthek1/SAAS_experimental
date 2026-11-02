@@ -258,3 +258,11 @@ npm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Load-test results (loadtest/run.sh); baselines are committed in loadtest/baselines/
+loadtest/results/
+
+# Pulumi (infra/pulumi): the real stack config and saved plans stay local
+infra/pulumi/Pulumi.loadtest.yaml
+infra/pulumi/.plan.json
+infra/pulumi/.venv/

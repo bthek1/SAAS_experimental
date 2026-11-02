@@ -1,0 +1,125 @@
+# Local load-test stack (#9). Paths are relative to this file. Run via `just loadtest-up`,
+# `just k6 <scenario>` and `just loadtest-down`, which pass `--env-file .env` and
+# `-p <repo-dir-name>-loadtest`, so nothing here touches the dev stack's containers or volumes.
+#
+# backend: the prod image under gunicorn with core.settings.loadtest, so k6 measures
+# production code, not runserver. Prometheus scrapes its /metrics and receives k6's results
+# by remote write. Grafana shows both. Every host port is bound to 127.0.0.1.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    volumes:
+      - loadtest_postgres:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "appuser", "-d", "appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/backend.prod.Dockerfile
+    # gunicorn reads backend/gunicorn.conf.py (multiprocess metrics); flags win over it.
+    command: >-
+      sh -c "python manage.py migrate --noinput
+      && exec gunicorn --bind :8000 --workers ${LOADTEST_WORKERS:-2} core.wsgi"
+    ports:
+      - "127.0.0.1:8095:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.loadtest
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      # api.loadtest.internal is the network alias k6 and Prometheus use: private by name,
+      # which core.settings.loadtest requires of every ALLOWED_HOSTS entry.
+      ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal
+      # Prometheus alone (its fixed address below), not the whole subnet: published ports
+      # arrive from the subnet's gateway, so a subnet-wide rule would admit the host too.
+      METRICS_ALLOWED_CIDRS: 10.95.0.10/32
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus-multiproc
+      LOADTEST_OWNER_PASSWORD: ${LOADTEST_OWNER_PASSWORD:-loadtest-local-only}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      default:
+        aliases:
+          - api.loadtest.internal
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ../observability/prometheus:/etc/prometheus:ro
+      - loadtest_prometheus:/prometheus
+    ports:
+      - "127.0.0.1:9095:9090"
+    networks:
+      default:
+        ipv4_address: 10.95.0.10
+
+  grafana:
+    image: grafana/grafana:13.0.9
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/k6.json
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - loadtest_grafana:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3005:3000"
+    depends_on:
+      - prometheus
+
+  # Not started by `up`: `just k6 <scenario>` runs it once per test (`compose run --rm k6`).
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [k6]
+    # Your uid, so the summary JSON it writes to loadtest/results/ is yours.
+    user: "${LOADTEST_UID:-1000}"
+    working_dir: /loadtest/k6
+    volumes:
+      - ../../loadtest:/loadtest
+    environment:
+      BASE_URL: http://api.loadtest.internal:8000
+      LOADTEST_OWNER_PASSWORD: ${LOADTEST_OWNER_PASSWORD:-loadtest-local-only}
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(50),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_PUSH_INTERVAL: 5s
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  default:
+    ipam:
+      config:
+        # Fixed, so Prometheus has a known address. Clear of Docker's 172.x defaults.
+        - subnet: 10.95.0.0/24
+
+volumes:
+  loadtest_postgres:
+  loadtest_prometheus:
+  loadtest_grafana:

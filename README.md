@@ -70,6 +70,24 @@ The integration suite (`frontend/e2e/integration/questionnaires.spec.ts`) walks 
 flow end to end: build a type, share a link, answer it logged out, see the score, step through a
 battery, and check that one user cannot see another's data.
 
+### Load tests (k6 + Prometheus + Grafana)
+
+A separate Docker stack runs the prod backend image (gunicorn, `core.settings.loadtest`) with its
+own Postgres, Prometheus and Grafana. It never touches the dev stack. k6 runs in a container.
+
+```bash
+just loadtest-up                       # backend :8095, Prometheus :9095, Grafana :3005 (all 127.0.0.1)
+just loadtest-seed --owners 5 --questionnaires-per-owner 200
+just k6 smoke                          # 1 VU, 1 minute, every endpoint group
+just k6 load RATE=20 HOLD=10m          # mixed traffic held at RATE iterations/s
+just k6 stress                         # raise the rate until p95 > 1 s or errors > 1 %
+just loadtest-down                     # stop (volumes kept)
+```
+
+Each run prints a `testid` and a Grafana link to the **k6** dashboard for that run (login `admin`,
+password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`, `respondent` and
+`pdf`. Plan and baselines: issue #9.
+
 ---
 
 ## API
@@ -109,6 +127,9 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 - Validation errors return `400` with DRF's `{field: [messages]}` shape. Missing or bad JWTs return `401`.
 - The `/api/tasks/` endpoints are a Celery demo (`apps/utils/tasks.py`). They are public so the
   demo works without login. Add auth before reusing them.
+- `GET /metrics` (not under `/api/`, not part of the contract) is Prometheus text for the
+  scraper. It answers only peers in `METRICS_ALLOWED_CIDRS` (default loopback), and returns `404`
+  to everyone else and to any request with a forwarding header.
 - Task `status` is a Celery state (`PENDING`, `STARTED`, `SUCCESS`, `FAILURE`, `REVOKED`, ...).
   `result` is set only on `SUCCESS` and `traceback` only on `FAILURE`. An unknown `task_id`
   returns `PENDING`.
@@ -159,7 +180,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 │   │   ├── accounts/ User model (email-based), registration, JWT auth
 │   │   ├── questionnaires/ Questionnaire/battery types and instances, share-link completion
 │   │   └── utils/    Health check, Celery task demo endpoints
-│   ├── tests/        Repo-level tests (infra/docker layout)
+│   ├── tests/        Repo-level tests (infra layout, k6 targets, observability config)
 │   └── manage.py
 ├── frontend/         React SPA
 │   ├── e2e/          Playwright end-to-end specs
@@ -172,7 +193,10 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 │       ├── schemas/  Zod validation schemas
 │       ├── store/    Zustand global state slices
 │       └── types/    TypeScript types from API contracts
-├── infra/docker/     Dockerfiles + compose files (dev stack, prod backend)
+├── infra/docker/     Dockerfiles + compose files (dev stack, prod backend, load-test stack)
+├── infra/observability/  Prometheus config + rules, Grafana provisioning and generated dashboards
+├── infra/pulumi/     Pulumi program: the load-test LXC containers on Proxmox (#9)
+├── loadtest/         k6 scenarios (k6/), run.sh (`just k6`), results/ (gitignored)
 └── AGENTS.md         Rules for AI coding agents
 ```
 

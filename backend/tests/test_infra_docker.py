@@ -19,10 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_DIR = REPO_ROOT / "infra" / "docker"
 DEV_COMPOSE = DOCKER_DIR / "docker-compose.yml"
 PROD_COMPOSE = DOCKER_DIR / "docker-compose.prod.yml"
-COMPOSE_FILES = [DEV_COMPOSE, PROD_COMPOSE]
+LOADTEST_COMPOSE = DOCKER_DIR / "docker-compose.loadtest.yml"
+COMPOSE_FILES = [DEV_COMPOSE, PROD_COMPOSE, LOADTEST_COMPOSE]
 
 # Host ports documented in AGENTS.md ("Local services and ports").
 DEV_HOST_PORTS = {"db": "5435", "redis": "6380", "backend": "8005", "frontend": "5174"}
+LOADTEST_HOST_PORTS = {"backend": "8095", "prometheus": "9095", "grafana": "3005"}
 
 # Folders that never hold project files.
 SKIP_DIRS = {
@@ -120,6 +122,7 @@ def test_env_file_paths_point_at_root_env() -> None:
 def test_justfile_uses_infra_compose_with_pinned_project_name() -> None:
     justfile = (REPO_ROOT / "justfile").read_text()
     assert "-f infra/docker/docker-compose.yml" in justfile
+    assert "-f infra/docker/docker-compose.loadtest.yml" in justfile
     assert "-p " in justfile, (
         "pin the project name, or it defaults to 'docker' and orphans volumes"
     )
@@ -127,7 +130,7 @@ def test_justfile_uses_infra_compose_with_pinned_project_name() -> None:
         line.strip()
         for line in justfile.splitlines()
         if "docker compose" in line
-        and not line.lstrip().startswith(("#", "compose :="))
+        and not line.lstrip().startswith(("#", "compose :=", "loadtest_compose :="))
     ]
     assert not bare_calls, (
         f"use {{{{ compose }}}} instead of bare docker compose: {bare_calls}"
@@ -174,6 +177,29 @@ def test_dev_host_ports_match_docs() -> None:
         if svc.get("ports")
     }
     assert published == DEV_HOST_PORTS
+
+
+@requires_docker
+def test_loadtest_host_ports_match_docs_and_stay_on_loopback() -> None:
+    # Grafana, Prometheus and an unthrottled backend: never on the LAN.
+    services = _compose_config(LOADTEST_COMPOSE)["services"]
+    ports = {
+        name: port for name, svc in services.items() for port in svc.get("ports", [])
+    }
+    assert {name: port["published"] for name, port in ports.items()} == (
+        LOADTEST_HOST_PORTS
+    )
+    assert {port["host_ip"] for port in ports.values()} == {"127.0.0.1"}
+
+
+@requires_docker
+def test_loadtest_backend_runs_the_loadtest_settings_under_gunicorn() -> None:
+    backend = _compose_config(LOADTEST_COMPOSE)["services"]["backend"]
+    assert backend["build"]["dockerfile"].endswith("backend.prod.Dockerfile")
+    assert backend["environment"]["DJANGO_SETTINGS_MODULE"] == "core.settings.loadtest"
+    assert "gunicorn" in " ".join(backend["command"])
+    assert backend["environment"]["PROMETHEUS_MULTIPROC_DIR"]
+    assert backend["environment"]["METRICS_ALLOWED_CIDRS"].endswith("/32")
 
 
 WEASYPRINT_PACKAGES = (

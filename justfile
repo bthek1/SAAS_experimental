@@ -13,6 +13,9 @@ export VIRTUAL_ENV := ""
 
 compose := "docker compose -f infra/docker/docker-compose.yml -p " + lowercase(file_name(justfile_directory()))
 
+# The local load-test stack (#9): its own project and volumes, never the dev stack's.
+loadtest_compose := "docker compose --env-file .env -f infra/docker/docker-compose.loadtest.yml -p " + lowercase(file_name(justfile_directory())) + "-loadtest"
+
 [private]
 default:
     @just --list
@@ -117,6 +120,58 @@ fe-lint:
 [group('frontend')]
 fe-build:
     cd frontend && npm run build
+
+# --- Load tests (#9) ---
+
+# Start the load-test stack (prod backend image + Postgres + Prometheus :9095 + Grafana :3005)
+[group('loadtest')]
+loadtest-up:
+    {{ loadtest_compose }} up -d --build --wait backend prometheus grafana
+
+# Stop the load-test stack (keeps its volumes: Prometheus history, seeded DB)
+[group('loadtest')]
+loadtest-down:
+    {{ loadtest_compose }} down
+
+# Seed the load-test backend: just loadtest-seed --owners 5 --questionnaires-per-owner 200
+[group('loadtest')]
+[positional-arguments]
+loadtest-seed *args:
+    {{ loadtest_compose }} exec backend python manage.py seed_loadtest "$@"
+
+# Run a k6 scenario, results to Prometheus/Grafana: smoke load stress soak respondent pdf [KEY=VALUE…]
+[group('loadtest')]
+[positional-arguments]
+k6 scenario *options:
+    loadtest/run.sh "$@"
+
+# --- Infra: Proxmox LXC containers for load tests (#9) ---
+# Pulumi state is local and per repo. The backend and passphrase are set for each command, so
+# `pulumi login` (global) is never needed and other Pulumi projects keep their own backends.
+
+pulumi := "PULUMI_BACKEND_URL=file://" + home_directory() + "/.pulumi-state/saas-experimental PULUMI_CONFIG_PASSPHRASE_FILE=" + env("PULUMI_CONFIG_PASSPHRASE_FILE", home_directory() + "/.pulumi-state/saas-experimental.passphrase") + " VIRTUAL_ENV= pulumi -C infra/pulumi --stack loadtest"
+
+# Any pulumi command on the loadtest stack: just infra config set saas:node bthek1
+[group('infra')]
+[positional-arguments]
+infra *args:
+    @{{ pulumi }} "$@"
+
+# Preview the containers and save the plan that infra-up applies
+[group('infra')]
+infra-preview:
+    {{ pulumi }} preview --diff --save-plan .plan.json
+
+# Apply exactly the plan infra-preview saved (nothing else can slip in)
+[group('infra')]
+infra-up:
+    {{ pulumi }} up --plan .plan.json --yes
+    rm -f infra/pulumi/.plan.json
+
+# Run the Pulumi program's tests (topology + mocks; no Proxmox needed)
+[group('infra')]
+infra-test *args:
+    cd infra/pulumi && VIRTUAL_ENV= uv run pytest {{ args }}
 
 # --- Database ---
 

@@ -8,7 +8,10 @@ elif _env == "test":
     from .test import *
 elif _env == "prod":
     from .prod import *
+elif _env == "loadtest":
+    from .loadtest import *
 else:
     raise ValueError(
-        f"Unknown SETTINGS value: {_env!r}. Must be 'dev', 'test', or 'prod'."
+        f"Unknown SETTINGS value: {_env!r}. "
+        "Must be 'dev', 'test', 'prod' or 'loadtest'."
     )

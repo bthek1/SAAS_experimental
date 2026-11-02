@@ -39,7 +39,7 @@ Prefer documented conventions over one-off solutions.
 The [`justfile`](justfile) holds only day-to-day commands. Run `just` to list them. Do not add
 recipes for one-off or rare tasks; document the raw command here instead. A new recipe gets a
 `# doc comment` line, then `[group('<area>')]` (`dev`, `docker`, `backend`, `frontend`,
-`database`), then the recipe. The comment must come before the attribute, or `just` fails with
+`loadtest`, `infra`, `database`), then the recipe. The comment must come before the attribute, or `just` fails with
 "Extraneous attribute". Helpers that other recipes call are marked `[private]`: hidden from the
 list but still runnable by name.
 
@@ -61,6 +61,16 @@ just fe-lint        # eslint
 just fe-build       # type-check + build
 
 just db-reset       # DESTRUCTIVE: drops the Postgres volume, then re-migrates
+
+just loadtest-up    # load-test stack: prod backend + Postgres + Prometheus + Grafana (#9)
+just loadtest-seed --owners 5 --questionnaires-per-owner 200
+just k6 <scenario> [KEY=VALUE…]  # smoke load stress soak respondent pdf
+just loadtest-down  # keeps its volumes
+
+just infra-test     # Pulumi program tests (mocks, no Proxmox)
+just infra-preview  # preview the LXC containers, save the plan
+just infra-up       # apply exactly the saved plan
+just infra <args>   # any pulumi command on the loadtest stack
 ```
 
 Rarer tasks have no recipe. Run them directly:
@@ -95,9 +105,11 @@ Host ports are offset so they do not clash with a locally installed Postgres or 
 | `celery_worker`, `celery_beat` | none | beat uses `DatabaseScheduler` |
 | `frontend` | `5174` | Vite dev server |
 | e2e backend, e2e frontend | `8015`, `5184` | Started by `npm run e2e:integration` only (dev + 10) |
+| load-test `backend`, `prometheus`, `grafana` | `8095`, `9095`, `3005` | `just loadtest-up` only; bound to 127.0.0.1 |
 
 All Docker files live in `infra/docker/`: `docker-compose.yml` (dev stack),
-`docker-compose.prod.yml` (gunicorn backend + db), `<service>[.prod].Dockerfile`, and a
+`docker-compose.prod.yml` (gunicorn backend + db), `docker-compose.loadtest.yml` (load tests, its
+own project `<repo folder name>-loadtest`, see below), `<service>[.prod].Dockerfile`, and a
 `<name>.Dockerfile.dockerignore` next to each Dockerfile (BuildKit reads it in place of the build
 context's `.dockerignore`). Paths in the compose files are relative to `infra/docker/`. The justfile
 passes `-f infra/docker/docker-compose.yml -p <repo folder name>`. Run other compose commands
@@ -155,9 +167,11 @@ DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOS
   `django.utils.timezone.now()`, or `datetime.now(UTC)` outside the ORM. Never naive
   `datetime.now()` or `datetime.utcnow()`. Freeze time in tests with `freezegun`.
 
-**Settings:** split into `core/settings/{base,dev,prod,test,e2e}.py`. `manage.py` defaults
-`DJANGO_SETTINGS_MODULE` to `core.settings`, whose `__init__.py` picks `dev`, `test` or `prod` from
-the `SETTINGS` env var (default `dev`). pytest always uses `core.settings.test`: `addopts` passes
+**Settings:** split into `core/settings/{base,dev,prod,test,e2e,loadtest}.py`. `manage.py` defaults
+`DJANGO_SETTINGS_MODULE` to `core.settings`, whose `__init__.py` picks `dev`, `test`, `prod` or
+`loadtest` from the `SETTINGS` env var (default `dev`). `loadtest` (#9) is `prod` over plain HTTP
+for k6 on a private network: it refuses to load if any `ALLOWED_HOSTS` entry is public. If DRF
+throttles are ever added, raise them there for k6 (every VU shares one IP), never in `base.py`. pytest always uses `core.settings.test`: `addopts` passes
 `--ds`, which beats the `DJANGO_SETTINGS_MODULE=core.settings.dev` that direnv or VS Code load from
 `.env` (the env var would otherwise override the ini key). `e2e` extends
 `test` with its own `e2e.sqlite3` and CORS for :5184; only the Playwright integration config
@@ -166,6 +180,18 @@ repo-root `.env` (`base.py` reads `BASE_DIR.parent / ".env"`). Never hardcode se
 credentials. `DATABASE_URL` configures the database.
 
 **Auth:** JWT via simplejwt. `POST /api/token/` and `POST /api/token/refresh/`.
+
+**Metrics and load tests (#9)** (the k6 side is under "Load tests" below)
+- `django-prometheus` records request, view and DB metrics. `/metrics` is served by
+  `apps/utils/metrics.py`, the first middleware, so Prometheus can scrape by IP over plain HTTP.
+  It is deliberately not under `/api/`. It answers only peers in `METRICS_ALLOWED_CIDRS`, and
+  returns 404 to any request carrying a forwarding header, so a proxy can never make it public.
+- Under gunicorn with several workers, set `PROMETHEUS_MULTIPROC_DIR`, or each scrape sees one
+  worker. `backend/gunicorn.conf.py` empties it on start and marks dead workers.
+- `manage.py seed_loadtest` (logic in `apps/questionnaires/seeding.py`) creates deterministic
+  `loadtest-<n>@example.com` owners with data spread over 90 days. It runs only under `DEBUG` or
+  `loadtest`. `apps/questionnaires/test_query_counts.py` fails if a hot path's query count grows
+  with rows; add new k6-loaded endpoints to it.
 
 **Celery**
 - App in `core/celery.py`. Tasks in `apps/<app>/tasks.py`, auto-discovered, defined with
@@ -277,6 +303,60 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   `e2e/integration/helpers.ts` has `registerUser` / `loginAs` (log in by storing the JWT, skipping
   the form), an owner-side `api()` caller, and a scored test survey with `answerScoredSurvey`.
   Test anonymous respondents in a separate `browser.newContext()` so no token leaks in.
+
+---
+
+## Load tests (`loadtest/`, `infra/observability/`)
+
+k6 scripts live in `loadtest/k6/` (`lib/config.js`, `lib/api.js`, `scenarios/*.js`).
+`loadtest/run.sh` (`just k6`) runs one scenario in the `grafana/k6` container against the local
+load-test stack. Results go to Prometheus by remote write, tagged `testid=<scenario>-<UTC time>`.
+The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
+
+- ⚠️ **k6 only ever targets a private address.** `lib/config.js` refuses any other `BASE_URL`
+  before the first request, and `backend/tests/test_k6_targets.py` fails on any public host in
+  `loadtest/`. Load-testing a site you do not own is a denial-of-service attack.
+- Every request carries a `name` tag (endpoint group, such as `questionnaire-detail`). Never
+  tag by URL: UUIDs would create one Prometheus series per row.
+- Scenarios read from the `seed_loadtest` owners. Each VU logs in as `loadtest-<n>@example.com`
+  (`OWNERS`, default 5), so seed at least that many. The respondent flow creates a fresh
+  questionnaire per submit, so a 409 is a real failure.
+- Run one scenario at a time. `run.sh` stops a k6 left behind by an interrupted run.
+- Prometheus and Grafana config lives in `infra/observability/`. Dashboards are generated:
+  edit `grafana/build_dashboards.py`, then run `python3 infra/observability/grafana/build_dashboards.py`.
+  `backend/tests/test_observability.py` fails if the committed JSON is stale, and also runs
+  promtool on the config and rules (needs Docker).
+- On the load-test stack, `/metrics` admits only Prometheus's fixed address (`10.95.0.10/32`).
+  A subnet-wide rule would also admit the host, because published ports arrive from the
+  subnet's gateway.
+
+---
+
+## Infra: Proxmox LXC containers (`infra/pulumi/`)
+
+The load-test deploy (#9, Phases 3–5) runs in four unprivileged LXC containers on the Proxmox
+host `192.168.2.70` (node `bthek1`): `saas-app` 241, `saas-db` 242, `saas-monitor` 243,
+`saas-loadgen` 244. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
+creates bare containers. Ansible (Phase 4) configures them.
+
+- ⚠️ **Guest ids 241–249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
+  positional: renumbering makes Pulumi *replace* a guest and its data. 220–240 belong to
+  `~/kubernates_project` and are refused. The host's other guests (100–209) are unrelated.
+- **State is local and per repo**: `~/.pulumi-state/saas-experimental`, passphrase in
+  `~/.pulumi-state/saas-experimental.passphrase`. The justfile sets `PULUMI_BACKEND_URL` and
+  `PULUMI_CONFIG_PASSPHRASE_FILE` per command. Never run `pulumi login`: it is global and would
+  repoint other projects. Use `just infra <args>`, not bare `pulumi`.
+- `Pulumi.loadtest.yaml` is gitignored. `Pulumi.loadtest.yaml.example` documents every key, and
+  the one-time setup, including a dedicated API token scoped to a `saas-loadtest` pool. For now
+  the stack uses kubernates_project's token (copied, encrypted, 2026-11-02) and no pool.
+  Revoking that token breaks both stacks.
+- Containers are unprivileged with `nesting=1` (the Proxmox default; systemd needs it) and
+  `keyctl=0`, so Docker cannot run inside. Install services natively. `test_program.py` enforces
+  this, and that root logs in by SSH key only.
+- `infra-up` applies only the plan `infra-preview` saved. Read the preview, especially any
+  replace or delete, before applying.
+- The pulumi venv is Python 3.13 (`pulumi-proxmoxve` is not on 3.14 yet), separate from
+  `backend/`.
 
 ---
 

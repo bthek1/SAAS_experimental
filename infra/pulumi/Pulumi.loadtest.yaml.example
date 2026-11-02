@@ -1,0 +1,43 @@
+# Copy to Pulumi.loadtest.yaml (gitignored) and fill in (#9, Phase 3).
+#
+# One-time setup. State is local, and the justfile sets PULUMI_BACKEND_URL per
+# command, so this never changes the backend your other Pulumi projects use:
+#   mkdir -p ~/.pulumi-state/saas-experimental
+#   openssl rand -base64 32 > ~/.pulumi-state/saas-experimental.passphrase
+#   chmod 600 ~/.pulumi-state/saas-experimental.passphrase
+#   just infra-init                                  # pulumi stack init loadtest
+#   just infra-config --secret proxmoxve:apiToken 'ben@pve!saas-loadtest=<uuid>'
+#
+# The API token is this repo's own (never kubernates_project's), so it can be
+# revoked alone. On the host, as root (privilege separation on):
+#   pveum pool add saas-loadtest
+#   pveum user token add ben@pve saas-loadtest --privsep 1
+#   pveum acl modify /pool/saas-loadtest --tokens 'ben@pve!saas-loadtest' --roles PVEVMAdmin
+#   pveum acl modify /storage/local-lvm --tokens 'ben@pve!saas-loadtest' --roles PVEDatastoreUser
+#   pveum acl modify /storage/local --tokens 'ben@pve!saas-loadtest' --roles PVEDatastoreUser
+#   pveum acl modify /sdn/zones/localnetwork --tokens 'ben@pve!saas-loadtest' --roles PVESDNUser
+# PVEVMAdmin on the pool covers only guests in that pool.
+#
+# ⚠️ Private addresses only. Guest ids 241-249 are this repo's; 220-240 are
+# kubernates_project's and are refused.
+config:
+  # --- Proxmox provider ------------------------------------------------------
+  proxmoxve:endpoint: https://192.168.2.70:8006/
+  proxmoxve:insecure: true          # self-signed PVE certificate
+  # proxmoxve:apiToken: (secret, set with the command above)
+
+  # --- Containers -------------------------------------------------------------
+  saas:node: bthek1                 # Proxmox node name (`hostname` on the host)
+  saas:pool: saas-loadtest          # the token's ACLs are scoped to this pool
+  saas:datastore: local-lvm         # container root disks
+  saas:template: local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+  saas:network:
+    cidr: 192.168.2.0/24            # a guest's IP is this base + its id (.241-.244)
+    gateway: 192.168.2.1
+    dns: [192.168.2.1]
+    bridge: vmbr0
+    adminHosts: [192.168.2.106]     # SSH, Grafana and Prometheus (Phase 4 firewall)
+  saas:sshPublicKeys:
+    - ssh-ed25519 AAAA... you@workstation
+  # saas:sizes:                     # override per role; defaults in saas_loadtest/topology.py
+  #   app: {cores: 4, memoryMb: 4096, diskGb: 8}

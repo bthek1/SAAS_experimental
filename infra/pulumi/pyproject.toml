@@ -1,0 +1,22 @@
+[project]
+name = "saas-loadtest-infra"
+version = "0.1.0"
+description = "Proxmox LXC containers for the SAAS_experimental load-test deploy (#9)"
+# pulumi-proxmoxve's Python SDK is not on 3.14 yet (same pin as kubernates_project).
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pulumi>=3.200,<4",
+    "pulumi-proxmoxve>=7.13,<8",
+    "pulumi-random>=4.16,<5",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

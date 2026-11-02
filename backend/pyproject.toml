@@ -17,6 +17,7 @@ dependencies = [
   "django-celery-results>=2.6.0",
   "django-celery-beat>=2.9.0",
   "weasyprint>=70.0",
+  "django-prometheus ~=2.5",
 ]
 
 [build-system]

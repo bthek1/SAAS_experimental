@@ -1,0 +1,10 @@
+# Provisioned datasource (#9). The fixed uid is what every dashboard references.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
