@@ -1,7 +1,6 @@
 import ipaddress
 
 import pytest
-
 from saas_loadtest import topology
 from saas_loadtest.topology import Network, build
 

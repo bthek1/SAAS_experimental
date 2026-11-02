@@ -40,11 +40,13 @@ class Mocks(pulumi.runtime.Mocks):
             outputs["result"] = "p" * int(inputs["length"])
         return f"{args.name}-id", outputs
 
-    def call(self, args: pulumi.runtime.MockCallArgs):
+    def call(self, args: pulumi.runtime.MockCallArgs):  # noqa: ARG002 (Mocks API)
         return {}
 
     def containers(self) -> dict[str, dict]:
-        return {name: inputs for typ, name, inputs in self.resources if typ == CONTAINER}
+        return {
+            name: inputs for typ, name, inputs in self.resources if typ == CONTAINER
+        }
 
 
 MOCKS = Mocks()
@@ -125,7 +127,10 @@ def test_ssh_by_key_only_from_the_template():
         for name, ct in MOCKS.containers().items():
             account = ct["initialization"]["userAccount"]
             assert account == {"keys": [KEY]}, name  # no password
-            assert ct["operatingSystem"] == {"templateFileId": TEMPLATE, "type": "ubuntu"}
+            assert ct["operatingSystem"] == {
+                "templateFileId": TEMPLATE,
+                "type": "ubuntu",
+            }
             assert ct["poolId"] == "saas-loadtest"
             assert ct["startOnBoot"] is True
 
@@ -140,7 +145,9 @@ def test_sizes_follow_the_topology():
             ct = cts[guest.name]
             assert ct["cpu"] == {"cores": guest.cores}
             assert ct["memory"]["dedicated"] == guest.memory_mb
-            assert ct["disk"] == {"datastoreId": "local-lvm", "size": guest.disk_gb}, role
+            assert ct["disk"] == {"datastoreId": "local-lvm", "size": guest.disk_gb}, (
+                role
+            )
 
     return _after_all(check)
 

@@ -29,6 +29,7 @@ DEFAULT_SIZES = {
     "loadgen": {"cores": 2, "memoryMb": 1024, "diskGb": 4},
 }
 
+
 @dataclass(frozen=True)
 class Network:
     cidr: str

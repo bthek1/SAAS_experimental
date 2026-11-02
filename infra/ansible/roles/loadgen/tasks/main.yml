@@ -1,0 +1,24 @@
+- name: Install k6
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: release.yml
+  vars:
+    common_release_name: k6
+    common_release_url: "{{ k6_url }}"
+    common_release_sha256: "{{ k6_sha256 }}"
+    common_release_binaries: ["k6-v{{ k6_version }}-linux-amd64/k6"]
+
+- name: Create k6's working directory (loadtest/run.sh syncs the scripts on every run)
+  ansible.builtin.file:
+    path: /root/k6/results
+    state: directory
+    mode: "0700"
+
+# What every run needs, so run.sh passes no secrets on a command line.
+- name: Write k6's environment
+  ansible.builtin.template:
+    src: k6.env.j2
+    dest: /root/k6.env
+    mode: "0600"
+  diff: false
+  no_log: true

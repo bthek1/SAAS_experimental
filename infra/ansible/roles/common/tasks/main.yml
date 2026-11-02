@@ -1,0 +1,42 @@
+- name: Install base packages
+  ansible.builtin.apt:
+    name: [locales, nftables, rsync, ca-certificates, curl, tzdata]
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Generate the en_US.UTF-8 locale (SSH sessions ask for it)
+  community.general.locale_gen:
+    name: en_US.UTF-8
+
+- name: Use UTC
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/Etc/UTC
+    dest: /etc/localtime
+    state: link
+
+# Proxmox writes this one-shot unit into /etc/systemd/system when it creates the
+# container, but the template lacks the tool it runs (make-ssl-cert), so it fails
+# on every boot and leaves systemd "degraded". Disabled, not masked: masking
+# cannot replace a real unit file in /etc. Plain `systemctl disable`: the unit has
+# no [Install] section, so it reads "static", which the systemd module takes for
+# enabled and "disables" (changed) on every run.
+- name: Disable the template's snakeoil certificate unit
+  ansible.builtin.command: systemctl disable proxmox-regenerate-snakeoil.service  # noqa: command-instead-of-module (static unit, see above)
+  register: common_snakeoil_disable
+  changed_when: "'Removed' in common_snakeoil_disable.stderr"
+
+- name: Check for failed units
+  ansible.builtin.command: systemctl --failed --no-legend --plain  # noqa: command-instead-of-module (read-only)
+  register: common_failed_units
+  changed_when: false
+
+- name: Clear the snakeoil unit's failed state
+  ansible.builtin.command: systemctl reset-failed proxmox-regenerate-snakeoil.service
+  when: "'proxmox-regenerate-snakeoil' in common_failed_units.stdout"
+  changed_when: true
+
+- name: Firewall (nftables, input default-deny)
+  ansible.builtin.import_tasks: firewall.yml
+
+- name: Install node_exporter and the container's own cgroup metrics
+  ansible.builtin.import_tasks: metrics.yml

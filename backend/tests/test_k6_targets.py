@@ -50,13 +50,25 @@ def test_there_are_scenarios():
 
 
 def test_every_url_names_a_private_host():
+    # A variable (`${monitor}`) is resolved at runtime and checked there; see
+    # test_run_sh_refuses_public_container_addresses.
     public = [
         f"{path.relative_to(REPO_ROOT)}: {host}"
         for path in loadtest_files()
         for host in URL_HOST.findall(path.read_text(errors="ignore"))
-        if not is_private(host)
+        if not host.startswith(("$", "{")) and not is_private(host)
     ]
     assert not public, f"public hosts in load-test files: {public}"
+
+
+def test_run_sh_refuses_public_container_addresses():
+    # TARGET=lxc reads saas-loadgen's and saas-monitor's IPs from the Pulumi
+    # stack; run.sh must refuse them unless private before any request.
+    run_sh = (LOADTEST / "run.sh").read_text()
+    lxc = run_sh[run_sh.index("run_lxc() {") :]
+    assert 'for ip in "$loadgen" "$monitor"; do' in lxc
+    assert "ipaddress.ip_address(sys.argv[1]).is_private" in lxc
+    assert lxc.index("is_private") < lxc.index("k6 run")
 
 
 @pytest.mark.parametrize(

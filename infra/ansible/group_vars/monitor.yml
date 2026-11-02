@@ -1,0 +1,6 @@
+# Prometheus: k6 remote-writes from saas-loadgen; the admin hosts browse it.
+# Grafana: any machine on the LAN (it has its own login; anonymous access is off).
+nft_rules:
+  - port: "{{ ports.prometheus }}"
+    from: "{{ [guest_ips.loadgen] + admin_hosts }}"
+  - {port: "{{ ports.grafana }}", from: ["{{ lan_cidr }}"]}

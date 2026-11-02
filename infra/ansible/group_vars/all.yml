@@ -1,0 +1,45 @@
+# yamllint disable rule:line-length
+# Shared settings for the load-test containers (#9, Phase 4).
+# Every downloaded binary is pinned by version and sha256 (from the release's
+# own checksum file). Bump both together. yaml[line-length] is off for this file: URLs.
+
+repo_root: "{{ playbook_dir }}/../.."
+
+node_exporter_version: "1.12.1"
+node_exporter_sha256: b51d8a76aa2a9156a55d501aca6276fae09e262259a5e4e831d2c2222f084e63
+node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+postgres_exporter_version: "0.20.1"
+postgres_exporter_sha256: 89d4f7e7920cad48fdc3133f789556ef5253c330a9f5fdace3bdb6344c0a8b5a
+postgres_exporter_url: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ postgres_exporter_version }}/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64.tar.gz"
+# Same versions as the local stack's images (infra/docker/docker-compose.loadtest.yml).
+prometheus_version: "3.15.0"
+prometheus_sha256: 2a542df32eac02ee17b9d844fb2aa1de00dafa5476579ba8a3ba862e9d572ea0
+prometheus_url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+grafana_version: "13.0.9"
+grafana_sha256: cf3b4952ce7f34195334f478c3a20e9b61e2cd3889555d80df24bd2a64e0c800
+grafana_url: "https://dl.grafana.com/oss/release/grafana_{{ grafana_version }}_amd64.deb"
+k6_version: "2.3.0"
+k6_sha256: 39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1
+k6_url: "https://github.com/grafana/k6/releases/download/v{{ k6_version }}/k6-v{{ k6_version }}-linux-amd64.tar.gz"
+uv_version: "0.9.7"
+uv_sha256: b26fcc8dfa1c39b5a5613445af3be3eefda45d9a39359bee271eafe34913583e
+uv_url: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+
+ports:
+  ssh: 22
+  gunicorn: 8000
+  postgres: 5432
+  node_exporter: 9100
+  postgres_exporter: 9187
+  prometheus: 9090
+  grafana: 3000
+
+# The app's database (on saas-db).
+db_name: appdb
+db_user: appuser
+
+# nftables (roles/common): input is default-deny. Each rule opens one port to
+# a list of sources. SSH from the admin hosts is always open.
+nft_rules_all:
+  - {port: "{{ ports.node_exporter }}", from: ["{{ guest_ips.monitor }}"]}
+nft_rules: []

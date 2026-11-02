@@ -17,6 +17,7 @@ dev = ["pytest>=8"]
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# ../ansible/tests: the inventory script and container-metrics.sh (Phase 4).
+testpaths = ["tests", "../ansible/tests"]
 pythonpath = ["."]
 addopts = "-q"

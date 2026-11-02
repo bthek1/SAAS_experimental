@@ -88,6 +88,23 @@ Each run prints a `testid` and a Grafana link to the **k6** dashboard for that r
 password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`, `respondent` and
 `pdf`. Plan and baselines: issue #9.
 
+### Load-test deploy (Proxmox LXC containers)
+
+The baseline runs on four LXC containers on the Proxmox host (`saas-app` .241, `saas-db` .242,
+`saas-monitor` .243, `saas-loadgen` .244 on `192.168.2.0/24`). Pulumi creates them and Ansible
+configures them. One-time setup (state, passphrase, API token): `infra/pulumi/Pulumi.loadtest.yaml.example`.
+
+```bash
+just infra-test                 # Pulumi + Ansible helper tests (no Proxmox needed)
+just infra-preview              # review: what would change on the host
+just infra-up                   # apply exactly that plan
+just converge                   # Ansible: install and configure everything (idempotent)
+just k6 smoke TARGET=lxc        # k6 on saas-loadgen against saas-app
+```
+
+Grafana: `http://192.168.2.243:3000` (password: `just infra stack output grafana_admin_password
+--show-secrets`), with dashboards k6, Django, Containers and Postgres.
+
 ---
 
 ## API
@@ -196,6 +213,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 ├── infra/docker/     Dockerfiles + compose files (dev stack, prod backend, load-test stack)
 ├── infra/observability/  Prometheus config + rules, Grafana provisioning and generated dashboards
 ├── infra/pulumi/     Pulumi program: the load-test LXC containers on Proxmox (#9)
+├── infra/ansible/    Ansible: configures those containers (just converge)
 ├── loadtest/         k6 scenarios (k6/), run.sh (`just k6`), results/ (gitignored)
 └── AGENTS.md         Rules for AI coding agents
 ```

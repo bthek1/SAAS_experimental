@@ -1,0 +1,10 @@
+# {{ ansible_managed }} (infra/ansible/roles/postgres). #9, Phase 4.
+# Sized for this container: {{ (ansible_memtotal_mb / 1024) | round(1) }} GB, {{ ansible_processor_vcpus }} CPUs.
+listen_addresses = 'localhost,{{ guest_ip }}'
+max_connections = 100
+shared_buffers = {{ (ansible_memtotal_mb * 0.25) | int }}MB
+effective_cache_size = {{ (ansible_memtotal_mb * 0.6) | int }}MB
+work_mem = 4MB
+maintenance_work_mem = 64MB
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all

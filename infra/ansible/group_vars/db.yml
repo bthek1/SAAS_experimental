@@ -1,0 +1,3 @@
+nft_rules:
+  - {port: "{{ ports.postgres }}", from: ["{{ guest_ips.app }}"]}
+  - {port: "{{ ports.postgres_exporter }}", from: ["{{ guest_ips.monitor }}"]}

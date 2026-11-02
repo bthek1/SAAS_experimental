@@ -123,6 +123,11 @@ fe-build:
 
 # --- Load tests (#9) ---
 
+# Per-minute table of one k6 run (throughput, latency, each container's CPU, Postgres)
+[group('loadtest')]
+k6-report testid:
+    python3 loadtest/report.py {{ testid }}
+
 # Start the load-test stack (prod backend image + Postgres + Prometheus :9095 + Grafana :3005)
 [group('loadtest')]
 loadtest-up:
@@ -172,6 +177,12 @@ infra-up:
 [group('infra')]
 infra-test *args:
     cd infra/pulumi && VIRTUAL_ENV= uv run pytest {{ args }}
+
+# Configure the containers with Ansible (infra/ansible/site.yml): just converge --tags app --check --diff
+[group('infra')]
+[positional-arguments]
+converge *args:
+    cd infra/ansible && ansible-playbook site.yml "$@"
 
 # --- Database ---
 

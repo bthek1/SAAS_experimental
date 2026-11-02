@@ -1,0 +1,9 @@
+# gunicorn: k6 (saas-loadgen), the scraper (saas-monitor), and you.
+nft_rules:
+  - port: "{{ ports.gunicorn }}"
+    from: "{{ [guest_ips.loadgen, guest_ips.monitor] + admin_hosts }}"
+
+gunicorn_workers: 2
+# Seed size for the baseline; record it with every run (Phase 5).
+loadtest_owners: 20
+loadtest_questionnaires_per_owner: 200

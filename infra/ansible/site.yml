@@ -1,0 +1,27 @@
+# The load-test deploy on the Proxmox LXC containers (#9, Phase 4).
+#   just converge                 # everything
+#   just converge --tags app      # one role
+- name: Base (all containers)
+  hosts: all
+  roles:
+    - {role: common, tags: [common]}
+
+- name: Database (saas-db)
+  hosts: db
+  roles:
+    - {role: postgres, tags: [db]}
+
+- name: Backend (saas-app)
+  hosts: app
+  roles:
+    - {role: app, tags: [app]}
+
+- name: Prometheus + Grafana (saas-monitor)
+  hosts: monitor
+  roles:
+    - {role: monitor, tags: [monitor]}
+
+- name: K6 load generator (saas-loadgen)
+  hosts: loadgen
+  roles:
+    - {role: loadgen, tags: [loadgen]}

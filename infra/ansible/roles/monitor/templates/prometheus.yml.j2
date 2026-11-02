@@ -1,0 +1,34 @@
+# {{ ansible_managed }} (infra/ansible/roles/monitor). #9, Phase 4.
+# The LXC deploy's scrape config. k6 results arrive by remote write.
+# `instance` is the container's name, so dashboards read saas-app, not an IP.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+rule_files:
+  - rules.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:{{ ports.prometheus }}"]
+        labels: {instance: saas-monitor}
+
+  # /metrics answers this container alone (METRICS_ALLOWED_CIDRS on saas-app).
+  - job_name: django
+    static_configs:
+      - targets: ["{{ guest_ips.app }}:{{ ports.gunicorn }}"]
+        labels: {instance: saas-app}
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["{{ guest_ips.db }}:{{ ports.postgres_exporter }}"]
+        labels: {instance: saas-db}
+
+  # node_exporter + the container's cgroup metrics (textfile collector).
+  - job_name: node
+    static_configs:
+{% for role, ip in guest_ips.items() %}
+      - targets: ["{{ ip }}:{{ ports.node_exporter }}"]
+        labels: {instance: saas-{{ role }}}
+{% endfor %}

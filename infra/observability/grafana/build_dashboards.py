@@ -256,7 +256,121 @@ def django_dashboard():
     )
 
 
-DASHBOARDS = {"k6.json": k6_dashboard, "django.json": django_dashboard}
+INSTANCE = 'instance=~"$instance"'
+ETH0 = f'{INSTANCE}, device="eth0"'
+CPU_USED = f"sum by (instance) ({rate('container_cpu_usage_seconds_total', INSTANCE)})"
+CPU_LIMIT = f"max by (instance) (container_cpu_limit_cores{{{INSTANCE}}})"
+MEM_USED = f"max by (instance) (container_memory_usage_bytes{{{INSTANCE}}})"
+# What the limit bites: usage minus inactive page cache (cAdvisor's working set).
+MEM_WORKING = f"max by (instance) (container_memory_working_set_bytes{{{INSTANCE}}})"
+MEM_LIMIT = f"max by (instance) (container_memory_limit_bytes{{{INSTANCE}}})"
+NET_RX = f"sum by (instance) ({rate('node_network_receive_bytes_total', ETH0)})"
+NET_TX = f"sum by (instance) ({rate('node_network_transmit_bytes_total', ETH0)})"
+BY_INSTANCE = "{{instance}}"
+
+
+def containers_dashboard():
+    """The LXC deploy's containers, each against its own limits.
+
+    From each container's cgroup (infra/ansible/roles/common: container-metrics),
+    not node_exporter's CPU metrics, which inside an LXC count the host's work
+    on the container's cores.
+    """
+    return dashboard(
+        "containers",
+        "Containers",
+        [
+            panel(
+                "CPU used (cores)",
+                [(CPU_USED, BY_INSTANCE), (CPU_LIMIT, "{{instance}} limit")],
+            ),
+            panel(
+                "CPU used, share of limit",
+                [(f"{CPU_USED} / {CPU_LIMIT}", BY_INSTANCE)],
+                unit="percentunit",
+            ),
+            panel(
+                "Memory working set, share of limit",
+                [(f"{MEM_WORKING} / {MEM_LIMIT}", BY_INSTANCE)],
+                unit="percentunit",
+            ),
+            panel(
+                "Memory: working set and total (incl. page cache)",
+                [
+                    (MEM_WORKING, "{{instance}} working set"),
+                    (MEM_USED, "{{instance}} total"),
+                ],
+                unit="bytes",
+            ),
+            panel("Network received", [(NET_RX, BY_INSTANCE)], unit="Bps"),
+            panel("Network sent", [(NET_TX, BY_INSTANCE)], unit="Bps"),
+        ],
+        [
+            query_var(
+                "instance",
+                "label_values(container_cpu_limit_cores, instance)",
+                multi=True,
+            )
+        ],
+        "LXC containers on Proxmox: cgroup CPU and memory against each limit.",
+    )
+
+
+APPDB = 'datname="appdb"'
+
+
+def appdb_rate(stat: str) -> str:
+    return f"sum({rate(f'pg_stat_database_{stat}', APPDB)})"
+
+
+HIT_RATIO = (
+    f"{appdb_rate('blks_hit')} / ({appdb_rate('blks_hit')} + {appdb_rate('blks_read')})"
+)
+
+
+def postgres_dashboard():
+    return dashboard(
+        "postgres",
+        "Postgres",
+        [
+            panel(
+                "Connections by state",
+                [
+                    ("sum by (state) (pg_stat_activity_count)", "{{state}}"),
+                    ("max(pg_settings_max_connections)", "max_connections"),
+                ],
+            ),
+            panel(
+                "Transactions (appdb)",
+                [
+                    (appdb_rate("xact_commit"), "commits/s"),
+                    (appdb_rate("xact_rollback"), "rollbacks/s"),
+                ],
+            ),
+            panel(
+                "Cache hit ratio (appdb)",
+                [(HIT_RATIO, "hit ratio")],
+                unit="percentunit",
+            ),
+            panel(
+                "Rows (appdb)",
+                [
+                    (appdb_rate(f"tup_{kind}"), kind)
+                    for kind in ("fetched", "returned", "inserted", "updated")
+                ],
+            ),
+        ],
+        [],
+        "postgres_exporter on saas-db (the LXC deploy only).",
+    )
+
+
+DASHBOARDS = {
+    "k6.json": k6_dashboard,
+    "django.json": django_dashboard,
+    "containers.json": containers_dashboard,
+    "postgres.json": postgres_dashboard,
+}
 
 
 def render() -> dict[str, str]:

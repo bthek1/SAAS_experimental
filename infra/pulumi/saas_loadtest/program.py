@@ -70,7 +70,9 @@ def container(
         node_name=node,
         vm_id=guest.vmid,
         pool_id=pool,
-        description=f"SAAS_experimental load test: {guest.role} (#9). Managed by Pulumi.",
+        description=(
+            f"SAAS_experimental load test: {guest.role} (#9). Managed by Pulumi."
+        ),
         tags=[*TAGS, guest.role],
         # Unprivileged: container root is an unprivileged user on the host.
         # nesting is the Proxmox default, which systemd in Ubuntu 24.04 needs.
@@ -128,6 +130,8 @@ def run() -> Stack:
     pulumi.export("ips", {role: g.ip for role, g in guests.items()})
     pulumi.export("ssh_user", "root")
     pulumi.export("admin_hosts", list(network.admin_hosts))
+    # The LAN: Grafana is open to it (infra/ansible/group_vars/monitor.yml).
+    pulumi.export("network_cidr", network.cidr)
     pulumi.export("grafana_url", f"http://{guests['monitor'].ip}:3000")
     pulumi.export("prometheus_url", f"http://{guests['monitor'].ip}:9090")
     for name, value in secrets.items():

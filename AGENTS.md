@@ -71,6 +71,8 @@ just infra-test     # Pulumi program tests (mocks, no Proxmox)
 just infra-preview  # preview the LXC containers, save the plan
 just infra-up       # apply exactly the saved plan
 just infra <args>   # any pulumi command on the loadtest stack
+just converge [--tags app] [--check --diff]  # Ansible: configure the containers
+just k6 <scenario> TARGET=lxc  # run from saas-loadgen against saas-app
 ```
 
 Rarer tasks have no recipe. Run them directly:
@@ -356,7 +358,36 @@ creates bare containers. Ansible (Phase 4) configures them.
 - `infra-up` applies only the plan `infra-preview` saved. Read the preview, especially any
   replace or delete, before applying.
 - The pulumi venv is Python 3.13 (`pulumi-proxmoxve` is not on 3.14 yet), separate from
-  `backend/`.
+  `backend/`. `just infra-test` also runs `infra/ansible/tests/`.
+
+**Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
+(all), `postgres` (saas-db), `app` (saas-app), `monitor` (saas-monitor) and `loadgen`
+(saas-loadgen). The inventory (`inventory/pulumi.py`) reads the Pulumi stack outputs, secrets
+included, and refuses any non-private address. Nothing secret is stored in the repo.
+
+- Everything is installed natively, with no Docker:
+  - the backend is the working tree rsynced to `/srv/app/backend`, `uv sync` (Python 3.14),
+    gunicorn under systemd (`saas-app.service`, env in `/etc/saas-app/app.env`);
+  - Postgres 16 from apt;
+  - Prometheus, Grafana, node_exporter, postgres_exporter, k6 and uv as release binaries
+    pinned by version **and sha256** in `group_vars/all.yml`. Bump both together.
+- A second run must report `changed=0`, and `--check --diff` must show nothing. A task that
+  always reports changed hides real changes: fix it rather than ignore it. `ansible-lint`
+  (production profile) passes: `uvx --from 'ansible-lint==25.*' ansible-lint site.yml`.
+- **Firewall:** nftables, input default-deny, per group in `group_vars/<group>.yml`. SSH only from
+  `admin_hosts`. Never enable the Proxmox datacenter firewall for this (it covers the whole host).
+- **CPU and memory per container come from its cgroup**, not node_exporter. Inside an LXC,
+  `/proc/stat` counts the host's work on the container's cores (an idle container read 16 %
+  busy). `roles/common/files/container-metrics.sh` writes `container_*` metrics to node_exporter's
+  textfile collector every 5 s. Read memory as the working set: `memory.current` includes page
+  cache.
+- The Grafana datasource URL is `${PROMETHEUS_URL}` (compose: `http://prometheus:9090`,
+  saas-monitor: `http://localhost:9090`). Rules, provisioning and dashboards are the same files
+  as the local stack's.
+- `TARGET=lxc` runs k6 on saas-loadgen. `/root/k6.env` (written by `roles/loadgen`) holds
+  `BASE_URL`, `OWNERS`, the owner password and the remote-write settings, so `run.sh` passes no
+  secret on a command line. Grafana is `http://192.168.2.243:3000` (user `admin`, password:
+  `just infra stack output grafana_admin_password --show-secrets`).
 
 ---
 

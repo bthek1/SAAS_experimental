@@ -1,0 +1,112 @@
+- name: Install Postgres 16 (Ubuntu 24.04's own)
+  ansible.builtin.apt:
+    name: [postgresql-16, postgresql-contrib, python3-psycopg2, acl]
+
+- name: Tune Postgres for this container and load pg_stat_statements
+  ansible.builtin.template:
+    src: loadtest.conf.j2
+    dest: /etc/postgresql/16/main/conf.d/loadtest.conf
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: Restart postgres
+
+- name: Admit the app (saas-app) to its database only
+  community.postgresql.postgresql_pg_hba:
+    dest: /etc/postgresql/16/main/pg_hba.conf
+    contype: host
+    databases: "{{ db_name }}"
+    users: "{{ db_user }}"
+    source: "{{ guest_ips.app }}/32"
+    method: scram-sha-256
+  notify: Reload postgres
+
+- name: Apply config changes before creating roles
+  ansible.builtin.meta: flush_handlers
+
+- name: Start Postgres
+  ansible.builtin.systemd_service:
+    name: postgresql
+    enabled: true
+    state: started
+
+- name: App role
+  community.postgresql.postgresql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+  become: true
+  become_user: postgres
+  no_log: true
+
+- name: App database
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+    owner: "{{ db_user }}"
+  become: true
+  become_user: postgres
+
+- name: Enable pg_stat_statements in the app database
+  community.postgresql.postgresql_ext:
+    name: pg_stat_statements
+    login_db: "{{ db_name }}"
+  become: true
+  become_user: postgres
+
+# postgres_exporter logs in over the local socket with peer auth (OS user =
+# role name), so this role has no password at all. pg_monitor is read-only.
+- name: Create the prometheus OS user (for peer auth)
+  ansible.builtin.user:
+    name: prometheus
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Create the prometheus database role
+  community.postgresql.postgresql_user:
+    name: prometheus
+  become: true
+  become_user: postgres
+
+- name: Make prometheus a member of pg_monitor
+  community.postgresql.postgresql_membership:
+    groups: [pg_monitor]
+    target_roles: [prometheus]
+  become: true
+  become_user: postgres
+
+- name: Install postgres_exporter
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: release.yml
+  vars:
+    common_release_name: postgres_exporter
+    common_release_url: "{{ postgres_exporter_url }}"
+    common_release_sha256: "{{ postgres_exporter_sha256 }}"
+    common_release_binaries: ["postgres_exporter-{{ postgres_exporter_version }}.linux-amd64/postgres_exporter"]
+
+- name: Write the postgres_exporter unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/postgres_exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus postgres_exporter (#9)
+      After=postgresql.service
+
+      [Service]
+      User=prometheus
+      # Quoted: unquoted, systemd splits at the spaces and only "user=..." arrives.
+      Environment="DATA_SOURCE_NAME=user=prometheus host=/var/run/postgresql dbname=postgres sslmode=disable"
+      ExecStart=/usr/local/bin/postgres_exporter --web.listen-address=:{{ ports.postgres_exporter }}
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Restart postgres_exporter
+
+- name: Start postgres_exporter
+  ansible.builtin.systemd_service:
+    name: postgres_exporter
+    enabled: true
+    state: started
+    daemon_reload: true

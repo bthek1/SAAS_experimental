@@ -1,0 +1,86 @@
+- name: Create the node_exporter user
+  ansible.builtin.user:
+    name: node_exporter
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Install node_exporter
+  ansible.builtin.include_tasks: release.yml
+  vars:
+    common_release_name: node_exporter
+    common_release_url: "{{ node_exporter_url }}"
+    common_release_sha256: "{{ node_exporter_sha256 }}"
+    common_release_binaries: ["node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"]
+
+- name: Textfile collector directory
+  ansible.builtin.file:
+    path: /var/lib/node_exporter/textfile
+    state: directory
+    owner: root
+    group: node_exporter
+    mode: "0755"
+
+- name: Write the node_exporter unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus node_exporter (#9)
+      After=network-online.target
+
+      [Service]
+      User=node_exporter
+      ExecStart=/usr/local/bin/node_exporter --web.listen-address=:{{ ports.node_exporter }} --collector.textfile.directory=/var/lib/node_exporter/textfile
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Restart node_exporter
+
+# Inside an LXC, /proc/stat shows the host's work on the container's cores, so
+# node_exporter's CPU figures are not the container's. Its own cgroup is.
+- name: Container metrics script
+  ansible.builtin.copy:
+    src: container-metrics.sh
+    dest: /usr/local/bin/container-metrics
+    mode: "0755"
+
+- name: Container metrics service and 5 s timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: container-metrics.service
+      content: |
+        [Unit]
+        Description=Write this container's cgroup CPU and memory for node_exporter (#9)
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/container-metrics /var/lib/node_exporter/textfile/container.prom
+    - name: container-metrics.timer
+      content: |
+        [Unit]
+        Description=Container cgroup metrics every 5 s (#9)
+
+        [Timer]
+        OnActiveSec=1s
+        OnUnitActiveSec=5s
+        AccuracySec=500ms
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart container-metrics timer
+
+- name: Start node_exporter and the metrics timer
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: [node_exporter.service, container-metrics.timer]

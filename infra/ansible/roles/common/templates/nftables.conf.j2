@@ -1,0 +1,29 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }} (infra/ansible/roles/common). #9, Phase 4.
+# Input is default-deny: loopback, replies, ICMP, SSH from the admin hosts,
+# and the ports group_vars/<role>.yml opens to named sources only.
+flush ruleset
+
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    iif lo accept
+    ct state established,related accept
+    ct state invalid drop
+    meta l4proto { icmp, ipv6-icmp } accept
+{% for host in admin_hosts %}
+    ip saddr {{ host }} tcp dport {{ ports.ssh }} accept
+{% endfor %}
+{% for rule in nft_rules_all + nft_rules %}
+{% for source in rule.from %}
+    ip saddr {{ source }} tcp dport {{ rule.port }} accept
+{% endfor %}
+{% endfor %}
+  }
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+  }
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}

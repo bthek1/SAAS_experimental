@@ -1,0 +1,23 @@
+# Install one binary from a pinned release tarball, verified by sha256.
+#   common_release_name, common_release_url, common_release_sha256,
+#   common_release_binaries (paths inside the archive)
+- name: "Download {{ common_release_name }}"
+  ansible.builtin.get_url:
+    url: "{{ common_release_url }}"
+    dest: "/opt/{{ common_release_url | basename }}"
+    checksum: "sha256:{{ common_release_sha256 }}"
+    mode: "0644"
+
+- name: "Unpack {{ common_release_name }}"
+  ansible.builtin.unarchive:
+    src: "/opt/{{ common_release_url | basename }}"
+    dest: /opt
+    remote_src: true
+    creates: "/opt/{{ common_release_binaries[0] }}"
+
+- name: "Link into /usr/local/bin: {{ common_release_name }}"
+  ansible.builtin.file:
+    src: "/opt/{{ item }}"
+    dest: "/usr/local/bin/{{ item | basename }}"
+    state: link
+  loop: "{{ common_release_binaries }}"

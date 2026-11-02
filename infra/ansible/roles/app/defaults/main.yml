@@ -1,0 +1,18 @@
+app_root: /srv/app
+app_dir: "{{ app_root }}/backend"
+app_env_file: /etc/saas-app/app.env
+# The backend's environment (core.settings.loadtest). Also passed to migrate and
+# seed_loadtest, so they see exactly what gunicorn sees.
+app_env:
+  DJANGO_SETTINGS_MODULE: core.settings.loadtest
+  SECRET_KEY: "{{ django_secret_key }}"
+  DATABASE_URL: "postgres://{{ db_user }}:{{ db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ db_name }}"
+  ALLOWED_HOSTS: "{{ guest_ip }},localhost,127.0.0.1"
+  # Prometheus alone may read /metrics.
+  METRICS_ALLOWED_CIDRS: "{{ guest_ips.monitor }}/32"
+  PROMETHEUS_MULTIPROC_DIR: /run/saas-app/prometheus
+  LOADTEST_OWNER_PASSWORD: "{{ loadtest_owner_password }}"
+app_uv_env:
+  UV_PYTHON_INSTALL_DIR: "{{ app_root }}/.python"
+  UV_CACHE_DIR: "{{ app_root }}/.cache/uv"
+  UV_PYTHON_PREFERENCE: only-managed
