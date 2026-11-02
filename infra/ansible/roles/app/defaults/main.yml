@@ -1,3 +1,5 @@
+# -e app_reset_db=true (just loadtest-reset) wipes the database before seeding.
+app_reset_db: false
 app_root: /srv/app
 app_dir: "{{ app_root }}/backend"
 app_env_file: /etc/saas-app/app.env
@@ -11,6 +13,7 @@ app_env:
   # Prometheus alone may read /metrics.
   METRICS_ALLOWED_CIDRS: "{{ guest_ips.monitor }}/32"
   PROMETHEUS_MULTIPROC_DIR: /run/saas-app/prometheus
+  CONN_MAX_AGE: "{{ conn_max_age }}"
   LOADTEST_OWNER_PASSWORD: "{{ loadtest_owner_password }}"
 app_uv_env:
   UV_PYTHON_INSTALL_DIR: "{{ app_root }}/.python"

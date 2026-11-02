@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { describe, expect, it, vi } from "vitest"
-import { API } from "@/test/handlers"
+import { API, paginated } from "@/test/handlers"
 import { dashboardScores, dashboardSummary } from "@/test/questionnaireFixtures"
 import { renderRoute } from "@/test/renderRoute"
 import { server } from "@/test/server"
@@ -49,7 +49,7 @@ describe("/dashboard", () => {
   })
 
   it("shows empty state when there is no data", async () => {
-    server.use(http.get(`${API}/api/questionnaire-types/`, () => HttpResponse.json([])))
+    server.use(http.get(`${API}/api/questionnaire-types/`, ({ request }) => paginated([], request)))
     renderRoute("/dashboard")
     expect(await screen.findByRole("link", { name: /new questionnaire type/i })).toHaveAttribute(
       "href",

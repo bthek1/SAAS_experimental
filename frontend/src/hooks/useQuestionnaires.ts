@@ -6,17 +6,30 @@ import {
   getQuestionnaire,
   getQuestionnaireByToken,
   getQuestionnaires,
+  getQuestionnairesPage,
   submitQuestionnaire,
   updateQuestionnaire,
 } from "@/api/questionnaires"
 import { queryKeys } from "@/api/queryKeys"
 import { saveBlob } from "@/lib/download"
-import type { QuestionnairePayload, SubmitPayload } from "@/types/questionnaires"
+import type {
+  QuestionnaireFilters,
+  QuestionnairePayload,
+  SubmitPayload,
+} from "@/types/questionnaires"
 
 const keys = queryKeys.questionnaires
 
-export const questionnairesQuery = () =>
-  queryOptions({ queryKey: keys.all, queryFn: getQuestionnaires })
+// Keys sit under `keys.all`, so invalidating it refreshes every list and page.
+/** Every matching questionnaire (all pages). */
+export const questionnairesQuery = (filters: QuestionnaireFilters = {}) =>
+  queryOptions({ queryKey: keys.list(filters), queryFn: () => getQuestionnaires(filters) })
+
+export const questionnairesPageQuery = (filters: QuestionnaireFilters, page: number) =>
+  queryOptions({
+    queryKey: keys.page(filters, page),
+    queryFn: () => getQuestionnairesPage(filters, page),
+  })
 
 export const questionnaireQuery = (id: string) =>
   queryOptions({ queryKey: keys.detail(id), queryFn: () => getQuestionnaire(id) })
@@ -28,8 +41,15 @@ export const questionnaireByTokenQuery = (shareToken: string) =>
     retry: false,
   })
 
-export function useQuestionnaires() {
-  return useQuery(questionnairesQuery())
+export function useQuestionnaires(
+  filters: QuestionnaireFilters = {},
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useQuery({ ...questionnairesQuery(filters), enabled })
+}
+
+export function useQuestionnairesPage(filters: QuestionnaireFilters, page: number) {
+  return useQuery(questionnairesPageQuery(filters, page))
 }
 
 export function useQuestionnaire(id: string) {

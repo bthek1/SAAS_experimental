@@ -93,6 +93,19 @@
   register: app_migrate
   changed_when: "'No migrations to apply' not in app_migrate.stdout"
 
+# `just loadtest-reset`: every run starts from the same data. Runs add rows (the
+# respondent flow creates questionnaires), and the unpaginated list got slower
+# as they grew, so two runs were not comparable (#9, Phase 5).
+- name: Wipe the load-test database (only with -e app_reset_db=true)
+  ansible.builtin.command: "{{ app_dir }}/.venv/bin/python manage.py flush --noinput"
+  args:
+    chdir: "{{ app_dir }}"
+  environment: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/saas-app-manage'}) }}"
+  become: true
+  become_user: app
+  when: app_reset_db | bool
+  changed_when: true
+
 - name: Seed the load-test owners
   ansible.builtin.command: >-
     {{ app_dir }}/.venv/bin/python manage.py seed_loadtest

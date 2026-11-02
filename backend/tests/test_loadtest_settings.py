@@ -25,6 +25,8 @@ print(json.dumps({
     "secure_cookies": [s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE],
     "debug": s.DEBUG,
     "engine": s.DATABASES["default"]["ENGINE"],
+    "conn_max_age": s.DATABASES["default"]["CONN_MAX_AGE"],
+    "conn_health_checks": s.DATABASES["default"]["CONN_HEALTH_CHECKS"],
     "loadtest": getattr(s, "LOADTEST", False),
 }))
 """
@@ -66,6 +68,8 @@ def test_loads_with_private_hosts(hosts):
         "secure_cookies": [False, False],
         "debug": False,
         "engine": "django_prometheus.db.backends.postgresql",
+        "conn_max_age": 60,
+        "conn_health_checks": True,
         "loadtest": True,
     }
 
@@ -90,3 +94,10 @@ def test_selected_by_settings_env_var():
 @pytest.mark.parametrize("name", ["base.py", "dev.py", "prod.py", "test.py"])
 def test_no_other_settings_module_imports_it(name):
     assert "loadtest" not in (SETTINGS_DIR / name).read_text()
+
+
+def test_conn_max_age_comes_from_the_environment():
+    # The load-test deploy sets it per measurement (#9, Phase 6).
+    proc = load("localhost", CONN_MAX_AGE="0")
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout)["conn_max_age"] == 0

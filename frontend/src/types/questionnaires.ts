@@ -31,6 +31,12 @@ export interface Questionnaire {
   updatedAt: string
 }
 
+/** Filters on `GET /api/questionnaires/`, applied by the server (#10). */
+export interface QuestionnaireFilters {
+  questionnaireType?: string
+  submitted?: boolean
+}
+
 export interface QuestionnairePayload {
   questionnaireTypeId: string
   name?: string

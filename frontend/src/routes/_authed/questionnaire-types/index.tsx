@@ -1,8 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
 import { useState } from "react"
 import { ConfirmDeleteDialog } from "@/components/questionnaire/ConfirmDeleteDialog"
 import { ListSkeleton } from "@/components/questionnaire/ListSkeleton"
+import { Pager } from "@/components/Pager"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -13,21 +14,29 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  questionnaireTypesQuery,
+  questionnaireTypesPageQuery,
   useDeleteQuestionnaireType,
-  useQuestionnaireTypes,
+  useQuestionnaireTypesPage,
 } from "@/hooks/useQuestionnaireTypes"
 import { apiErrorMessage } from "@/lib/apiErrors"
 import { formatDate } from "@/lib/date"
+import { pageAfterDelete, pageSearch } from "@/lib/pagination"
 import type { QuestionnaireType } from "@/types/questionnaires"
 
 export const Route = createFileRoute("/_authed/questionnaire-types/")({
-  loader: ({ context }) => context.queryClient.ensureQueryData(questionnaireTypesQuery()),
+  validateSearch: pageSearch,
+  loaderDeps: ({ search }) => ({ page: search.page ?? 1 }),
+  loader: ({ context, deps }) =>
+    context.queryClient.ensureQueryData(questionnaireTypesPageQuery(deps.page)),
   component: QuestionnaireTypesPage,
 })
 
 function QuestionnaireTypesPage() {
-  const { data: types, isLoading } = useQuestionnaireTypes()
+  const { page = 1 } = Route.useSearch()
+  const navigate = useNavigate({ from: "/questionnaire-types/" })
+  const { data, isLoading } = useQuestionnaireTypesPage(page)
+  const types = data?.results
+  const goTo = (next: number) => navigate({ search: { page: next > 1 ? next : undefined } })
   const deleteType = useDeleteQuestionnaireType()
   const [pendingDelete, setPendingDelete] = useState<QuestionnaireType | null>(null)
 
@@ -95,6 +104,8 @@ function QuestionnaireTypesPage() {
         </div>
       )}
 
+      <Pager page={page} count={data?.count ?? 0} onPageChange={goTo} />
+
       <ConfirmDeleteDialog
         itemLabel={pendingDelete ? `"${pendingDelete.title}"` : null}
         isPending={deleteType.isPending}
@@ -105,7 +116,13 @@ function QuestionnaireTypesPage() {
         }
         onCancel={closeDialog}
         onConfirm={() =>
-          pendingDelete && deleteType.mutate(pendingDelete.id, { onSuccess: closeDialog })
+          pendingDelete &&
+          deleteType.mutate(pendingDelete.id, {
+            onSuccess: () => {
+              closeDialog()
+              goTo(pageAfterDelete(page, types?.length ?? 0))
+            },
+          })
         }
       />
     </div>

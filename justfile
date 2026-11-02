@@ -178,6 +178,11 @@ infra-up:
 infra-test *args:
     cd infra/pulumi && VIRTUAL_ENV= uv run pytest {{ args }}
 
+# Reset the LXC deploy's database to the fixed seed (run before every measured k6 run)
+[group('infra')]
+loadtest-reset:
+    cd infra/ansible && ansible-playbook site.yml --tags app --limit app -e app_reset_db=true
+
 # Configure the containers with Ansible (infra/ansible/site.yml): just converge --tags app --check --diff
 [group('infra')]
 [positional-arguments]

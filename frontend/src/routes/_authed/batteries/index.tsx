@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
 import { useState } from "react"
 import { ConfirmDeleteDialog } from "@/components/questionnaire/ConfirmDeleteDialog"
 import { CopyButton } from "@/components/questionnaire/CopyButton"
 import { ListSkeleton } from "@/components/questionnaire/ListSkeleton"
+import { Pager } from "@/components/Pager"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,20 +15,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { batteriesQuery, useBatteries, useDeleteBattery } from "@/hooks/useBatteries"
+import { batteriesPageQuery, useBatteriesPage, useDeleteBattery } from "@/hooks/useBatteries"
 import { apiErrorMessage } from "@/lib/apiErrors"
 import { slotProgress } from "@/lib/battery"
 import { formatDate } from "@/lib/date"
+import { pageAfterDelete, pageSearch } from "@/lib/pagination"
 import { takeBatteryUrl } from "@/lib/shareLinks"
 import type { Battery } from "@/types/questionnaires"
 
 export const Route = createFileRoute("/_authed/batteries/")({
-  loader: ({ context }) => context.queryClient.ensureQueryData(batteriesQuery()),
+  validateSearch: pageSearch,
+  loaderDeps: ({ search }) => ({ page: search.page ?? 1 }),
+  loader: ({ context, deps }) => context.queryClient.ensureQueryData(batteriesPageQuery(deps.page)),
   component: BatteriesPage,
 })
 
 function BatteriesPage() {
-  const { data: batteries, isLoading } = useBatteries()
+  const { page = 1 } = Route.useSearch()
+  const navigate = useNavigate({ from: "/batteries/" })
+  const { data, isLoading } = useBatteriesPage(page)
+  const batteries = data?.results
+  const goTo = (next: number) => navigate({ search: { page: next > 1 ? next : undefined } })
   const deleteBattery = useDeleteBattery()
   const [pendingDelete, setPendingDelete] = useState<Battery | null>(null)
 
@@ -105,6 +113,8 @@ function BatteriesPage() {
         </div>
       )}
 
+      <Pager page={page} count={data?.count ?? 0} onPageChange={goTo} />
+
       <ConfirmDeleteDialog
         itemLabel={pendingDelete ? `"${pendingDelete.name || "Untitled"}"` : null}
         isPending={deleteBattery.isPending}
@@ -115,7 +125,13 @@ function BatteriesPage() {
         }
         onCancel={closeDialog}
         onConfirm={() =>
-          pendingDelete && deleteBattery.mutate(pendingDelete.id, { onSuccess: closeDialog })
+          pendingDelete &&
+          deleteBattery.mutate(pendingDelete.id, {
+            onSuccess: () => {
+              closeDialog()
+              goTo(pageAfterDelete(page, batteries?.length ?? 0))
+            },
+          })
         }
       />
     </div>

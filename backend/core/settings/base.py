@@ -134,6 +134,8 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+    # Every list endpoint is paginated: {count, next, previous, results} (#10).
+    "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardPagination",
 }
 
 SIMPLE_JWT = {

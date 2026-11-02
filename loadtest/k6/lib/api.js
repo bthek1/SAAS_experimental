@@ -36,9 +36,15 @@ function login() {
     throw new Error(`login as ${email} answered ${res.status}; run seed_loadtest with OWNERS >= ${OWNERS}`);
   }
   const token = res.json('access');
-  const types = call('GET', '/api/questionnaire-types/', { name: 'questionnaire-type-list', token, keep: true }).json();
-  const rows = call('GET', '/api/questionnaires/', { name: 'questionnaire-list', token, keep: true }).json();
-  const batteryTypes = call('GET', '/api/battery-types/', { name: 'battery-type-list', token, keep: true }).json();
+  // Lists are paginated (#10): the largest page is enough to pick ids from.
+  // A bare array is still read, so runs against a deploy from before #10 work.
+  const list = (path, name) => {
+    const body = call('GET', `${path}?page_size=100`, { name, token, keep: true }).json();
+    return Array.isArray(body) ? body : body.results;
+  };
+  const types = list('/api/questionnaire-types/', 'questionnaire-type-list');
+  const rows = list('/api/questionnaires/', 'questionnaire-list');
+  const batteryTypes = list('/api/battery-types/', 'battery-type-list');
   if (!types.length || !rows.length || !batteryTypes.length) {
     throw new Error(`${email} has no data; run seed_loadtest first`);
   }

@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { describe, expect, it } from "vitest"
-import { API } from "@/test/handlers"
+import { API, paginated } from "@/test/handlers"
 import { battery, questionnaire } from "@/test/questionnaireFixtures"
 import { renderRoute } from "@/test/renderRoute"
 import { server } from "@/test/server"
@@ -17,6 +17,21 @@ describe("/questionnaires", () => {
       "href",
       "/questionnaires/q-2/results",
     )
+  })
+
+  it("filtering by type asks the server for that type only", async () => {
+    const requested: string[] = []
+    server.use(
+      http.get(`${API}/api/questionnaires/`, ({ request }) => {
+        requested.push(new URL(request.url).searchParams.get("questionnaireType") ?? "")
+        return paginated([questionnaire], request)
+      }),
+    )
+    renderRoute("/questionnaires?type=qt-1")
+    expect(await screen.findByRole("link", { name: "Alice" })).toBeInTheDocument()
+    // The page, the loader and the type's summary may all fetch; every one filters.
+    expect(requested.length).toBeGreaterThan(0)
+    expect(new Set(requested)).toEqual(new Set(["qt-1"]))
   })
 
   it("filtering by type shows a summary of responses", async () => {

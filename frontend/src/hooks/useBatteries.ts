@@ -1,11 +1,18 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createBattery, deleteBattery, getBatteries, getBattery, getBatteryByToken } from "@/api/batteries"
+import {
+  createBattery,
+  deleteBattery,
+  getBatteriesPage,
+  getBattery,
+  getBatteryByToken,
+} from "@/api/batteries"
 import { queryKeys } from "@/api/queryKeys"
 import type { BatteryPayload } from "@/types/questionnaires"
 
 const keys = queryKeys.batteries
 
-export const batteriesQuery = () => queryOptions({ queryKey: keys.all, queryFn: getBatteries })
+export const batteriesPageQuery = (page: number) =>
+  queryOptions({ queryKey: keys.page(page), queryFn: () => getBatteriesPage(page) })
 
 export const batteryQuery = (id: string) =>
   queryOptions({ queryKey: keys.detail(id), queryFn: () => getBattery(id) })
@@ -17,8 +24,8 @@ export const batteryByTokenQuery = (shareToken: string) =>
     retry: false,
   })
 
-export function useBatteries() {
-  return useQuery(batteriesQuery())
+export function useBatteriesPage(page: number) {
+  return useQuery(batteriesPageQuery(page))
 }
 
 export function useBattery(id: string) {

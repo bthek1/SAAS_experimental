@@ -4,6 +4,7 @@ import {
   deleteBatteryType,
   getBatteryType,
   getBatteryTypes,
+  getBatteryTypesPage,
   updateBatteryType,
 } from "@/api/batteryTypes"
 import { queryKeys } from "@/api/queryKeys"
@@ -11,14 +12,22 @@ import type { BatteryTypePayload } from "@/types/questionnaires"
 
 const keys = queryKeys.batteryTypes
 
+/** Every battery type, for pickers. */
 export const batteryTypesQuery = () =>
   queryOptions({ queryKey: keys.all, queryFn: getBatteryTypes })
+
+export const batteryTypesPageQuery = (page: number) =>
+  queryOptions({ queryKey: keys.page(page), queryFn: () => getBatteryTypesPage(page) })
 
 export const batteryTypeQuery = (id: string) =>
   queryOptions({ queryKey: keys.detail(id), queryFn: () => getBatteryType(id) })
 
 export function useBatteryTypes() {
   return useQuery(batteryTypesQuery())
+}
+
+export function useBatteryTypesPage(page: number) {
+  return useQuery(batteryTypesPageQuery(page))
 }
 
 export function useBatteryType(id: string) {

@@ -213,6 +213,15 @@ class SubmitSerializer(serializers.Serializer):
     metrics = serializers.DictField(required=False, default=dict)
 
 
+class QuestionnaireListQuerySerializer(serializers.Serializer):
+    """Filters on `GET /api/questionnaires/` (#10)."""
+
+    questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815
+        queryset=QuestionnaireType.objects.all(), required=False
+    )
+    submitted = serializers.BooleanField(required=False, allow_null=True, default=None)
+
+
 class DashboardQuerySerializer(serializers.Serializer):
     days = serializers.ChoiceField(choices=[7, 30, 90], required=False)
     questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815

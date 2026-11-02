@@ -122,19 +122,19 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | `POST` | `/api/tasks/trigger/` | Public | any JSON object | `202 {task_id}` |
 | `GET` | `/api/tasks/<task_id>/` | Public | | `200 {task_id, status, result, traceback}` |
 | `POST` | `/api/tasks/<task_id>/revoke/` | Public | `{terminate?: bool}` | `200 {task_id, revoked: true}` |
-| `GET` | `/api/questionnaire-types/` | JWT | | `200 [QuestionnaireType]` (own only) |
+| `GET` | `/api/questionnaire-types/?page=&page_size=` | JWT | | `200 Page[QuestionnaireType]` (own only) |
 | `POST` | `/api/questionnaire-types/` | JWT | `{title, questionnaireJson?}` | `201 {id, title, questionnaireJson, createdAt, updatedAt}` |
 | `GET` / `PATCH` / `DELETE` | `/api/questionnaire-types/<id>/` | JWT | `PATCH`: `{title?, questionnaireJson?}` | `200 QuestionnaireType` / `204` |
-| `GET` | `/api/battery-types/` | JWT | | `200 [BatteryType]` (own only) |
+| `GET` | `/api/battery-types/?page=&page_size=` | JWT | | `200 Page[BatteryType]` (own only) |
 | `POST` | `/api/battery-types/` | JWT | `{title, description?, questionnaireTypeIds?: [id]}` (ordered) | `201 {id, title, description, questionnaireTypeIds, createdAt, updatedAt}` |
 | `GET` / `PATCH` / `DELETE` | `/api/battery-types/<id>/` | JWT | `PATCH`: same fields as `POST`, all optional | `200 BatteryType` / `204` |
-| `GET` | `/api/questionnaires/` | JWT | | `200 [Questionnaire]` (own only) |
+| `GET` | `/api/questionnaires/?questionnaireType=&submitted=&page=&page_size=` | JWT | | `200 Page[Questionnaire]` (own only; filters optional) |
 | `POST` | `/api/questionnaires/` | JWT | `{questionnaireTypeId, name?}` | `201 {id, questionnaireTypeId, questionnaireType, batteryId, batteryOrder, name, shareToken, answers, metrics, submittedAt, questionnaireJsonSnapshot, createdAt, updatedAt}` |
 | `GET` / `PATCH` / `DELETE` | `/api/questionnaires/<id>/` | JWT | `PATCH`: `{name}` | `200 Questionnaire` / `204` |
 | `GET` | `/api/questionnaires/<id>/pdf/` | JWT | | `200 application/pdf` download (`Content-Disposition: attachment; filename="<Title>-<YYYY-MM-DD>.pdf"`); `400 {detail}` if not submitted |
 | `GET` | `/api/questionnaires/by-token/<shareToken>/` | Public | | `200 {id, name, questionnaireTypeTitle, questionnaireJson, submittedAt}` |
 | `PATCH` | `/api/questionnaires/by-token/<shareToken>/submit/` | Public | `{answers: {}, metrics?: {}}` | `200` same shape as `GET by-token`; `409` if already submitted |
-| `GET` | `/api/batteries/` | JWT | | `200 [Battery]` (own only) |
+| `GET` | `/api/batteries/?page=&page_size=` | JWT | | `200 Page[Battery]` (own only) |
 | `POST` | `/api/batteries/` | JWT | `{batteryTypeId, name?}` | `201 {id, batteryTypeId, batteryTypeName, name, shareToken, questionnaires: [{order, questionnaireId, shareToken, questionnaireTypeName, submittedAt}], isComplete, createdAt, updatedAt}` |
 | `GET` / `DELETE` | `/api/batteries/<id>/` | JWT | | `200 Battery` / `204` |
 | `GET` | `/api/batteries/by-token/<shareToken>/` | Public | | `200 {id, name, batteryTypeName, questionnaires: [{order, shareToken, questionnaireTypeName, submittedAt}], isComplete}` |
@@ -142,6 +142,9 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | `GET` | `/api/dashboard/scores/?questionnaireType=&days=` | JWT | | `200 {questionnaireTypeId, metrics: [{name, label, kind: "numeric" \| "categorical" \| "boolean", points: [{questionnaireId, name, submittedAt, value}], mean?, distribution?: [{value, count}]}]}` |
 
 - Validation errors return `400` with DRF's `{field: [messages]}` shape. Missing or bad JWTs return `401`.
+- **Pagination (#10).** Every list endpoint returns `Page[X]` = `{count, next, previous, results: [X]}`.
+  `page` starts at 1. `page_size` defaults to 25 and is capped at 100. A page past the end returns
+  `404`. Lists are newest first (`createdAt`, then `id`, so pages never repeat or skip a row).
 - The `/api/tasks/` endpoints are a Celery demo (`apps/utils/tasks.py`). They are public so the
   demo works without login. Add auth before reusing them.
 - `GET /metrics` (not under `/api/`, not part of the contract) is Prometheus text for the
@@ -150,9 +153,11 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 - Task `status` is a Celery state (`PENDING`, `STARTED`, `SUCCESS`, `FAILURE`, `REVOKED`, ...).
   `result` is set only on `SUCCESS` and `traceback` only on `FAILURE`. An unknown `task_id`
   returns `PENDING`.
+- **Questionnaire filters.** `GET /api/questionnaires/` takes `questionnaireType` (one of your types,
+  else `400`) and `submitted` (`true`/`false`, else `400`). Both are optional and combine.
 - **Questionnaires.** Every owner endpoint is scoped to the requesting user. Another user's ids
   return `404`, and ids of another user's types in a request body return `400`. `PUT` is not
-  supported (use `PATCH`). Lists are not paginated.
+  supported (use `PATCH`).
 - Deleting a questionnaire type that has questionnaires, or that a battery type uses, returns
   `409 {detail}`. The same applies to a battery type that has batteries. Deleting a battery keeps
   its questionnaires (their `batteryId` becomes `null`).

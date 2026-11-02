@@ -148,7 +148,12 @@ test("one user cannot see another user's questionnaires", async ({ page, request
   const userB = await registerUser(request);
   const asB = api(request, userB.access);
   for (const path of ["/questionnaire-types/", "/battery-types/", "/questionnaires/", "/batteries/"]) {
-    expect(await (await asB.get(path)).json()).toEqual([]);
+    expect(await (await asB.get(path)).json()).toEqual({
+      count: 0,
+      next: null,
+      previous: null,
+      results: [],
+    });
   }
   expect((await asB.get(`/questionnaire-types/${id}/`)).status()).toBe(404);
 

@@ -4,6 +4,7 @@ import {
   deleteQuestionnaireType,
   getQuestionnaireType,
   getQuestionnaireTypes,
+  getQuestionnaireTypesPage,
   updateQuestionnaireType,
 } from "@/api/questionnaireTypes"
 import { queryKeys } from "@/api/queryKeys"
@@ -11,14 +12,22 @@ import type { QuestionnaireTypePayload } from "@/types/questionnaires"
 
 const keys = queryKeys.questionnaireTypes
 
+/** Every type, for pickers. */
 export const questionnaireTypesQuery = () =>
   queryOptions({ queryKey: keys.all, queryFn: getQuestionnaireTypes })
+
+export const questionnaireTypesPageQuery = (page: number) =>
+  queryOptions({ queryKey: keys.page(page), queryFn: () => getQuestionnaireTypesPage(page) })
 
 export const questionnaireTypeQuery = (id: string) =>
   queryOptions({ queryKey: keys.detail(id), queryFn: () => getQuestionnaireType(id) })
 
 export function useQuestionnaireTypes() {
   return useQuery(questionnaireTypesQuery())
+}
+
+export function useQuestionnaireTypesPage(page: number) {
+  return useQuery(questionnaireTypesPageQuery(page))
 }
 
 export function useQuestionnaireType(id: string) {

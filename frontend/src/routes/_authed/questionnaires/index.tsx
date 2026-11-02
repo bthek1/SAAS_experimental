@@ -7,6 +7,7 @@ import { CopyButton } from "@/components/questionnaire/CopyButton"
 import { ListSkeleton } from "@/components/questionnaire/ListSkeleton"
 import { RawResponsesTable } from "@/components/questionnaire/RawResponsesTable"
 import { StatusBadge } from "@/components/questionnaire/StatusBadge"
+import { Pager } from "@/components/Pager"
 import { SurveyDashboard } from "@/components/survey/SurveyDashboard"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
@@ -20,38 +21,48 @@ import {
 } from "@/components/ui/table"
 import { questionnaireTypesQuery, useQuestionnaireTypes } from "@/hooks/useQuestionnaireTypes"
 import {
-  questionnairesQuery,
+  questionnairesPageQuery,
   useDeleteQuestionnaire,
   useQuestionnaires,
+  useQuestionnairesPage,
 } from "@/hooks/useQuestionnaires"
 import { apiErrorMessage } from "@/lib/apiErrors"
 import { formatDate } from "@/lib/date"
+import { pageAfterDelete, pageSearch } from "@/lib/pagination"
 import { responseDefinition } from "@/lib/responses"
 import { takeUrl } from "@/lib/shareLinks"
 import type { Questionnaire } from "@/types/questionnaires"
 
 export const Route = createFileRoute("/_authed/questionnaires/")({
-  validateSearch: z.object({ type: z.string().optional() }),
-  loader: ({ context }) =>
+  validateSearch: pageSearch.extend({ type: z.string().optional() }),
+  loaderDeps: ({ search }) => ({ type: search.type, page: search.page ?? 1 }),
+  loader: ({ context, deps }) =>
     Promise.all([
-      context.queryClient.ensureQueryData(questionnairesQuery()),
+      context.queryClient.ensureQueryData(
+        questionnairesPageQuery({ questionnaireType: deps.type }, deps.page),
+      ),
       context.queryClient.ensureQueryData(questionnaireTypesQuery()),
     ]),
   component: QuestionnairesPage,
 })
 
 function QuestionnairesPage() {
-  const { type: typeFilter } = Route.useSearch()
+  const { type: typeFilter, page = 1 } = Route.useSearch()
   const navigate = useNavigate({ from: "/questionnaires/" })
-  const { data: questionnaires, isLoading } = useQuestionnaires()
+  // The server filters and paginates (#10). One page of the table...
+  const { data, isLoading } = useQuestionnairesPage({ questionnaireType: typeFilter }, page)
+  // ...but the summary covers every submitted response of the chosen type.
+  const { data: submitted = [] } = useQuestionnaires(
+    { questionnaireType: typeFilter, submitted: true },
+    { enabled: Boolean(typeFilter) },
+  )
   const { data: types } = useQuestionnaireTypes()
   const deleteQuestionnaire = useDeleteQuestionnaire()
   const [pendingDelete, setPendingDelete] = useState<Questionnaire | null>(null)
 
-  const shown = (questionnaires ?? []).filter(
-    (q) => !typeFilter || q.questionnaireTypeId === typeFilter,
-  )
-  const submitted = shown.filter((q) => q.submittedAt)
+  const shown = data?.results ?? []
+  const goTo = (next: number) =>
+    navigate({ search: { type: typeFilter, page: next > 1 ? next : undefined } })
 
   function closeDialog() {
     setPendingDelete(null)
@@ -75,6 +86,7 @@ function QuestionnairesPage() {
       <NativeSelect
         aria-label="Filter by questionnaire type"
         value={typeFilter ?? ""}
+        // A new filter starts again at page 1.
         onChange={(e) => navigate({ search: { type: e.target.value || undefined } })}
       >
         <NativeSelectOption value="">All types</NativeSelectOption>
@@ -141,6 +153,8 @@ function QuestionnairesPage() {
         </div>
       )}
 
+      <Pager page={page} count={data?.count ?? 0} onPageChange={goTo} />
+
       {typeFilter && submitted.length > 0 && (
         <section className="space-y-4" aria-label="Summary">
           <h2 className="text-lg font-semibold">Summary of {submitted.length} responses</h2>
@@ -162,7 +176,13 @@ function QuestionnairesPage() {
         }
         onCancel={closeDialog}
         onConfirm={() =>
-          pendingDelete && deleteQuestionnaire.mutate(pendingDelete.id, { onSuccess: closeDialog })
+          pendingDelete &&
+          deleteQuestionnaire.mutate(pendingDelete.id, {
+            onSuccess: () => {
+              closeDialog()
+              goTo(pageAfterDelete(page, shown.length))
+            },
+          })
         }
       />
     </div>

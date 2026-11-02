@@ -7,7 +7,15 @@ SECRET_KEY = env("SECRET_KEY")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 
 DATABASES = {
-    "default": env.db("DATABASE_URL"),
+    "default": {
+        **env.db("DATABASE_URL"),
+        # Keep each worker's connection for this many seconds instead of opening
+        # (TCP + auth handshake) one per request. 0 = per request. #9, Phase 6.
+        "CONN_MAX_AGE": env.int("CONN_MAX_AGE", default=60),
+        # Check a reused connection before each request, so a dropped one is
+        # replaced instead of failing that request.
+        "CONN_HEALTH_CHECKS": True,
+    },
 }
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

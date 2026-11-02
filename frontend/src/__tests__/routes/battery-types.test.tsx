@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { describe, expect, it } from "vitest"
-import { API } from "@/test/handlers"
+import { API, paginated } from "@/test/handlers"
 import { batteryType, questionnaireType } from "@/test/questionnaireFixtures"
 import { renderRoute } from "@/test/renderRoute"
 import { server } from "@/test/server"
@@ -28,7 +28,7 @@ describe("/battery-types/new", () => {
 
   it("creates a battery type with types in the chosen order", async () => {
     server.use(
-      http.get(`${API}/api/questionnaire-types/`, () => HttpResponse.json([questionnaireType, sleep])),
+      http.get(`${API}/api/questionnaire-types/`, ({ request }) => paginated([questionnaireType, sleep], request)),
     )
     let body: Record<string, unknown> | null = null
     server.use(
@@ -54,7 +54,7 @@ describe("/battery-types/new", () => {
 describe("/battery-types/$id", () => {
   it("prefills and saves edits", async () => {
     server.use(
-      http.get(`${API}/api/questionnaire-types/`, () => HttpResponse.json([questionnaireType, sleep])),
+      http.get(`${API}/api/questionnaire-types/`, ({ request }) => paginated([questionnaireType, sleep], request)),
     )
     let body: Record<string, unknown> | null = null
     server.use(

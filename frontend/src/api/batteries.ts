@@ -1,9 +1,10 @@
 import { apiClient } from "@/api/client"
+import { getPage } from "@/api/pagination"
+import type { Paginated } from "@/types/pagination"
 import type { Battery, BatteryPayload, PublicBattery } from "@/types/questionnaires"
 
-export async function getBatteries(): Promise<Battery[]> {
-  const { data } = await apiClient.get<Battery[]>("/api/batteries/")
-  return data
+export function getBatteriesPage(page: number): Promise<Paginated<Battery>> {
+  return getPage<Battery>("/api/batteries/", page)
 }
 
 export async function getBattery(id: string): Promise<Battery> {

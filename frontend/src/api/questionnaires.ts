@@ -1,14 +1,24 @@
 import { apiClient } from "@/api/client"
+import { getAllPages, getPage } from "@/api/pagination"
+import type { Paginated } from "@/types/pagination"
 import type {
   PublicQuestionnaire,
   Questionnaire,
+  QuestionnaireFilters,
   QuestionnairePayload,
   SubmitPayload,
 } from "@/types/questionnaires"
 
-export async function getQuestionnaires(): Promise<Questionnaire[]> {
-  const { data } = await apiClient.get<Questionnaire[]>("/api/questionnaires/")
-  return data
+/** Every matching questionnaire (all pages), e.g. for a type's response summary. */
+export function getQuestionnaires(filters: QuestionnaireFilters = {}): Promise<Questionnaire[]> {
+  return getAllPages<Questionnaire>("/api/questionnaires/", filters)
+}
+
+export function getQuestionnairesPage(
+  filters: QuestionnaireFilters,
+  page: number,
+): Promise<Paginated<Questionnaire>> {
+  return getPage<Questionnaire>("/api/questionnaires/", page, filters)
 }
 
 export async function getQuestionnaire(id: string): Promise<Questionnaire> {

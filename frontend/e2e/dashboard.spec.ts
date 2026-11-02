@@ -60,7 +60,8 @@ async function mockApi(page: Page) {
             json: { id: "u-1", email: "owner@example.com", first_name: "", last_name: "" },
           });
         case "/api/questionnaire-types/":
-          return route.fulfill({ json: [TYPE] });
+          // Lists are paginated (#10).
+          return route.fulfill({ json: { count: 1, next: null, previous: null, results: [TYPE] } });
         case "/api/dashboard/":
           dashboardQueries.push(url.searchParams);
           return route.fulfill({ json: SUMMARY });

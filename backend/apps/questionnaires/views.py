@@ -23,6 +23,7 @@ from .serializers import (
     DashboardScoresQuerySerializer,
     PublicBatterySerializer,
     PublicQuestionnaireSerializer,
+    QuestionnaireListQuerySerializer,
     QuestionnaireSerializer,
     QuestionnaireTypeSerializer,
     SubmitSerializer,
@@ -62,7 +63,11 @@ class OwnedModelViewSet(viewsets.ModelViewSet):
     model: type = None  # type: ignore[assignment]
 
     def get_queryset(self):
-        return self.model.objects.filter(owner=self.request.user)
+        # Newest first, then id: bulk-created rows share a created_at, and a
+        # tie would let a row repeat or vanish between pages.
+        return self.model.objects.filter(owner=self.request.user).order_by(
+            "-created_at", "-id"
+        )
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -106,7 +111,19 @@ class QuestionnaireViewSet(OwnedModelViewSet):
     serializer_class = QuestionnaireSerializer
 
     def get_queryset(self):
-        return super().get_queryset().select_related("questionnaire_type")
+        queryset = super().get_queryset().select_related("questionnaire_type")
+        if self.action != "list":
+            return queryset
+        query = QuestionnaireListQuerySerializer(
+            data=self.request.query_params, context={"request": self.request}
+        )
+        query.is_valid(raise_exception=True)
+        if qtype := query.validated_data.get("questionnaireType"):
+            queryset = queryset.filter(questionnaire_type=qtype)
+        submitted = query.validated_data["submitted"]
+        if submitted is not None:
+            queryset = queryset.filter(submitted_at__isnull=not submitted)
+        return queryset
 
     @action(detail=True, methods=["get"], renderer_classes=[JSONRenderer, PDFRenderer])
     def pdf(self, request, pk=None):  # noqa: ARG002

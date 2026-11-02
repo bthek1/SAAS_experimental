@@ -1,8 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
 import { useState } from "react"
 import { ConfirmDeleteDialog } from "@/components/questionnaire/ConfirmDeleteDialog"
 import { ListSkeleton } from "@/components/questionnaire/ListSkeleton"
+import { Pager } from "@/components/Pager"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,18 +14,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { batteryTypesQuery, useBatteryTypes, useDeleteBatteryType } from "@/hooks/useBatteryTypes"
+import {
+  batteryTypesPageQuery,
+  useBatteryTypesPage,
+  useDeleteBatteryType,
+} from "@/hooks/useBatteryTypes"
 import { apiErrorMessage } from "@/lib/apiErrors"
 import { formatDate } from "@/lib/date"
+import { pageAfterDelete, pageSearch } from "@/lib/pagination"
 import type { BatteryType } from "@/types/questionnaires"
 
 export const Route = createFileRoute("/_authed/battery-types/")({
-  loader: ({ context }) => context.queryClient.ensureQueryData(batteryTypesQuery()),
+  validateSearch: pageSearch,
+  loaderDeps: ({ search }) => ({ page: search.page ?? 1 }),
+  loader: ({ context, deps }) => context.queryClient.ensureQueryData(batteryTypesPageQuery(deps.page)),
   component: BatteryTypesPage,
 })
 
 function BatteryTypesPage() {
-  const { data: types, isLoading } = useBatteryTypes()
+  const { page = 1 } = Route.useSearch()
+  const navigate = useNavigate({ from: "/battery-types/" })
+  const { data, isLoading } = useBatteryTypesPage(page)
+  const types = data?.results
+  const goTo = (next: number) => navigate({ search: { page: next > 1 ? next : undefined } })
   const deleteType = useDeleteBatteryType()
   const [pendingDelete, setPendingDelete] = useState<BatteryType | null>(null)
 
@@ -101,6 +113,8 @@ function BatteryTypesPage() {
         </div>
       )}
 
+      <Pager page={page} count={data?.count ?? 0} onPageChange={goTo} />
+
       <ConfirmDeleteDialog
         itemLabel={pendingDelete ? `"${pendingDelete.title}"` : null}
         isPending={deleteType.isPending}
@@ -111,7 +125,13 @@ function BatteryTypesPage() {
         }
         onCancel={closeDialog}
         onConfirm={() =>
-          pendingDelete && deleteType.mutate(pendingDelete.id, { onSuccess: closeDialog })
+          pendingDelete &&
+          deleteType.mutate(pendingDelete.id, {
+            onSuccess: () => {
+              closeDialog()
+              goTo(pageAfterDelete(page, types?.length ?? 0))
+            },
+          })
         }
       />
     </div>

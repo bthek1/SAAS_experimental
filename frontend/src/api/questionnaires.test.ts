@@ -6,6 +6,7 @@ import {
   getQuestionnaire,
   getQuestionnaireByToken,
   getQuestionnaires,
+  getQuestionnairesPage,
   submitQuestionnaire,
   updateQuestionnaire,
 } from "./questionnaires"
@@ -29,9 +30,23 @@ describe("questionnaires API", () => {
     vi.mocked(apiClient.delete).mockResolvedValue({ data: undefined })
   })
 
-  it("lists questionnaires", async () => {
-    expect(await getQuestionnaires()).toBe("get")
-    expect(apiClient.get).toHaveBeenCalledWith("/api/questionnaires/")
+  it("gets one page, passing filters to the server", async () => {
+    expect(await getQuestionnairesPage({ questionnaireType: "qt-1", submitted: true }, 3)).toBe(
+      "get",
+    )
+    expect(apiClient.get).toHaveBeenCalledWith("/api/questionnaires/", {
+      params: { questionnaireType: "qt-1", submitted: true, page: 3 },
+    })
+  })
+
+  it("lists every page with the filters", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: { count: 1, next: null, previous: null, results: ["q"] },
+    })
+    expect(await getQuestionnaires({ submitted: true })).toEqual(["q"])
+    expect(apiClient.get).toHaveBeenCalledWith("/api/questionnaires/", {
+      params: { submitted: true, page: 1, page_size: 100 },
+    })
   })
 
   it("gets one questionnaire", async () => {
