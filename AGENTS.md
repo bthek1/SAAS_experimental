@@ -153,6 +153,11 @@ DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOS
 - Serializers go in `serializers.py`. Business logic goes in `services.py`, never in views or
   serializers.
 - Use `get_object_or_404` and DRF exception handling, not try/except for HTTP errors.
+- **Every list endpoint is paginated** (#10): `DEFAULT_PAGINATION_CLASS` is
+  `core.pagination.StandardPagination` (`?page=`, `?page_size=` default 25, max 100;
+  `{count, next, previous, results}`). Give list querysets a total order (`-created_at`, `-id`),
+  or pages repeat and skip rows. Filters that a page needs go on the server (query serializer in
+  `get_queryset`, as `QuestionnaireViewSet` does), never in the browser.
 - Return DRF `Response`, never `JsonResponse`.
 - Default permission is `IsAuthenticated` (set in `REST_FRAMEWORK`). Mark public views explicitly.
 
@@ -242,6 +247,11 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   `beforeLoad` redirects to `/login?redirect=…`). Pages without the app shell are listed in
   `src/components/layout/publicPaths.ts`. Route components are code-split (`autoCodeSplitting`,
   disabled under Vitest).
+- **Lists are paginated** (#10). API modules export `get<X>Page(page)` (one page,
+  `Paginated<T>`) and, for pickers, a full list through `getAllPages()` (`src/api/pagination.ts`).
+  Index routes use `pageSearch` (`src/lib/pagination.ts`) for `?page=`, `loaderDeps`, the
+  `Pager` component, and `pageAfterDelete()`. Page query keys sit under the resource's `all` key,
+  so existing invalidations cover them. MSW handlers return `paginated(items, request)`.
 - Forms use React Hook Form + `zodResolver`, with schemas in `src/schemas/` (one file per
   domain) and the shadcn `Form`, `FormField`, `FormItem`, `FormMessage` primitives.
 - No `any`. API response types go in `src/types/`, matching the API contract.
@@ -359,6 +369,11 @@ creates bare containers. Ansible (Phase 4) configures them.
   replace or delete, before applying.
 - The pulumi venv is Python 3.13 (`pulumi-proxmoxve` is not on 3.14 yet), separate from
   `backend/`. `just infra-test` also runs `infra/ansible/tests/`.
+
+**Measuring** (`loadtest/baselines/`): run `just loadtest-reset` before every measured k6 run,
+since runs add data and change the numbers. Change one thing at a time and re-stress. Record each
+baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables).
+Tuning knobs: `gunicorn_workers` and `conn_max_age` in `infra/ansible/group_vars/app.yml`.
 
 **Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
 (all), `postgres` (saas-db), `app` (saas-app), `monitor` (saas-monitor) and `loadgen`

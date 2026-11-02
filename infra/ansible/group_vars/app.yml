@@ -6,7 +6,7 @@ nft_rules:
 # Tuning (#9, Phase 6), changed one at a time and re-measured:
 # sync workers per gunicorn; seconds Django keeps each DB connection (0 = per request).
 gunicorn_workers: 5
-conn_max_age: 0
+conn_max_age: 60
 # Seed size for the baseline; record it with every run (Phase 5).
 loadtest_owners: 20
 loadtest_questionnaires_per_owner: 200
