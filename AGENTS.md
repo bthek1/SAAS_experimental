@@ -218,7 +218,14 @@ credentials. `DATABASE_URL` configures the database.
 - Run auth and validation before reading the cache, so a deactivated user or a foreign id is
   still refused on a hit.
 - `bump_owner_generation()` makes all of an owner's entries unreachable, after the commit. Do not
-  delete keys or scan for them.
+  delete keys or scan for them. Views call it on type writes and on any delete, not on questionnaire
+  or battery creation or on submit: those are too frequent, so dashboards lag them by up to the TTL.
+  A new write to something a cached response reads needs a bump, or its staleness in `README.md`.
+- Cached today: dashboards (30 s), type lists (5 min), PDFs (24 h). PDFs pass
+  `use_generation=False`, because their key holds `updated_at`: bump `PDF_CACHE_VERSION` when
+  `response_pdf.html` changes. Lists and details are not cached, since owners expect to see a row
+  they just created. A new cached endpoint gets a test that two owners never share a value, and an
+  off-versus-on k6 run. Paginated bodies hold absolute URLs, so their key includes scheme and host.
 - ⚠️ The backend deserializes with pickle, so writing to Redis runs code in the app. Never publish
   it: loopback on dev, no port on the other Compose stacks, firewall and password on LXC.
 - A cache Redis runs `allkeys-lru`, which could drop a broker's queued tasks. If a stack with a

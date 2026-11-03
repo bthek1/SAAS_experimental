@@ -34,6 +34,12 @@ from .serializers import (
 # New questionnaires, batteries and submissions reach the dashboards within this.
 # Invalidating on them would leave little to hit under write-heavy traffic (#11).
 DASHBOARD_CACHE_SECONDS = 30
+# API writes invalidate these lists at once, so this only bounds admin edits.
+TYPE_LIST_CACHE_SECONDS = 5 * 60
+PDF_CACHE_SECONDS = 24 * 60 * 60
+PDF_CACHE_MAX_BYTES = 2 * 1024 * 1024
+# Bump when templates/questionnaires/response_pdf.html changes.
+PDF_CACHE_VERSION = 1
 
 BY_TOKEN = r"by-token/(?P<share_token>[0-9a-fA-F-]+)"
 # Share-link endpoints: no authentication at all, so a stale JWT left in the
@@ -87,7 +93,30 @@ class OwnedModelViewSet(viewsets.ModelViewSet):
         bump_owner_generation(self.request.user.pk)
 
 
-class QuestionnaireTypeViewSet(OwnedModelViewSet):
+class CachedListViewSet(OwnedModelViewSet):
+    """Caches the paginated list body. Only a 200 is stored: a bad page raises."""
+
+    def list(self, request, *args, **kwargs):
+        list_page = super().list
+        return Response(
+            cached(
+                "type-list",
+                owner_id=request.user.pk,
+                params={
+                    "model": self.model.__name__,
+                    "page": request.query_params.get("page", "1"),
+                    "pageSize": self.paginator.get_page_size(request),
+                    # `next` and `previous` are absolute URLs.
+                    "scheme": request.scheme,
+                    "host": request.get_host(),
+                },
+                ttl=TYPE_LIST_CACHE_SECONDS,
+                compute=lambda: list_page(request, *args, **kwargs).data,
+            )
+        )
+
+
+class QuestionnaireTypeViewSet(CachedListViewSet):
     model = QuestionnaireType
     serializer_class = QuestionnaireTypeSerializer
 
@@ -100,7 +129,7 @@ class QuestionnaireTypeViewSet(OwnedModelViewSet):
         bump_owner_generation(self.request.user.pk)
 
 
-class BatteryTypeViewSet(OwnedModelViewSet):
+class BatteryTypeViewSet(CachedListViewSet):
     model = BatteryType
     serializer_class = BatteryTypeSerializer
 
@@ -155,10 +184,24 @@ class QuestionnaireViewSet(OwnedModelViewSet):
         filename = (
             f"{safe_title.strip('-')[:60] or 'response'}-{timezone.now().date()}.pdf"
         )
-        # A binary download, so a plain HttpResponse rather than DRF's Response.
-        response = HttpResponse(
-            generate_response_pdf(instance), content_type="application/pdf"
+        # A submitted response never changes. The PDF also reads its name and the
+        # type's title, so these timestamps identify the content.
+        pdf = cached(
+            "pdf",
+            owner_id=request.user.pk,
+            params={
+                "id": instance.pk,
+                "updatedAt": instance.updated_at,
+                "typeUpdatedAt": instance.questionnaire_type.updated_at,
+            },
+            ttl=PDF_CACHE_SECONDS,
+            compute=lambda: generate_response_pdf(instance),
+            version=PDF_CACHE_VERSION,
+            use_generation=False,
+            store_if=lambda content: len(content) <= PDF_CACHE_MAX_BYTES,
         )
+        # A binary download, so a plain HttpResponse rather than DRF's Response.
+        response = HttpResponse(pdf, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 

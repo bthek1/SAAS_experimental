@@ -215,3 +215,25 @@ class TestFailingOpen:
         bump()
         assert broken_redis.set.called
         assert count("generation", "error") == errors + 1
+
+
+@pytest.mark.usefixtures("cache_on")
+class TestWithoutGeneration:
+    def test_a_bump_does_not_touch_it(self, bump):
+        compute = Compute()
+        read(compute, group="pdf", use_generation=False)
+        bump()
+        read(compute, group="pdf", use_generation=False)
+        assert compute.calls == 1
+
+    def test_owner_still_separates_entries(self):
+        compute = Compute()
+        read(compute, owner=OWNER, group="pdf", use_generation=False)
+        read(compute, owner=OTHER, group="pdf", use_generation=False)
+        assert compute.calls == 2
+
+    def test_store_if_can_refuse_a_value(self):
+        compute = Compute()
+        read(compute, store_if=lambda _value: False)
+        read(compute, store_if=lambda _value: False)
+        assert compute.calls == 2

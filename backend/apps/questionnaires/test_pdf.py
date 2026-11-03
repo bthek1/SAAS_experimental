@@ -2,7 +2,7 @@ import pytest
 from django.test import override_settings
 from freezegun import freeze_time
 
-from . import services
+from . import services, views
 from .factories import QuestionnaireFactory, QuestionnaireTypeFactory
 from .pdf import render_response_html, resolve_metrics, resolve_questions
 
@@ -164,3 +164,85 @@ def test_pdf_filename_is_readable_cross_origin(auth_client, submitted):
         pdf_url(submitted.id), HTTP_ORIGIN="http://localhost:5174"
     )
     assert "content-disposition" in response["Access-Control-Expose-Headers"].lower()
+
+
+# ── Caching (#11) ─────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def render(mocker):
+    """Counts renders. Each returns different bytes, so a stale PDF shows."""
+    calls = iter(range(1000))
+    return mocker.patch(
+        "apps.questionnaires.views.generate_response_pdf",
+        side_effect=lambda _instance: b"%%PDF-%d" % next(calls),
+    )
+
+
+@pytest.mark.usefixtures("cache_on")
+class TestPdfCache:
+    def test_second_download_does_not_render(self, auth_client, submitted, render):
+        first = auth_client.get(pdf_url(submitted.id))
+        second = auth_client.get(pdf_url(submitted.id))
+        assert first.status_code == second.status_code == 200
+        assert second.content == first.content
+        assert second["Content-Type"] == "application/pdf"
+        assert render.call_count == 1
+
+    def test_rename_renders_again(self, auth_client, submitted, render):
+        before = auth_client.get(pdf_url(submitted.id)).content
+        response = auth_client.patch(
+            f"/api/questionnaires/{submitted.id}/", {"name": "Sam"}, format="json"
+        )
+        assert response.status_code == 200
+        assert auth_client.get(pdf_url(submitted.id)).content != before
+        assert render.call_args.args[0].name == "Sam"
+
+    def test_type_title_change_renders_again(self, auth_client, submitted, render):
+        before = auth_client.get(pdf_url(submitted.id)).content
+        auth_client.patch(
+            f"/api/questionnaire-types/{submitted.questionnaire_type_id}/",
+            {"title": "Retitled"},
+            format="json",
+        )
+        assert auth_client.get(pdf_url(submitted.id)).content != before
+        assert render.call_args.args[0].questionnaire_type.title == "Retitled"
+
+    def test_other_owner_gets_404_with_a_cached_pdf(
+        self, auth_client, other_client, submitted, render
+    ):
+        assert auth_client.get(pdf_url(submitted.id)).status_code == 200
+        assert other_client.get(pdf_url(submitted.id)).status_code == 404
+        assert render.call_count == 1
+
+    def test_unsubmitted_is_still_400(self, auth_client, qtype, render):
+        draft = QuestionnaireFactory(questionnaire_type=qtype)
+        assert auth_client.get(pdf_url(draft.id)).status_code == 400
+        assert render.call_count == 0
+
+    def test_filename_date_is_fresh_on_a_hit(self, auth_client, submitted, render):
+        with freeze_time("2026-11-03 12:00:00"):
+            first = auth_client.get(pdf_url(submitted.id))
+        with freeze_time("2026-11-04 00:30:00"):
+            second = auth_client.get(pdf_url(submitted.id))
+        assert render.call_count == 1
+        assert "2026-11-03.pdf" in first["Content-Disposition"]
+        assert "2026-11-04.pdf" in second["Content-Disposition"]
+
+    def test_oversized_pdf_is_not_stored(self, auth_client, submitted, mocker):
+        oversized = b"x" * (views.PDF_CACHE_MAX_BYTES + 1)
+        render = mocker.patch(
+            "apps.questionnaires.views.generate_response_pdf", return_value=oversized
+        )
+        auth_client.get(pdf_url(submitted.id))
+        response = auth_client.get(pdf_url(submitted.id))
+        assert response.content == oversized
+        assert render.call_count == 2
+
+    def test_a_generation_bump_keeps_the_pdf(self, auth_client, submitted, render):
+        # Content-addressed: deleting another row should not cost a re-render.
+        other = QuestionnaireFactory(questionnaire_type=submitted.questionnaire_type)
+        auth_client.get(pdf_url(submitted.id))
+        auth_client.delete(f"/api/questionnaires/{other.id}/")
+        auth_client.get(pdf_url(submitted.id))
+        assert render.call_count == 1

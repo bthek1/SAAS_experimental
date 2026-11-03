@@ -72,11 +72,15 @@ def cached[T](
     ttl: int,
     compute: Callable[[], T],
     version: int = 1,
+    use_generation: bool = True,
+    store_if: Callable[[T], bool] | None = None,
 ) -> T:
     """Return the cached value for this owner and params, or compute and store it.
 
     Bump `version` when the shape of the value changes. An exception from `compute`
-    propagates and stores nothing.
+    propagates and stores nothing. Pass `use_generation=False` only when `params`
+    alone identify the content, so nothing needs invalidating. `store_if` can refuse
+    a value, such as one too large to hold.
     """
     if group not in GROUPS:
         raise ValueError(f"unknown cache group {group!r}: add it to GROUPS")
@@ -84,8 +88,10 @@ def cached[T](
         return compute()
 
     try:
-        generation = cache.get_or_set(
-            _generation_key(owner_id), _new_generation, timeout=None
+        generation = (
+            cache.get_or_set(_generation_key(owner_id), _new_generation, timeout=None)
+            if use_generation
+            else None
         )
         key = _entry_key(group, owner_id, generation, params, version)
         value: Any = cache.get(key, _MISS)
@@ -99,6 +105,8 @@ def cached[T](
 
     CACHE_REQUESTS.labels(group=group, result="miss").inc()
     value = compute()
+    if store_if is not None and not store_if(value):
+        return value
     try:
         cache.set(key, value, timeout=ttl)
     except RedisError as exc:

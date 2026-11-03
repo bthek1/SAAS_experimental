@@ -34,3 +34,6 @@ AGENTS.md - #11 redis cache
 backend/apps/questionnaires/views.py - #11 redis cache
 backend/apps/questionnaires/test_dashboard_cache.py - #11 redis cache
 frontend/src/hooks/useDashboard.ts - #11 redis cache
+loadtest/baselines/2026-11-03-redis-cache.md - #11 redis cache
+backend/apps/questionnaires/test_pdf.py - #11 redis cache
+backend/apps/questionnaires/test_type_list_cache.py - #11 redis cache
