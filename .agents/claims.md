@@ -31,3 +31,6 @@ loadtest/k6/ - #11 redis cache
 loadtest/report.py - #11 redis cache
 infra/ansible/group_vars/app.yml - #11 redis cache
 AGENTS.md - #11 redis cache
+backend/apps/questionnaires/views.py - #11 redis cache
+backend/apps/questionnaires/test_dashboard_cache.py - #11 redis cache
+frontend/src/hooks/useDashboard.ts - #11 redis cache

@@ -135,7 +135,6 @@ def k6_dashboard():
             panel(
                 "Request rate",
                 [
-                    (f"sum({rate(REQS, K6)})", "all"),
                     (f"sum by (name) ({rate(REQS, K6)})", "{{name}}"),
                 ],
                 unit="reqps",

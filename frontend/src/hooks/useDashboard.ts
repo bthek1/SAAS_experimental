@@ -15,7 +15,8 @@ export function dashboardParams(range: DashboardRange, type?: string): Dashboard
 
 // Respondents submit from other browsers, so no local mutation can invalidate these;
 // a short freshness window makes each visit refetch. It is not 0, so the query mounting
-// right after the loader fetched does not fetch the same data a second time.
+// right after the loader fetched does not fetch the same data a second time. A refetch
+// can still return data up to 30 s old: the API caches these responses.
 const DASHBOARD_STALE_MS = 15_000
 
 export const dashboardQuery = (params: DashboardParams) =>

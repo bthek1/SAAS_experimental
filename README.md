@@ -169,6 +169,10 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
   change how a response reads. After submit, `GET by-token` returns the snapshot.
 - The PDF renders the submitted snapshot (answers plus labelled metrics). `Content-Disposition`
   is exposed to the browser via CORS (`CORS_EXPOSE_HEADERS`), so the SPA can read the filename.
+- **Dashboards are cached for up to 30 s (#11).** New questionnaires, batteries, submissions and
+  renamed questionnaires can take that long to appear. `range.to` says when a response was computed.
+  Creating or changing a type, and deleting anything, shows up at once. Authentication and
+  `questionnaireType` validation still run on every request.
 - Share tokens are bearer secrets: anyone holding the link can submit once. They do not expire.
 - **Dashboard.** `days` is `7`, `30` or `90` (omit for all time; anything else is `400`). A
   window starts at UTC midnight `days - 1` days ago, and day buckets are UTC. KPIs and

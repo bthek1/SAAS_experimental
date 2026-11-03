@@ -13,6 +13,8 @@ from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.utils.cache import bump_owner_generation, cached
+
 from . import dashboard, services
 from .models import Battery, BatteryType, Questionnaire, QuestionnaireType
 from .pdf import generate_response_pdf
@@ -28,6 +30,10 @@ from .serializers import (
     QuestionnaireTypeSerializer,
     SubmitSerializer,
 )
+
+# New questionnaires, batteries and submissions reach the dashboards within this.
+# Invalidating on them would leave little to hit under write-heavy traffic (#11).
+DASHBOARD_CACHE_SECONDS = 30
 
 BY_TOKEN = r"by-token/(?P<share_token>[0-9a-fA-F-]+)"
 # Share-link endpoints: no authentication at all, so a stale JWT left in the
@@ -77,11 +83,21 @@ class OwnedModelViewSet(viewsets.ModelViewSet):
             instance.delete()
         except RestrictedError as exc:
             raise InUse() from exc
+        # So a dashboard never links to a deleted row.
+        bump_owner_generation(self.request.user.pk)
 
 
 class QuestionnaireTypeViewSet(OwnedModelViewSet):
     model = QuestionnaireType
     serializer_class = QuestionnaireTypeSerializer
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        bump_owner_generation(self.request.user.pk)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        bump_owner_generation(self.request.user.pk)
 
 
 class BatteryTypeViewSet(OwnedModelViewSet):
@@ -95,6 +111,7 @@ class BatteryTypeViewSet(OwnedModelViewSet):
         questionnaire_types = serializer.validated_data.pop("questionnaireTypeIds", [])
         battery_type = serializer.save(owner=self.request.user)
         services.set_battery_type_items(battery_type, questionnaire_types)
+        bump_owner_generation(self.request.user.pk)
 
     def perform_update(self, serializer):
         questionnaire_types = serializer.validated_data.pop(
@@ -103,6 +120,8 @@ class BatteryTypeViewSet(OwnedModelViewSet):
         battery_type = serializer.save()
         if questionnaire_types is not None:
             services.set_battery_type_items(battery_type, questionnaire_types)
+        # After the items, so a reader cannot cache the old ones as current.
+        bump_owner_generation(self.request.user.pk)
         # UpdateModelMixin clears the prefetched `items` before the response.
 
 
@@ -212,11 +231,20 @@ class DashboardView(APIView):
             data=request.query_params, context={"request": request}
         )
         query.is_valid(raise_exception=True)
+        days = query.validated_data.get("days")
+        questionnaire_type = query.validated_data.get("questionnaireType")
         return Response(
-            dashboard.dashboard_summary(
-                request.user,
-                days=query.validated_data.get("days"),
-                questionnaire_type=query.validated_data.get("questionnaireType"),
+            cached(
+                "dashboard",
+                owner_id=request.user.pk,
+                params={
+                    "days": days,
+                    "questionnaireType": questionnaire_type and questionnaire_type.pk,
+                },
+                ttl=DASHBOARD_CACHE_SECONDS,
+                compute=lambda: dashboard.dashboard_summary(
+                    request.user, days=days, questionnaire_type=questionnaire_type
+                ),
             )
         )
 
@@ -227,10 +255,16 @@ class DashboardScoresView(APIView):
             data=request.query_params, context={"request": request}
         )
         query.is_valid(raise_exception=True)
+        days = query.validated_data.get("days")
+        questionnaire_type = query.validated_data["questionnaireType"]
         return Response(
-            dashboard.dashboard_scores(
-                request.user,
-                query.validated_data["questionnaireType"],
-                days=query.validated_data.get("days"),
+            cached(
+                "dashboard-scores",
+                owner_id=request.user.pk,
+                params={"days": days, "questionnaireType": questionnaire_type.pk},
+                ttl=DASHBOARD_CACHE_SECONDS,
+                compute=lambda: dashboard.dashboard_scores(
+                    request.user, questionnaire_type, days=days
+                ),
             )
         )

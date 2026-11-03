@@ -87,6 +87,18 @@ class TestReads:
         read(other, owner=OTHER)
         assert other.calls == 1
 
+    def test_owner_separates_entries_without_the_generation(self):
+        # The per-owner generation also separates them, so check the key on its own.
+        same_generation = {
+            "group": "pdf",
+            "generation": "g",
+            "params": {},
+            "version": 1,
+        }
+        assert cache_module._entry_key(owner_id=OWNER, **same_generation) != (
+            cache_module._entry_key(owner_id=OTHER, **same_generation)
+        )
+
     def test_params_are_part_of_the_key(self):
         compute = Compute()
         read(compute, params={"days": 7})

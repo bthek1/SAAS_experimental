@@ -188,18 +188,9 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(k6_http_reqs_total{testid=~\"$testid\", name=~\"$name\"}[$__rate_interval]))",
-          "legendFormat": "all",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
           "expr": "sum by (name) (rate(k6_http_reqs_total{testid=~\"$testid\", name=~\"$name\"}[$__rate_interval]))",
           "legendFormat": "{{name}}",
-          "refId": "B"
+          "refId": "A"
         }
       ],
       "title": "Request rate",
