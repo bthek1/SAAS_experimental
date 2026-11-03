@@ -1,12 +1,19 @@
 # Load-test baseline: 2026-11-03, Redis cache
 
-**In progress.** Plan: #11. This file gains a section as each phase is measured. Phase 6 adds the
-final summary.
+Plan: #11.
 
-**Summary so far.** Caching the two dashboard endpoints for 30 s raised the knee of the `mixed`
-workload from **~353 req/s to ~466 req/s** in one pair of runs. At ~350 req/s the worst endpoint's
-p95 fell from 145 ms to 40 ms, and saas-db CPU from 51 % to 15 %. Endpoints that are not cached got
-faster too, because Postgres read about 7.6× fewer rows.
+**Summary.** With the dashboards, type lists and PDFs cached, the deploy holds about **28 % more
+traffic**: the knee rose from ~375 to ~480 req/s under `mixed` and from ~360 to ~459 req/s under
+`MIX=read`, in back-to-back pairs on the final code. A separate earlier `mixed` pair gave ~353 to
+~466. Postgres reads 7–14× fewer rows at matching rates, and endpoints that are not cached get faster
+too. **saas-app CPU is now the first limit** (~80 % at the knee, with saas-db at ~20 %). Almost all of
+the gain comes from the dashboards. The type-list and PDF caches passed their gates by small margins.
+
+| Final runs | Cache off | Cache on |
+|---|---|---|
+| `mixed` knee | ~375 req/s (`stress-20261103T114326Z`) | ~480 req/s (`stress-20261103T115330Z`) |
+| `MIX=read` knee | ~360 req/s (`stress-20261103T121030Z`) | ~459 req/s (`stress-20261103T122641Z`) |
+| `RATE=135`, 10-minute hold, overall p95 / max | 19 / 156 ms (2026-11-02, older code) | 8.9 / 135 ms (`load-20261103T125112Z`) |
 
 ## Setup
 
@@ -184,6 +191,98 @@ Minute 5, ~220 req/s, 0 failed in both.
 **Gate (#11, Phase 5): passed, by a small margin.** These lists were already cheap, and a hit still
 makes two Redis round trips. k6 never writes a type, so 99.5 % is a best case. Kept because it costs
 little: API writes invalidate at once, and only admin edits can lag, by up to 5 minutes.
+
+## Phase 6: final pairs
+
+Final code, everything cached. Each run started from `just loadtest-reset`, with 0 failed requests in
+all five. Commands: `just k6 stress TARGET=lxc STEP=10 STEP_TIME=1m MAX_RATE=500`, with
+`START_RATE=150` for `mixed` and `START_RATE=200 MIX=read` for read-mostly, cache off then on. A
+later start adds fewer rows, so **compare within these pairs**, not with the longer ramps above.
+
+Exit 99 on these four is how a stress run ends: k6 stops once dropped iterations cross the threshold.
+
+| | `mixed` off | `mixed` on | `read` off | `read` on |
+|---|---|---|---|---|
+| Last clean minute | ~375 req/s | ~480 req/s | ~360 req/s | ~459 req/s |
+| Worst-group p95 there | 86 ms | 68 ms | 91 ms | 25 ms |
+| saas-app / saas-db CPU there | 65 % / 39 % | 83 % / 23 % | 77 % / 39 % | 77 % / 15 % |
+
+At matching rates:
+
+| k6 p95 | `mixed` off, 375 req/s | `mixed` on, 380 req/s | `read` off, 360 req/s | `read` on, 360 req/s |
+|---|---|---|---|---|
+| `dashboard` | 86 ms | 38 ms | 91 ms | 11 ms |
+| `dashboard-scores` | 29 ms | 19 ms | 49 ms | 9 ms |
+| `questionnaire-type-list` | 16 ms | 9 ms | 50 ms | 6 ms |
+| `questionnaire-list` (not cached) | 21 ms | 14 ms | 59 ms | 10 ms |
+| `questionnaire-submit` (not cached) | 20 ms | 14 ms | 50 ms | 10 ms |
+| saas-db CPU | 39 % | 15 % | 39 % | 11 % |
+| Postgres rows read/s | 3.1 M | 0.45 M | 3.5 M | 0.25 M |
+| Hit ratio: `dashboard` / `dashboard-scores` | | 91 % / 77 % | | 96 % / 89 % |
+| Redis memory | 1 MB | 15 MB | 1 MB | 7 MB |
+
+No evictions and no cache errors in any of them.
+
+### 10-minute hold
+
+`load-20261103T125112Z`: `just k6 load TARGET=lxc RATE=135 HOLD=10m`, cache on, exit 0.
+
+| | 2026-11-02 (`load-20261102T052551Z`, no cache) | Cache on |
+|---|---|---|
+| Requests / failed / dropped | | 139,335 / 0 / 0 |
+| Overall p95 / max | 19 / 156 ms | 8.9 / 135 ms |
+| Worst-group p95, start to end | 12 → 63 ms | 11 → 29 ms |
+
+Over the hold the hit ratios were 88 % `dashboard`, 73 % `dashboard-scores` and 99 % `type-list`, with
+0 evictions, 0 cache errors and ~9 MB in Redis. saas-app stayed at ~30 % CPU and saas-db at ~9 %.
+
+The old run used sync workers as well as having no cache, so this table is not a pure cache
+comparison. **The drift is reduced, not gone:** `dashboard` p95 still rises as the run adds rows,
+because a miss pays the full query.
+
+### What saturates first now
+
+saas-app. At the `mixed` knee it is at 83 % CPU against saas-db's 23 %, and saas-cache stays at 2 %.
+The cache moved the bottleneck out of Postgres, so the next gains are in the app: fewer Python
+cycles per request, or more cores. The dashboard's miss path is still worth fixing for low-traffic
+owners, who rarely get a hit.
+
+### Unexplained stalls
+
+Three of the four stress runs stalled briefly while well under their knee:
+
+| Run | Minute | Rate | Effect |
+|---|---|---|---|
+| `mixed` on | 4 | 284 req/s | worst-group p95 1.2 s, 2 dropped, max 4.2 s |
+| `read` off | 4 | 269 req/s | worst-group p95 20 s, 515 dropped, max 23.5 s; p95 stays raised for ~6 minutes |
+| `read` on | 24 | 448 req/s | worst-group p95 3.4 s, 864 dropped, which ended the run |
+
+**The cause is not known, and the cache is not the cause,** since the worst one had it switched off.
+Gunicorn logged no timeouts or restarts, Postgres no errors, and `ListenDrops` stayed at 0 on saas-app.
+k6 retried few connections (7 SYN retransmits since boot). In the `read` off stall, a Prometheus scrape
+of saas-app was also missed and requests then arrived in a burst, which points to something below the
+app freezing briefly, but that was not confirmed.
+
+Two effects on the numbers above: the `read` on knee could be higher, since p95 was only 25 ms when
+the stall ended the run, and the `read` off endpoint times at minute 14 may be inflated by the earlier
+stall. The earlier `MIX=read` fixed-rate pair above does not have this problem.
+
+## Walkthrough
+
+Run through the API against the LXC deploy, as two newly registered owners. All passed.
+
+| Step | Result |
+|---|---|
+| Dashboard twice | Hit counter rose by 2, identical bodies |
+| Submit through a share link | Dashboard still showed 0 straight after, and 1 after 30.1 s |
+| Delete a questionnaire | Gone from the next dashboard read |
+| Create a type | In the next list read |
+| PDF twice, rename, PDF again | Second was a hit with identical bytes. After the rename the bytes changed |
+| Second owner | Empty dashboard and lists. First owner's PDF 404, their type 400 |
+| Redis stopped | Dashboard, scores, lists and PDF 200, and deleting a type 204 |
+
+`pdftotext` is not installed here, so the walkthrough saw the renamed PDF's bytes change but did not
+read the name out of it. `test_pdf.py` covers that key.
 
 ## Quicker measuring
 
