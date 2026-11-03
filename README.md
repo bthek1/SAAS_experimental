@@ -234,6 +234,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | Auth | JWT (`djangorestframework-simplejwt`) |
 | Database | PostgreSQL 16 |
 | Async tasks | Celery + Redis (`django-celery-results`, `django-celery-beat`) |
+| Cache | Redis, through Django's cache framework and `apps/utils/cache.py` |
 | Dependency manager | [uv](https://github.com/astral-sh/uv) |
 | Frontend language | TypeScript |
 | Frontend bundler | Vite |

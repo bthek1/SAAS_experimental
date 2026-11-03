@@ -14,6 +14,8 @@ app_env:
   METRICS_ALLOWED_CIDRS: "{{ guest_ips.monitor }}/32"
   PROMETHEUS_MULTIPROC_DIR: /run/saas-app/prometheus
   CONN_MAX_AGE: "{{ conn_max_age }}"
+  CACHE_REDIS_URL: "redis://:{{ redis_password }}@{{ guest_ips.cache }}:{{ ports.redis }}/1"
+  CACHE_ENABLED: "{{ cache_enabled }}"
   LOADTEST_OWNER_PASSWORD: "{{ loadtest_owner_password }}"
 app_uv_env:
   UV_PYTHON_INSTALL_DIR: "{{ app_root }}/.python"

@@ -11,6 +11,11 @@
   roles:
     - {role: postgres, tags: [db]}
 
+- name: Redis cache (saas-cache)
+  hosts: cache
+  roles:
+    - {role: redis, tags: [cache]}
+
 - name: Backend (saas-app)
   hosts: app
   roles:

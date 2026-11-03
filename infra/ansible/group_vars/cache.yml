@@ -1,0 +1,7 @@
+# Redis: the app alone. Writing to it means running code in the app (the cache
+# deserializes with pickle), so the firewall and the password both stay. #11.
+nft_rules:
+  - {port: "{{ ports.redis }}", from: ["{{ guest_ips.app }}"]}
+  - {port: "{{ ports.redis_exporter }}", from: ["{{ guest_ips.monitor }}"]}
+
+redis_maxmemory: 256mb

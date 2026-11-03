@@ -118,6 +118,21 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # prevents long tasks blocking short ones
 CELERY_TASK_SOFT_TIME_LIMIT = 300  # raises SoftTimeLimitExceeded at 5 min
 CELERY_TASK_TIME_LIMIT = 360  # hard kill at 6 min
 
+# ── Cache ──────────────────────────────────────────────────────────────────────
+# Reads go through apps/utils/cache.py, which falls back to the database when Redis
+# fails. The timeouts bound how long a failing Redis can hold up a request. db 1:
+# on the dev stack this Redis is also the Celery broker (db 0).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_REDIS_URL", default="redis://localhost:6380/1"),
+        "KEY_PREFIX": "saas",
+        "OPTIONS": {"socket_connect_timeout": 0.1, "socket_timeout": 0.1},
+    }
+}
+# False bypasses the cache without a code change (cache-off load-test runs, #11).
+CACHE_ENABLED = env.bool("CACHE_ENABLED", default=True)
+
 AUTH_USER_MODEL = "accounts.CustomUser"
 
 # Let the SPA (a different origin) read the filename of file downloads such as

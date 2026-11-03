@@ -15,18 +15,20 @@ from __future__ import annotations
 import ipaddress
 from dataclasses import dataclass
 
-GUEST_IDS = {"app": 241, "db": 242, "monitor": 243, "loadgen": 244}
+GUEST_IDS = {"app": 241, "db": 242, "monitor": 243, "loadgen": 244, "cache": 245}
 ROLES = tuple(GUEST_IDS)
 ID_RANGE = range(241, 250)
 RESERVED = range(220, 241)  # ~/kubernates_project's VMs
 
-# The host had ~24 GB available on 2026-11-02 (63 GB total). About 5 GB here.
+# The host had ~24 GB available on 2026-11-02 (63 GB total). About 5.5 GB here.
 DEFAULT_SIZES = {
     "app": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
     "db": {"cores": 2, "memoryMb": 1024, "diskGb": 10},
     "monitor": {"cores": 1, "memoryMb": 1024, "diskGb": 10},
     # k6 holds about 1 MB per VU; stress tops out at 300 VUs.
     "loadgen": {"cores": 2, "memoryMb": 1024, "diskGb": 4},
+    # Redis holds up to 256 MB (maxmemory) and writes nothing to disk (#11).
+    "cache": {"cores": 1, "memoryMb": 512, "diskGb": 4},
 }
 
 

@@ -146,3 +146,20 @@ export function mixed(s) {
   else if (r < 0.95) ownerWrite(s);
   else health();
 }
+
+// Mostly reads, closer to people using the app than `mixed`, which is 47 % writes.
+// The cache comparison needs both (#11).
+export function readMostly(s) {
+  const r = Math.random();
+  if (r < 0.9) ownerRead(s);
+  else if (r < 0.95) respondent(s);
+  else if (r < 0.98) ownerWrite(s);
+  else health();
+}
+
+const MIXES = { mixed, read: readMostly };
+
+// The mix for load, stress and soak: MIX=mixed (default) or MIX=read.
+const MIX = __ENV.MIX || 'mixed';
+if (!MIXES[MIX]) throw new Error(`unknown MIX=${MIX}: use ${Object.keys(MIXES).join(' or ')}`);
+export const traffic = MIXES[MIX];

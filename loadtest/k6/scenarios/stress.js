@@ -1,7 +1,8 @@
 // stress: keep raising the rate of mixed traffic until p95 latency or errors
 // cross the line, then stop. The rate it reached is the ceiling.
-//   MAX_RATE (iterations/s, default 200), STEP (default 5), STEP_TIME (default 1m)
-import { mixed, owner } from '../lib/api.js';
+//   MAX_RATE (iterations/s, default 200), STEP (default 5), STEP_TIME (default 1m),
+//   MIX (mixed or read, default mixed)
+import { owner, traffic } from '../lib/api.js';
 
 const MAX = Number(__ENV.MAX_RATE || 200);
 const STEP = Number(__ENV.STEP || 5);
@@ -33,5 +34,5 @@ export const options = {
 };
 
 export default function () {
-  mixed(owner());
+  traffic(owner());
 }

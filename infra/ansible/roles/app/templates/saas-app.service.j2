@@ -11,7 +11,7 @@ WorkingDirectory={{ app_dir }}
 EnvironmentFile={{ app_env_file }}
 # /run/saas-app/prometheus: gunicorn.conf.py empties it on start (multiprocess metrics).
 RuntimeDirectory=saas-app
-ExecStart={{ app_dir }}/.venv/bin/gunicorn --bind 0.0.0.0:{{ ports.gunicorn }} --workers {{ gunicorn_workers }} core.wsgi
+ExecStart={{ app_dir }}/.venv/bin/gunicorn --bind 0.0.0.0:{{ ports.gunicorn }} --workers {{ gunicorn_workers }} --worker-class gthread --threads {{ gunicorn_threads }} core.wsgi
 Restart=on-failure
 KillMode=mixed
 TimeoutStopSec=20

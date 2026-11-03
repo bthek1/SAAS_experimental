@@ -102,7 +102,7 @@ Host ports are offset so they do not clash with a locally installed Postgres or 
 | Service | Host port | Notes |
 |---|---|---|
 | `db` | `5435` -> 5432 | Postgres 16 (`appuser` / `apppassword` / `appdb`) |
-| `redis` | `6380` -> 6379 | Celery broker |
+| `redis` | `127.0.0.1:6380` -> 6379 | Celery broker (db 0) and cache (db 1). Loopback only: see Cache |
 | `backend` | `8005` | Django dev server |
 | `celery_worker`, `celery_beat` | none | beat uses `DatabaseScheduler` |
 | `frontend` | `5174` | Vite dev server |
@@ -120,8 +120,9 @@ through `just compose <args>` rather than bare `docker compose`. Without `-p` th
 `infra/docker/` as `<service>[.<variant>].Dockerfile` with a matching `.dockerignore`.
 `backend/tests/test_infra_docker.py` enforces this layout.
 
-Inside Compose, the `environment:` blocks set `DATABASE_URL` and `CELERY_BROKER_URL` to the
-in-network hosts (`db:5432`, `redis:6379`). These override the `localhost` values in the root `.env`.
+Inside Compose, the `environment:` blocks set `DATABASE_URL`, `CELERY_BROKER_URL` and
+`CACHE_REDIS_URL` to the in-network hosts (`db:5432`, `redis:6379`). These override the `localhost`
+values in the root `.env`.
 
 ---
 
@@ -207,7 +208,26 @@ credentials. `DATABASE_URL` configures the database.
   Periodic schedules are managed in Django admin.
 - Test settings run tasks eagerly (`CELERY_TASK_ALWAYS_EAGER`), so tests need no broker.
 
-**Testing:** `core.settings.test` uses SQLite and a fast password hasher. Fixtures go in
+**Cache (#11)**
+- Redis through Django's native backend. Every cached read goes through `cached()` in
+  `apps/utils/cache.py`; never call `cache.get` or `cache.set` from a view. It requires `owner_id`,
+  so a key cannot be built without a tenant. `params` come from validated data, never a raw query
+  string. `group` is one of the fixed `GROUPS`: it is a Prometheus label, like k6's `name` tag.
+- It fails open. A Redis error is logged and counted (`app_cache_requests_total`), then the value
+  is computed. `CACHE_ENABLED=false` bypasses the cache without a code change.
+- Run auth and validation before reading the cache, so a deactivated user or a foreign id is
+  still refused on a hit.
+- `bump_owner_generation()` makes all of an owner's entries unreachable, after the commit. Do not
+  delete keys or scan for them.
+- ⚠️ The backend deserializes with pickle, so writing to Redis runs code in the app. Never publish
+  it: loopback on dev, no port on the other Compose stacks, firewall and password on LXC.
+- A cache Redis runs `allkeys-lru`, which could drop a broker's queued tasks. If a stack with a
+  cache Redis gains Celery, its broker gets a second instance. Only the dev stack shares one, with
+  no `maxmemory`.
+
+**Testing:** `core.settings.test` uses SQLite and a fast password hasher. It also sets
+`CACHE_ENABLED = False` (`e2e` inherits this), so tests see fresh data. Cache tests opt in with the
+`cache_on` fixture, and need `django_capture_on_commit_callbacks(execute=True)` for a bump to run. Fixtures go in
 `conftest.py` (app-level or `backend/conftest.py`). App tests live in `apps/<name>/`.
 Repo-level checks that are not tied to an app live in `backend/tests/` (both are in pytest's
 `testpaths`). `tests/test_infra_docker.py` checks the `infra/docker/` layout. Its
@@ -334,6 +354,8 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
   (`OWNERS`, default 5), so seed at least that many. The respondent flow creates a fresh
   questionnaire per submit, so a 409 is a real failure.
 - Run one scenario at a time. `run.sh` stops a k6 left behind by an interrupted run.
+- `load`, `stress` and `soak` take `MIX=mixed` (default, 47 % writes) or `MIX=read` (mostly reads).
+  A cache's value depends heavily on the mix, so compare both.
 - Prometheus and Grafana config lives in `infra/observability/`. Dashboards are generated:
   edit `grafana/build_dashboards.py`, then run `python3 infra/observability/grafana/build_dashboards.py`.
   `backend/tests/test_observability.py` fails if the committed JSON is stale, and also runs
@@ -346,9 +368,9 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 
 ## Infra: Proxmox LXC containers (`infra/pulumi/`)
 
-The load-test deploy (#9, Phases 3–5) runs in four unprivileged LXC containers on the Proxmox
+The load-test deploy (#9, Phases 3–5) runs in five unprivileged LXC containers on the Proxmox
 host `192.168.2.70` (node `bthek1`): `saas-app` 241, `saas-db` 242, `saas-monitor` 243,
-`saas-loadgen` 244. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
+`saas-loadgen` 244, `saas-cache` 245. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
 creates bare containers. Ansible (Phase 4) configures them.
 
 - ⚠️ **Guest ids 241–249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
@@ -371,20 +393,21 @@ creates bare containers. Ansible (Phase 4) configures them.
   `backend/`. `just infra-test` also runs `infra/ansible/tests/`.
 
 **Measuring** (`loadtest/baselines/`): run `just loadtest-reset` before every measured k6 run,
-since runs add data and change the numbers. Change one thing at a time and re-stress. Record each
+since runs add data and change the numbers (it also empties the cache). Change one thing at a time and re-stress. Record each
 baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables).
-Tuning knobs: `gunicorn_workers` and `conn_max_age` in `infra/ansible/group_vars/app.yml`.
+Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_enabled` in
+`infra/ansible/group_vars/app.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
 
 **Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
-(all), `postgres` (saas-db), `app` (saas-app), `monitor` (saas-monitor) and `loadgen`
-(saas-loadgen). The inventory (`inventory/pulumi.py`) reads the Pulumi stack outputs, secrets
+(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-app), `monitor` (saas-monitor) and
+`loadgen` (saas-loadgen). The inventory (`inventory/pulumi.py`) reads the Pulumi stack outputs, secrets
 included, and refuses any non-private address. Nothing secret is stored in the repo.
 
 - Everything is installed natively, with no Docker:
   - the backend is the working tree rsynced to `/srv/app/backend`, `uv sync` (Python 3.14),
     gunicorn under systemd (`saas-app.service`, env in `/etc/saas-app/app.env`);
-  - Postgres 16 from apt;
-  - Prometheus, Grafana, node_exporter, postgres_exporter, k6 and uv as release binaries
+  - Postgres 16 and Redis from apt (Redis: no RDB or AOF, `maxmemory` + `allkeys-lru`);
+  - Prometheus, Grafana, node_exporter, postgres_exporter, redis_exporter, k6 and uv as release binaries
     pinned by version **and sha256** in `group_vars/all.yml`. Bump both together.
 - A second run must report `changed=0`, and `--check --diff` must show nothing. A task that
   always reports changed hides real changes: fix it rather than ignore it. `ansible-lint`

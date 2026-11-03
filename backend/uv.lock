@@ -1151,6 +1151,7 @@ dependencies = [
     { name = "djangorestframework-simplejwt" },
     { name = "gunicorn" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "redis" },
     { name = "weasyprint" },
 ]
 
@@ -1183,6 +1184,7 @@ requires-dist = [
     { name = "djangorestframework-simplejwt", specifier = "~=5.5" },
     { name = "gunicorn", specifier = "~=26.2" },
     { name = "psycopg", extras = ["binary"], specifier = "~=3.3" },
+    { name = "redis", specifier = "~=6.4" },
     { name = "weasyprint", specifier = ">=70.0" },
 ]
 

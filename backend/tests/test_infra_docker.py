@@ -202,6 +202,29 @@ def test_loadtest_backend_runs_the_loadtest_settings_under_gunicorn() -> None:
     assert backend["environment"]["METRICS_ALLOWED_CIDRS"].endswith("/32")
 
 
+@requires_docker
+def test_dev_redis_is_on_loopback() -> None:
+    # The cache deserializes with pickle: writing to Redis runs code in the app.
+    redis = _compose_config(DEV_COMPOSE)["services"]["redis"]
+    assert {port["host_ip"] for port in redis["ports"]} == {"127.0.0.1"}
+
+
+@requires_docker
+@pytest.mark.parametrize("compose_file", [PROD_COMPOSE, LOADTEST_COMPOSE])
+def test_cache_redis_has_eviction_and_no_persistence(compose_file: Path) -> None:
+    services = _compose_config(compose_file)["services"]
+    redis = services["redis"]
+    command = redis["command"]
+    assert command[command.index("--maxmemory-policy") + 1] == "allkeys-lru"
+    assert "--maxmemory" in command
+    assert command[command.index("--save") + 1] == ""
+    assert command[command.index("--appendonly") + 1] == "no"
+    assert not redis.get("ports"), "the cache Redis must not be published"
+    assert re.fullmatch(r"redis:\d+\.\d+\.\d+-alpine", redis["image"])
+    backend = services.get("backend") or services["web"]
+    assert backend["environment"]["CACHE_REDIS_URL"].startswith("redis://redis:6379/")
+
+
 WEASYPRINT_PACKAGES = (
     "libpango-1.0-0",
     "libpangoft2-1.0-0",

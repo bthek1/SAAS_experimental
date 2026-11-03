@@ -7,19 +7,21 @@ from saas_loadtest.topology import Network, build
 NETWORK = Network(cidr="192.168.2.0/24", gateway="192.168.2.1")
 
 
-def test_four_guests_with_fixed_ids():
+def test_guests_have_fixed_ids():
     guests = build(NETWORK)
     assert {role: g.vmid for role, g in guests.items()} == {
         "app": 241,
         "db": 242,
         "monitor": 243,
         "loadgen": 244,
+        "cache": 245,
     }
     assert [g.name for g in guests.values()] == [
         "saas-app",
         "saas-db",
         "saas-monitor",
         "saas-loadgen",
+        "saas-cache",
     ]
 
 

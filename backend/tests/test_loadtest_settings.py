@@ -44,6 +44,7 @@ def load(allowed_hosts: str, **env: str) -> subprocess.CompletedProcess:
             "DJANGO_SETTINGS_MODULE": "core.settings.loadtest",
             "SECRET_KEY": "x" * 50,
             "DATABASE_URL": "postgres://u:p@127.0.0.1:5432/db",
+            "CACHE_REDIS_URL": "redis://127.0.0.1:6379/1",
             "ALLOWED_HOSTS": allowed_hosts,
             **env,
         },

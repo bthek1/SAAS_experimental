@@ -25,6 +25,8 @@ RESULTS = Path(__file__).resolve().parent / "results"
 STEP = 60
 
 DJANGO_LATENCY = "django_http_requests_latency_seconds_by_view_method_bucket"
+CACHE_REQUESTS = "app_cache_requests_total"
+CACHE_GROUPS = ("dashboard", "dashboard-scores", "pdf", "type-list")
 
 
 def cpu_share(role: str) -> str:
@@ -33,6 +35,12 @@ def cpu_share(role: str) -> str:
         f"100 * sum(rate(container_cpu_usage_seconds_total{{{instance}}}[1m]))"
         f" / max(container_cpu_limit_cores{{{instance}}})"
     )
+
+
+def cache_hit_ratio(group: str) -> str:
+    hits = f'sum(rate({CACHE_REQUESTS}{{group="{group}", result="hit"}}[1m]))'
+    reads = f'sum(rate({CACHE_REQUESTS}{{group="{group}", result=~"hit|miss"}}[1m]))'
+    return f"100 * {hits} / {reads}"
 
 
 def django_quantile(q: float) -> str:
@@ -61,7 +69,11 @@ def columns(testid: str) -> list[tuple[str, str, str]]:
         ("django p99 ms", django_quantile(0.99), "{:.0f}"),
         *(
             (f"{role} cpu %", cpu_share(role), "{:.0f}")
-            for role in ("app", "db", "loadgen", "monitor")
+            for role in ("app", "db", "cache", "loadgen", "monitor")
+        ),
+        *(
+            (f"{group} hit %", cache_hit_ratio(group), "{:.0f}")
+            for group in CACHE_GROUPS
         ),
         (
             # CONN_MAX_AGE is 0: one connection per request, so a sample is mostly 0.

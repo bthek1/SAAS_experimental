@@ -80,10 +80,11 @@ def _after_all(check):
 
 
 @pulumi.runtime.test
-def test_four_containers_and_nothing_else_on_proxmox():
+def test_the_containers_and_nothing_else_on_proxmox():
     def check():
         assert sorted(MOCKS.containers()) == [
             "saas-app",
+            "saas-cache",
             "saas-db",
             "saas-loadgen",
             "saas-monitor",
@@ -158,4 +159,5 @@ def test_secrets_are_generated_not_configured():
         "django_secret_key",
         "grafana_admin_password",
         "loadtest_owner_password",
+        "redis_password",
     }

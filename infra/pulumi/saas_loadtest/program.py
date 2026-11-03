@@ -52,6 +52,7 @@ def generate_secrets() -> dict[str, pulumi.Output]:
         "django_secret_key": _password("django-secret-key", 64),
         "grafana_admin_password": _password("grafana-admin-password", 24),
         "loadtest_owner_password": _password("loadtest-owner-password", 24),
+        "redis_password": _password("redis-password"),
     }
 
 

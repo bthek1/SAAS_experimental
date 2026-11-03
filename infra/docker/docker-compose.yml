@@ -4,7 +4,9 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6380:6379"
+      # Loopback only: the cache deserializes with pickle, so writing to this Redis
+      # means running code in the app.
+      - "127.0.0.1:6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -33,11 +35,14 @@ services:
       - "8005:8005"
     depends_on:
       - db
+      - redis
     env_file:
       - path: ../../.env
         required: false
     environment:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: redis://redis:6379/1
 
   celery_worker:
     build:
@@ -57,6 +62,7 @@ services:
     environment:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       CELERY_BROKER_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: redis://redis:6379/1
       # Results go to the Django DB backend (see CELERY_RESULT_BACKEND in
       # core/settings/base.py) so the task-status API and admin can read them.
 

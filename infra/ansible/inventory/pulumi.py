@@ -5,7 +5,7 @@
 
 Reads `pulumi stack output --json --show-secrets` for the `loadtest` stack
 (infra/pulumi/), with this repo's own state backend and passphrase, the same
-way the justfile does. One group per role (app, db, monitor, loadgen), one host
+way the justfile does. One group per role (app, db, monitor, loadgen, cache), one host
 each. Stack secrets become variables on `all`, so nothing secret is written to
 a file in the repo.
 
@@ -29,6 +29,7 @@ SECRETS = (
     "django_secret_key",
     "grafana_admin_password",
     "loadtest_owner_password",
+    "redis_password",
 )
 
 

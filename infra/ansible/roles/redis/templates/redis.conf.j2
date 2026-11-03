@@ -1,0 +1,17 @@
+# {{ ansible_managed }} (infra/ansible/roles/redis). #11.
+# The API's cache and nothing else: eviction could drop a Celery broker's queued tasks.
+bind {{ guest_ip }} 127.0.0.1
+port {{ ports.redis }}
+protected-mode yes
+requirepass {{ redis_password }}
+
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy allkeys-lru
+
+# Nothing on disk: a cache rebuilds itself, and entries hold respondents' answers.
+save ""
+appendonly no
+
+supervised systemd
+dir /var/lib/redis
+logfile /var/log/redis/redis-server.log

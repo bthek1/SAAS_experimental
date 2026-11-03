@@ -365,11 +365,60 @@ def postgres_dashboard():
     )
 
 
+CACHE_REQUESTS = "app_cache_requests_total"
+
+
+def redis_dashboard():
+    # From the app's own counter. Redis's keyspace_hits also counts generation
+    # lookups, which nearly always hit.
+    hits = f'sum by (group) (rate({CACHE_REQUESTS}{{result="hit"}}[1m]))'
+    reads = f'sum by (group) (rate({CACHE_REQUESTS}{{result=~"hit|miss"}}[1m]))'
+    return dashboard(
+        "redis",
+        "Redis cache",
+        [
+            panel("Hit ratio by group", [(f"{hits} / {reads}", "{{group}}")], unit="percentunit"),
+            panel(
+                "Cached reads and errors",
+                [
+                    (
+                        f"sum by (group, result) (rate({CACHE_REQUESTS}[1m]))",
+                        "{{group}} {{result}}",
+                    )
+                ],
+            ),
+            panel(
+                "Memory",
+                [
+                    ("max(redis_memory_used_bytes)", "used"),
+                    ("max(redis_memory_max_bytes)", "maxmemory"),
+                ],
+                unit="bytes",
+            ),
+            panel(
+                "Evicted and expired keys",
+                [
+                    ("sum(rate(redis_evicted_keys_total[1m]))", "evicted/s"),
+                    ("sum(rate(redis_expired_keys_total[1m]))", "expired/s"),
+                ],
+            ),
+            panel(
+                "Commands",
+                [("sum(rate(redis_commands_processed_total[1m]))", "commands/s")],
+            ),
+            panel("Connections", [("max(redis_connected_clients)", "clients")]),
+        ],
+        [],
+        "The API's cache (#11): redis_exporter, plus the app's own hit and miss counter.",
+    )
+
+
 DASHBOARDS = {
     "k6.json": k6_dashboard,
     "django.json": django_dashboard,
     "containers.json": containers_dashboard,
     "postgres.json": postgres_dashboard,
+    "redis.json": redis_dashboard,
 }
 
 

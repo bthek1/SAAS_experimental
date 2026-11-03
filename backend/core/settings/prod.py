@@ -18,6 +18,10 @@ DATABASES = {
     },
 }
 
+# No default here: the cache fails open, so a wrong URL would otherwise run
+# uncached with no other symptom.
+CACHES["default"]["LOCATION"] = env("CACHE_REDIS_URL")
+
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
 EMAIL_PORT = env.int("EMAIL_PORT", default=25)

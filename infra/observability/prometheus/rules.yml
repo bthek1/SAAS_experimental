@@ -18,3 +18,12 @@ groups:
           severity: warning
         annotations:
           summary: "Postgres on {{ $labels.instance }} is above 80 % of max_connections"
+
+      # Requests still succeed (the cache fails open), but every one reaches the database.
+      - alert: CacheErrors
+        expr: sum(rate(app_cache_requests_total{result="error"}[1m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The API cannot reach its Redis cache"

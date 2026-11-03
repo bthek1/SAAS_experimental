@@ -106,6 +106,23 @@
   when: app_reset_db | bool
   changed_when: true
 
+# Runs must start from the same state, and the owners get new ids below.
+- name: Empty the cache (only with -e app_reset_db=true)
+  ansible.builtin.command:
+    argv:
+      - "{{ app_dir }}/.venv/bin/python"
+      - manage.py
+      - shell
+      - -c
+      - from django.core.cache import cache; cache.clear()
+  args:
+    chdir: "{{ app_dir }}"
+  environment: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/saas-app-manage'}) }}"
+  become: true
+  become_user: app
+  when: app_reset_db | bool
+  changed_when: true
+
 - name: Seed the load-test owners
   ansible.builtin.command: >-
     {{ app_dir }}/.venv/bin/python manage.py seed_loadtest

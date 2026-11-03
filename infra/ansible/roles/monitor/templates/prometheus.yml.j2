@@ -25,6 +25,11 @@ scrape_configs:
       - targets: ["{{ guest_ips.db }}:{{ ports.postgres_exporter }}"]
         labels: {instance: saas-db}
 
+  - job_name: redis
+    static_configs:
+      - targets: ["{{ guest_ips.cache }}:{{ ports.redis_exporter }}"]
+        labels: {instance: saas-cache}
+
   # node_exporter + the container's cgroup metrics (textfile collector).
   - job_name: node
     static_configs:

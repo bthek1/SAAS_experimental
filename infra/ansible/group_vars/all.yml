@@ -21,6 +21,9 @@ grafana_url: "https://dl.grafana.com/oss/release/grafana_{{ grafana_version }}_a
 k6_version: "2.3.0"
 k6_sha256: 39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1
 k6_url: "https://github.com/grafana/k6/releases/download/v{{ k6_version }}/k6-v{{ k6_version }}-linux-amd64.tar.gz"
+redis_exporter_version: "1.96.0"
+redis_exporter_sha256: 7e828c0edd05e0984c3be380aacb389c230463db1c1f72141ec67267fc2b7510
+redis_exporter_url: "https://github.com/oliver006/redis_exporter/releases/download/v{{ redis_exporter_version }}/redis_exporter-v{{ redis_exporter_version }}.linux-amd64.tar.gz"
 uv_version: "0.9.7"
 uv_sha256: b26fcc8dfa1c39b5a5613445af3be3eefda45d9a39359bee271eafe34913583e
 uv_url: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
@@ -33,6 +36,8 @@ ports:
   postgres_exporter: 9187
   prometheus: 9090
   grafana: 3000
+  redis: 6379
+  redis_exporter: 9121
 
 # The app's database (on saas-db).
 db_name: appdb

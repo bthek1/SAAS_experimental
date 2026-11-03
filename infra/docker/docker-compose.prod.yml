@@ -9,12 +9,25 @@ services:
       - "8000:8000"
     depends_on:
       - db
+      - redis
     env_file:
       - path: ../../.env
         required: false
     environment:
       DJANGO_SETTINGS_MODULE: core.settings.dev
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      CACHE_REDIS_URL: redis://redis:6379/1
+
+  # Cache only. Eviction is per instance and could drop queued tasks, so a Celery
+  # broker gets its own Redis. Not published: see docker-compose.yml.
+  redis:
+    image: redis:7.4.8-alpine
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   db:
     image: postgres:16

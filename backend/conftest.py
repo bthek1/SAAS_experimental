@@ -1,5 +1,15 @@
 # Root conftest.py — shared fixtures can be added here.
 import pytest
+from django.core.cache import cache
+
+
+@pytest.fixture
+def cache_on(settings):
+    """Turn the cache on (core.settings.test leaves it off), starting empty."""
+    settings.CACHE_ENABLED = True
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture(scope="session")
