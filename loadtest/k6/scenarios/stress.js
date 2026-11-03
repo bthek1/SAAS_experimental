@@ -1,15 +1,19 @@
 // stress: keep raising the rate of mixed traffic until p95 latency or errors
 // cross the line, then stop. The rate it reached is the ceiling.
 //   MAX_RATE (iterations/s, default 200), STEP (default 5), STEP_TIME (default 1m),
-//   MIX (mixed or read, default mixed)
+//   MIX (mixed or read, default mixed), START_RATE (first target, default STEP)
+//
+// START_RATE skips the rates that show nothing: the first step ramps up to it. Only compare
+// runs with the same value, because a longer run adds more rows and slows later steps.
 import { owner, traffic } from '../lib/api.js';
 
 const MAX = Number(__ENV.MAX_RATE || 200);
 const STEP = Number(__ENV.STEP || 5);
 const STEP_TIME = __ENV.STEP_TIME || '1m';
+const START = Number(__ENV.START_RATE || STEP);
 
 const stages = [];
-for (let rate = STEP; rate <= MAX; rate += STEP) stages.push({ target: rate, duration: STEP_TIME });
+for (let rate = START; rate <= MAX; rate += STEP) stages.push({ target: rate, duration: STEP_TIME });
 
 export const options = {
   discardResponseBodies: true,

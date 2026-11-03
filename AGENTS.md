@@ -393,7 +393,10 @@ creates bare containers. Ansible (Phase 4) configures them.
   `backend/`. `just infra-test` also runs `infra/ansible/tests/`.
 
 **Measuring** (`loadtest/baselines/`): run `just loadtest-reset` before every measured k6 run,
-since runs add data and change the numbers (it also empties the cache). Change one thing at a time and re-stress. Record each
+since runs add data and change the numbers (it also empties the cache). Change one thing at a time and re-stress. Quicker runs:
+`just k6 stress TARGET=lxc STEP=10 MAX_RATE=500 START_RATE=150` skips the low rates, and to compare two
+configs, `just k6 load TARGET=lxc RATE=<fixed> HOLD=5m` on each, back to back, is quicker and less
+affected by run-to-run variation than comparing knees. Only compare runs with the same settings. Record each
 baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables).
 Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_enabled` in
 `infra/ansible/group_vars/app.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
