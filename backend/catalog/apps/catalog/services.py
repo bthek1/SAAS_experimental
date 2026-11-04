@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models import RestrictedError
 
 from . import events
+from .metrics import RETIRE_FAILURES
 from .models import BatteryType, BatteryTypeItem, QuestionnaireType
 
 
@@ -41,6 +42,7 @@ def delete_type(instance: QuestionnaireType | BatteryType) -> None:
     except RefInUse as exc:
         raise InUse() from exc
     except PeerUnavailable as exc:
+        RETIRE_FAILURES.inc()
         raise ServiceUnavailable() from exc
     try:
         with transaction.atomic():

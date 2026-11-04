@@ -15,6 +15,8 @@ def test_guests_have_fixed_ids():
         "monitor": 243,
         "loadgen": 244,
         "cache": 245,
+        "instances": 246,
+        "gateway": 247,
     }
     assert [g.name for g in guests.values()] == [
         "saas-app",
@@ -22,6 +24,8 @@ def test_guests_have_fixed_ids():
         "saas-monitor",
         "saas-loadgen",
         "saas-cache",
+        "saas-instances",
+        "saas-gateway",
     ]
 
 
@@ -75,5 +79,6 @@ def test_sizes_for_an_unknown_role_are_refused():
 
 def test_default_memory_fits_the_budget():
     # The host had ~24 GB available on 2026-11-02; keep this deploy small.
+    # 8 GB since the split (#13): instances 2 GB and the gateway 0.5 GB.
     total = sum(size["memoryMb"] for size in topology.DEFAULT_SIZES.values())
-    assert total <= 6 * 1024
+    assert total <= 8 * 1024

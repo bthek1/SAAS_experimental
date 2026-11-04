@@ -24,6 +24,7 @@ from common.peers import (
 from django.db import transaction
 from django.db.models import RestrictedError
 from django.utils.dateparse import parse_datetime
+from prometheus_client import Counter
 
 from .models import (
     Battery,
@@ -36,6 +37,12 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+READ_THROUGHS = Counter(
+    "app_ref_read_through_total",
+    "Copies fetched from catalog because they had not arrived, by result.",
+    ["result"],
+)
 
 QUESTIONNAIRE_TYPE = "questionnaire_type"
 BATTERY_TYPE = "battery_type"
@@ -160,7 +167,12 @@ def store_snapshot(snapshot: dict) -> str:
 
 def read_through(kind: str, ref_id):
     """The copy, fetched from `catalog`. None if `catalog` has no such type."""
-    snapshot = catalog_client().fetch(kind, ref_id)
+    try:
+        snapshot = catalog_client().fetch(kind, ref_id)
+    except PeerUnavailable:
+        READ_THROUGHS.labels(result="unavailable").inc()
+        raise
+    READ_THROUGHS.labels(result="found" if snapshot else "missing").inc()
     if snapshot is None:
         return None
     store_snapshot(snapshot)

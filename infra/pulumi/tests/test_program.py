@@ -38,6 +38,9 @@ class Mocks(pulumi.runtime.Mocks):
         outputs = dict(inputs)
         if args.typ == "random:index/randomPassword:RandomPassword":
             outputs["result"] = "p" * int(inputs["length"])
+        if args.typ == "tls:index/privateKey:PrivateKey":
+            outputs["private_key_pem"] = "private"
+            outputs["public_key_pem"] = "public"
         return f"{args.name}-id", outputs
 
     def call(self, args: pulumi.runtime.MockCallArgs):  # noqa: ARG002 (Mocks API)
@@ -86,6 +89,8 @@ def test_the_containers_and_nothing_else_on_proxmox():
             "saas-app",
             "saas-cache",
             "saas-db",
+            "saas-gateway",
+            "saas-instances",
             "saas-loadgen",
             "saas-monitor",
         ]
@@ -155,6 +160,11 @@ def test_sizes_follow_the_topology():
 
 def test_secrets_are_generated_not_configured():
     assert set(STACK.secrets) == {
+        "catalog_to_instances_token",
+        "instances_db_password",
+        "instances_to_catalog_token",
+        "jwt_signing_key",
+        "jwt_verifying_key",
         "db_password",
         "django_secret_key",
         "grafana_admin_password",

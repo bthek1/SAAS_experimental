@@ -206,7 +206,7 @@ infra-test *args:
 # Reset the LXC deploy's database to the fixed seed (run before every measured k6 run)
 [group('infra')]
 loadtest-reset:
-    cd infra/ansible && ansible-playbook site.yml --tags app --limit app -e app_reset_db=true
+    cd infra/ansible && ansible-playbook site.yml --tags app --limit app,instances -e app_reset_db=true
 
 # Configure the containers with Ansible (infra/ansible/site.yml): just converge --tags app --check --diff
 [group('infra')]

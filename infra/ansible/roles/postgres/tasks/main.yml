@@ -11,14 +11,17 @@
     mode: "0644"
   notify: Restart postgres
 
-- name: Admit the app (saas-app) to its database only
+- name: Admit each service to its own database only
   community.postgresql.postgresql_pg_hba:
     dest: /etc/postgresql/16/main/pg_hba.conf
     contype: host
-    databases: "{{ db_name }}"
-    users: "{{ db_user }}"
-    source: "{{ guest_ips.app }}/32"
+    databases: "{{ item.db }}"
+    users: "{{ item.user }}"
+    source: "{{ item.source }}/32"
     method: scram-sha-256
+  loop:
+    - {db: "{{ db_name }}", user: "{{ db_user }}", source: "{{ guest_ips.app }}"}
+    - {db: "{{ instances_db_name }}", user: "{{ instances_db_user }}", source: "{{ guest_ips.instances }}"}
   notify: Reload postgres
 
 - name: Apply config changes before creating roles
@@ -30,25 +33,34 @@
     enabled: true
     state: started
 
-- name: App role
+- name: Login roles, one per service
   community.postgresql.postgresql_user:
-    name: "{{ db_user }}"
-    password: "{{ db_password }}"
+    name: "{{ item.user }}"
+    password: "{{ item.password }}"
+  loop:
+    - {user: "{{ db_user }}", password: "{{ db_password }}"}
+    - {user: "{{ instances_db_user }}", password: "{{ instances_db_password }}"}
   become: true
   become_user: postgres
   no_log: true
 
-- name: App database
+- name: Databases, one per service
   community.postgresql.postgresql_db:
-    name: "{{ db_name }}"
-    owner: "{{ db_user }}"
+    name: "{{ item.db }}"
+    owner: "{{ item.user }}"
+  loop:
+    - {db: "{{ db_name }}", user: "{{ db_user }}"}
+    - {db: "{{ instances_db_name }}", user: "{{ instances_db_user }}"}
   become: true
   become_user: postgres
 
-- name: Enable pg_stat_statements in the app database
+- name: Enable pg_stat_statements in each database
   community.postgresql.postgresql_ext:
     name: pg_stat_statements
-    login_db: "{{ db_name }}"
+    login_db: "{{ item }}"
+  loop:
+    - "{{ db_name }}"
+    - "{{ instances_db_name }}"
   become: true
   become_user: postgres
 

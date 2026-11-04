@@ -1,0 +1,20 @@
+# {{ ansible_managed }} (infra/ansible/roles/app). #13.
+[Unit]
+Description=SAAS_experimental catalog: retries type and user events to instances
+After=network-online.target {{ app_unit }}.service
+Wants=network-online.target
+
+[Service]
+User=app
+Group=app
+WorkingDirectory={{ app_dir }}
+EnvironmentFile={{ app_env_file }}
+# Its own directory: gunicorn's on_starting hook empties the service's.
+Environment=PROMETHEUS_MULTIPROC_DIR=/run/saas-relay/prometheus
+RuntimeDirectory=saas-relay
+ExecStart={{ app_python }} manage.py relay_outbox
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

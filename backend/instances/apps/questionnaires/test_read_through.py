@@ -5,6 +5,7 @@ import uuid
 import pytest
 from common.peers import PeerUnavailable
 from django.utils import timezone
+from prometheus_client import REGISTRY
 
 from . import services
 from .factories import (
@@ -193,3 +194,24 @@ def test_battery_with_a_slot_catalog_no_longer_has_is_503(auth_client, user):
         BATTERIES, {"batteryTypeId": str(battery_type.pk)}, format="json"
     )
     assert response.status_code == 503
+
+
+def test_read_throughs_are_counted_by_result(auth_client, user, settings):
+    def count(result):
+        return (
+            REGISTRY.get_sample_value("app_ref_read_through_total", {"result": result})
+            or 0
+        )
+
+    found, missing, unavailable = count("found"), count("missing"), count("unavailable")
+    fresh = source(user)
+    post = lambda ref_id: auth_client.post(  # noqa: E731
+        QUESTIONNAIRES, {"questionnaireTypeId": str(ref_id)}, format="json"
+    )
+    assert post(fresh["aggregateId"]).status_code == 201
+    assert post(uuid.uuid4()).status_code == 400
+    settings.CATALOG_CLIENT = f"{__name__}.Down"
+    assert post(uuid.uuid4()).status_code == 503
+    assert count("found") == found + 1
+    assert count("missing") == missing + 1
+    assert count("unavailable") == unavailable + 1

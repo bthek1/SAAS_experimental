@@ -8,6 +8,7 @@ Anything not listed gets a 404, which is what keeps `/internal/` and `/metrics` 
 """
 
 import json
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -88,6 +89,11 @@ def render(table: dict, addresses: dict[str, str] | None = None) -> str:
 
 def main() -> None:
     table = json.loads((HERE / "routes.json").read_text())
+    # `--address catalog=10.0.0.1:8000 ...` prints a config for fixed addresses (LXC).
+    addresses = [arg for arg in sys.argv[1:] if arg != "--address"]
+    if addresses:
+        print(render(table, dict(item.split("=", 1) for item in addresses)), end="")  # noqa: T201
+        return
     (HERE / "nginx.conf").write_text(render(table))
 
 

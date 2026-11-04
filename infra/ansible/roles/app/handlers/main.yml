@@ -1,5 +1,11 @@
-- name: Restart saas-app
+- name: Restart the service
   ansible.builtin.systemd_service:
-    name: saas-app
+    name: "{{ app_unit }}"
+    state: restarted
+    daemon_reload: true
+
+- name: Restart saas-relay
+  ansible.builtin.systemd_service:
+    name: saas-relay
     state: restarted
     daemon_reload: true

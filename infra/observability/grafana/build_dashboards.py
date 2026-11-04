@@ -252,6 +252,32 @@ def django_dashboard():
             ),
             panel("DB query rate", [(db_queries, "queries/s")], width=8),
             panel(
+                "Outbox: events waiting for instances",
+                [("max(app_outbox_pending_events)", "pending")],
+                width=8,
+            ),
+            panel(
+                "Outbox: oldest waiting event",
+                [("max(app_outbox_oldest_pending_seconds)", "oldest")],
+                unit="s",
+                width=8,
+            ),
+            panel(
+                "Read-throughs and refused deletes",
+                [
+                    (
+                        f"sum by (result) ({rate('app_ref_read_through_total')})",
+                        "read-through {{result}}",
+                    ),
+                    (
+                        f"sum({rate('app_retire_failures_total')})",
+                        "deletes refused",
+                    ),
+                ],
+                unit="reqps",
+                width=8,
+            ),
+            panel(
                 "DB query latency",
                 [
                     (quantile(0.95, DB_LATENCY), "p95"),
@@ -326,7 +352,8 @@ def containers_dashboard():
     )
 
 
-APPDB = 'datname="appdb"'
+# The services' databases on saas-db (#13). appdb is the monolith's, from before the split.
+APPDB = 'datname=~"catalogdb|instancesdb"'
 
 
 def appdb_rate(stat: str) -> str:
@@ -351,19 +378,19 @@ def postgres_dashboard():
                 ],
             ),
             panel(
-                "Transactions (appdb)",
+                "Transactions (both services)",
                 [
                     (appdb_rate("xact_commit"), "commits/s"),
                     (appdb_rate("xact_rollback"), "rollbacks/s"),
                 ],
             ),
             panel(
-                "Cache hit ratio (appdb)",
+                "Cache hit ratio (both services)",
                 [(HIT_RATIO, "hit ratio")],
                 unit="percentunit",
             ),
             panel(
-                "Rows (appdb)",
+                "Rows (both services)",
                 [
                     (appdb_rate(f"tup_{kind}"), kind)
                     for kind in ("fetched", "returned", "inserted", "updated")

@@ -14,11 +14,14 @@ scrape_configs:
       - targets: ["localhost:{{ ports.prometheus }}"]
         labels: {instance: saas-monitor}
 
-  # /metrics answers this container alone (METRICS_ALLOWED_CIDRS on saas-app).
+  # Each service directly: the gateway never routes /metrics. It answers this container
+  # alone (METRICS_ALLOWED_CIDRS on each service).
   - job_name: django
     static_configs:
       - targets: ["{{ guest_ips.app }}:{{ ports.gunicorn }}"]
-        labels: {instance: saas-app}
+        labels: {instance: saas-app, service: catalog}
+      - targets: ["{{ guest_ips.instances }}:{{ ports.gunicorn }}"]
+        labels: {instance: saas-instances, service: instances}
 
   - job_name: postgres
     static_configs:

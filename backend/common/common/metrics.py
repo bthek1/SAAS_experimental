@@ -15,6 +15,7 @@ from functools import cache
 
 from django.conf import settings
 from django.http import HttpResponseNotFound
+from django.utils.module_loading import import_string
 from django_prometheus.exports import ExportToDjangoView
 
 METRICS_PATH = "/metrics"
@@ -46,4 +47,7 @@ class MetricsEndpointMiddleware:
             return self.get_response(request)
         if request.method != "GET" or not scrape_allowed(request):
             return HttpResponseNotFound()
+        # A service can update gauges it can only know by asking the database.
+        if refresh := getattr(settings, "METRICS_REFRESH", None):
+            import_string(refresh)()
         return ExportToDjangoView(request)

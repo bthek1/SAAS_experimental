@@ -36,6 +36,9 @@ CACHE_REQUESTS = "app_cache_requests_total"
 CACHE_GROUPS = ("dashboard", "dashboard-scores", "pdf", "type-list")
 
 
+ROLES = ("gateway", "app", "instances", "db", "cache", "loadgen", "monitor")
+
+
 def cpu_share(role: str) -> str:
     instance = f'instance="saas-{role}"'
     return (
@@ -123,7 +126,7 @@ def columns(testid: str) -> list[tuple[str, str, str]]:
         ("django p99 ms", django_quantile(0.99), "{:.0f}"),
         *(
             (f"{role} cpu %", cpu_share(role), "{:.0f}")
-            for role in ("app", "db", "cache", "loadgen", "monitor")
+            for role in ROLES
         ),
         *(
             (f"{group} hit %", cache_hit_ratio(group), "{:.0f}")
@@ -132,12 +135,12 @@ def columns(testid: str) -> list[tuple[str, str, str]]:
         (
             # CONN_MAX_AGE is 0: one connection per request, so a sample is mostly 0.
             "pg conns (sampled)",
-            'sum(pg_stat_activity_count{datname="appdb"})',
+            'sum(pg_stat_activity_count{datname=~"appdb|catalogdb|instancesdb"})',
             "{:.0f}",
         ),
         (
             "pg commits/s",
-            'sum(rate(pg_stat_database_xact_commit{datname="appdb"}[1m]))',
+            'sum(rate(pg_stat_database_xact_commit{datname=~"appdb|catalogdb|instancesdb"}[1m]))',
             "{:.0f}",
         ),
     ]

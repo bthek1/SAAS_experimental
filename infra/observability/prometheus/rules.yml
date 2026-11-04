@@ -27,3 +27,14 @@ groups:
           severity: warning
         annotations:
           summary: "The API cannot reach its Redis cache"
+
+      # Respondents are unaffected, but instances serves old definitions and deactivated users
+      # keep access. See "A stuck outbox" in README.md.
+      - alert: OutboxStuck
+        expr: max(app_outbox_oldest_pending_seconds) > 60
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Type and user events have not reached instances for over a minute"
+

@@ -3,7 +3,7 @@
 #
 #   just k6 smoke                       # local stack (just loadtest-up)
 #   just k6 load RATE=20 HOLD=10m       # scenario options as KEY=VALUE
-#   just k6 smoke TARGET=lxc            # from saas-loadgen against saas-app (Proxmox LXC)
+#   just k6 smoke TARGET=lxc            # from saas-loadgen through saas-gateway (Proxmox LXC)
 #
 # Results go to Prometheus by remote write (the Grafana k6 dashboard, filtered by
 # the testid this prints), the summary to the terminal, and the summary JSON to
@@ -12,7 +12,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SCENARIO="${1:?usage: run.sh <smoke|load|stress|soak|respondent|pdf> [TARGET=local|lxc] [KEY=VALUE ...]}"
+SCENARIO="${1:?usage: run.sh <smoke|load|stress|soak|respondent|pdf|outage> [TARGET=local|lxc] [KEY=VALUE ...]}"
 shift
 [ -f "$ROOT/loadtest/k6/scenarios/${SCENARIO}.js" ] || {
   echo "no scenario loadtest/k6/scenarios/${SCENARIO}.js" >&2
@@ -84,7 +84,7 @@ run_lxc() {
   if [ "${#envs[@]}" -gt 0 ]; then k6_opts="$(printf '%q ' "${envs[@]}")"; fi
   GRAFANA="http://${monitor}:3000"
   PROMETHEUS="http://${monitor}:9090"
-  echo "==> ${TESTID}: ${SCENARIO} from saas-loadgen against saas-app"
+  echo "==> ${TESTID}: ${SCENARIO} from saas-loadgen through saas-gateway"
   # /root/k6.env (roles/loadgen) holds BASE_URL, OWNERS, the owner password and
   # the remote-write settings, so no secret is on this command line.
   "${ssh[@]}" "$tty" "set -a && . /root/k6.env && set +a && cd /root/k6 && \

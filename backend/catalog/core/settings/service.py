@@ -24,6 +24,7 @@ AUTH_USER_MODEL = "accounts.CustomUser"
 CACHE_GROUPS = frozenset({"type-list"})
 
 INSTANCES_CLIENT = "apps.catalog.instances_client.HttpInstances"
+METRICS_REFRESH = "apps.catalog.metrics.refresh"
 
 # ── Celery ─────────────────────────────────────────────────────────────────────
 # docker-compose publishes Redis on host port 6380 (6380:6379) to avoid

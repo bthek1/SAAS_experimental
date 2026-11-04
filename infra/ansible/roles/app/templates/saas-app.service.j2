@@ -1,6 +1,6 @@
 # {{ ansible_managed }} (infra/ansible/roles/app). #9, Phase 4.
 [Unit]
-Description=SAAS_experimental backend: gunicorn, core.settings.loadtest (#9)
+Description=SAAS_experimental {{ app_service }}: gunicorn, core.settings.loadtest (#9, #13)
 After=network-online.target
 Wants=network-online.target
 
@@ -9,9 +9,9 @@ User=app
 Group=app
 WorkingDirectory={{ app_dir }}
 EnvironmentFile={{ app_env_file }}
-# /run/saas-app/prometheus: gunicorn.conf.py empties it on start (multiprocess metrics).
-RuntimeDirectory=saas-app
-ExecStart={{ app_dir }}/.venv/bin/gunicorn --bind 0.0.0.0:{{ ports.gunicorn }} --workers {{ gunicorn_workers }} --worker-class gthread --threads {{ gunicorn_threads }} core.wsgi
+# /run/{{ app_unit }}/prometheus: gunicorn.conf.py empties it on start (multiprocess metrics).
+RuntimeDirectory={{ app_unit }}
+ExecStart={{ app_backend_dir }}/.venv/bin/gunicorn --bind 0.0.0.0:{{ ports.gunicorn }} --workers {{ gunicorn_workers }} --worker-class gthread --threads {{ gunicorn_threads }} core.wsgi
 Restart=on-failure
 KillMode=mixed
 TimeoutStopSec=20

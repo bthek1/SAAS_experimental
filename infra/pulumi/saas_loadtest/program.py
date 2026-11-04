@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import pulumi
 import pulumi_proxmoxve as proxmox
 import pulumi_random as random
+import pulumi_tls as tls
 
 from .topology import Guest, Network, build
 
@@ -47,7 +48,14 @@ def _password(name: str, length: int = 32) -> pulumi.Output:
 
 
 def generate_secrets() -> dict[str, pulumi.Output]:
+    # RS256: catalog holds both halves, and instances only the public one (#13).
+    jwt = tls.PrivateKey("jwt-key", algorithm="RSA", rsa_bits=2048)
     return {
+        "jwt_signing_key": jwt.private_key_pem,
+        "jwt_verifying_key": jwt.public_key_pem,
+        "catalog_to_instances_token": _password("catalog-to-instances-token", 48),
+        "instances_to_catalog_token": _password("instances-to-catalog-token", 48),
+        "instances_db_password": _password("instances-db-password"),
         "db_password": _password("db-password"),
         "django_secret_key": _password("django-secret-key", 64),
         "grafana_admin_password": _password("grafana-admin-password", 24),

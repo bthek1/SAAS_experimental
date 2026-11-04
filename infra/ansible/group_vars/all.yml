@@ -40,8 +40,11 @@ ports:
   redis_exporter: 9121
 
 # The app's database (on saas-db).
-db_name: appdb
+# The monolith's appdb stays on saas-db, unused, as a way back (#13).
+db_name: catalogdb
 db_user: appuser
+instances_db_name: instancesdb
+instances_db_user: instancesuser
 
 # nftables (roles/common): input is default-deny. Each rule opens one port to
 # a list of sources. SSH from the admin hosts is always open.

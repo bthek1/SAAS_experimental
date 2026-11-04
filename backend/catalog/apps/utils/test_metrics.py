@@ -7,7 +7,7 @@ URL = "/metrics"
 
 
 @pytest.fixture
-def client():
+def client(db):  # noqa: ARG001
     return Client()
 
 

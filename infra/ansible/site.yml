@@ -16,10 +16,32 @@
   roles:
     - {role: redis, tags: [cache]}
 
-- name: Backend (saas-app)
+# Instances first: catalog's seed pushes events to it.
+- name: Instances service (saas-instances)
+  hosts: instances
+  roles:
+    - {role: app, tags: [app, instances]}
+
+- name: Catalog service (saas-app)
   hosts: app
   roles:
-    - {role: app, tags: [app]}
+    - {role: app, tags: [app, catalog]}
+
+- name: Seed instances from the copies (saas-instances)
+  hosts: instances
+  tasks:
+    - name: Seed
+      ansible.builtin.include_role:
+        name: app
+        tasks_from: seed_instances.yml
+        apply:
+          tags: [app, instances]
+      tags: [app, instances]
+
+- name: Gateway (saas-gateway)
+  hosts: gateway
+  roles:
+    - {role: gateway, tags: [gateway]}
 
 - name: Prometheus + Grafana (saas-monitor)
   hosts: monitor
