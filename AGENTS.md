@@ -306,7 +306,8 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 **Utilities**
 - Dates: always through the `src/lib/date.ts` wrappers, never `date-fns` directly in components.
 - Charts: ECharts only, through the lazy-loaded `src/components/charts/EChart.tsx` wrapper (keep
-  it code-split). Do not add another chart library.
+  it code-split). Do not add another chart library. The one exception is
+  `public/loadtest-results.html`, a static file outside the bundle that draws plain inline SVG.
 - Markdown / LLM output: render with `src/components/Markdown.tsx`.
 - Surveys: render with `src/components/survey/SurveyRenderer.tsx`. It maps SurveyJS's CSS
   variables onto the shadcn tokens. Read a submitted response against its
@@ -404,7 +405,9 @@ since runs add data and change the numbers (it also empties the cache). Change o
 `just k6 stress TARGET=lxc STEP=10 MAX_RATE=500 START_RATE=150` skips the low rates, and to compare two
 configs, `just k6 load TARGET=lxc RATE=<fixed> HOLD=5m` on each, back to back, is quicker and less
 affected by run-to-run variation than comparing knees. Only compare runs with the same settings. Record each
-baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables).
+baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables), then add
+it to `frontend/public/loadtest-results.html` (the "Load tests" sidebar link), whose figures are
+copied by hand. Files in `public/` have no login, so keep LAN addresses and secrets out of it.
 Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_enabled` in
 `infra/ansible/group_vars/app.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
 

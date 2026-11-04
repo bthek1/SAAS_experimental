@@ -42,6 +42,12 @@ describe("SidebarNav", () => {
     const link = screen.getByTitle("Dashboard");
     expect(link).toBeInTheDocument();
   });
+
+  it("links to the static load test page with a plain href", () => {
+    render(<SidebarNav />);
+    const link = screen.getByText("Load tests").closest("a");
+    expect(link).toHaveAttribute("href", "/loadtest-results.html");
+  });
 });
 
 describe("Sidebar", () => {

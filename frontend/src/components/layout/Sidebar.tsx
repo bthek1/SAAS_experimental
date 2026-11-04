@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui";
-import { navItems } from "./navItems";
+import { navItems, staticNavItems } from "./navItems";
 
 export function SidebarNav({
   collapsed = false,
@@ -36,6 +36,22 @@ export function SidebarNav({
           </Link>
         );
       })}
+      {staticNavItems.map((item) => (
+        <a
+          key={item.href}
+          href={item.href}
+          onClick={onNavigate}
+          title={collapsed ? item.label : undefined}
+          className={cn(
+            "flex items-center rounded-md text-sm transition-colors",
+            "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+            collapsed ? "justify-center p-2" : "gap-3 px-3 py-2",
+          )}
+        >
+          <item.icon className="h-5 w-5 shrink-0" />
+          {!collapsed && <span>{item.label}</span>}
+        </a>
+      ))}
     </nav>
   );
 }
