@@ -1,29 +1,14 @@
-import uuid
-
 import pytest
 from django.db.models import RestrictedError
 
 from . import services
+from .catalog_port import BatteryType, QuestionnaireType
 from .factories import (
     BatteryTypeFactory,
     QuestionnaireFactory,
     QuestionnaireTypeFactory,
 )
-from .models import Battery, BatteryType, Questionnaire, QuestionnaireType
-
-
-@pytest.mark.django_db
-class TestQuestionnaireType:
-    def test_id_is_uuid(self, qtype):
-        assert isinstance(qtype.id, uuid.UUID)
-
-    def test_str_is_title(self, qtype):
-        assert str(qtype) == qtype.title
-
-    def test_ordering_newest_first(self, user):
-        first = QuestionnaireTypeFactory(owner=user)
-        second = QuestionnaireTypeFactory(owner=user)
-        assert list(QuestionnaireType.objects.all()) == [second, first]
+from .models import Battery, Questionnaire
 
 
 @pytest.mark.django_db

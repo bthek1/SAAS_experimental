@@ -1,35 +1,17 @@
-from collections.abc import Sequence
 from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import APIException
 
-from .models import (
-    Battery,
-    BatteryType,
-    BatteryTypeItem,
-    Questionnaire,
-    QuestionnaireType,
-)
+from .catalog_port import BatteryType
+from .models import Battery, Questionnaire
 
 
 class AlreadySubmitted(APIException):
     status_code = 409
     default_detail = "Already submitted."
     default_code = "already_submitted"
-
-
-def set_battery_type_items(
-    battery_type: BatteryType, questionnaire_types: Sequence[QuestionnaireType]
-) -> None:
-    """Replace the battery type's ordered list of questionnaire types."""
-    with transaction.atomic():
-        battery_type.items.all().delete()
-        BatteryTypeItem.objects.bulk_create(
-            BatteryTypeItem(battery_type=battery_type, questionnaire_type=qt, order=i)
-            for i, qt in enumerate(questionnaire_types)
-        )
 
 
 @transaction.atomic

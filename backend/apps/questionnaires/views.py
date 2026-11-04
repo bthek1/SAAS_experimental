@@ -2,41 +2,38 @@ import json
 import re
 from datetime import UTC
 
-from django.db.models import Prefetch, RestrictedError
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import AllowAny
 from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.utils.cache import bump_owner_generation, cached
+from apps.utils.cache import cached
+from apps.utils.owned import OwnedModelViewSet
 
 from . import dashboard, services
-from .models import Battery, BatteryType, Questionnaire, QuestionnaireType
+from .models import Battery, Questionnaire
 from .pdf import generate_response_pdf
 from .serializers import (
     BatterySerializer,
-    BatteryTypeSerializer,
     DashboardQuerySerializer,
     DashboardScoresQuerySerializer,
     PublicBatterySerializer,
     PublicQuestionnaireSerializer,
     QuestionnaireListQuerySerializer,
     QuestionnaireSerializer,
-    QuestionnaireTypeSerializer,
     SubmitSerializer,
 )
 
 # New questionnaires, batteries and submissions reach the dashboards within this.
 # Invalidating on them would leave little to hit under write-heavy traffic (#11).
 DASHBOARD_CACHE_SECONDS = 30
-# API writes invalidate these lists at once, so this only bounds admin edits.
-TYPE_LIST_CACHE_SECONDS = 5 * 60
 PDF_CACHE_SECONDS = 24 * 60 * 60
 PDF_CACHE_MAX_BYTES = 2 * 1024 * 1024
 # Bump when templates/questionnaires/response_pdf.html changes.
@@ -58,101 +55,6 @@ class PDFRenderer(BaseRenderer):
 
     def render(self, data, accepted_media_type=None, renderer_context=None):  # noqa: ARG002
         return data if isinstance(data, bytes) else json.dumps(data).encode()
-
-
-class InUse(APIException):
-    status_code = 409
-    default_detail = (
-        "This item is used by existing questionnaires or batteries "
-        "and cannot be deleted."
-    )
-    default_code = "in_use"
-
-
-class OwnedModelViewSet(viewsets.ModelViewSet):
-    """Scopes every query to the requesting user and sets `owner` on create."""
-
-    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
-    model: type = None  # type: ignore[assignment]
-
-    def get_queryset(self):
-        # Newest first, then id: bulk-created rows share a created_at, and a
-        # tie would let a row repeat or vanish between pages.
-        return self.model.objects.filter(owner=self.request.user).order_by(
-            "-created_at", "-id"
-        )
-
-    def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
-
-    def perform_destroy(self, instance):
-        try:
-            instance.delete()
-        except RestrictedError as exc:
-            raise InUse() from exc
-        # So a dashboard never links to a deleted row.
-        bump_owner_generation(self.request.user.pk)
-
-
-class CachedListViewSet(OwnedModelViewSet):
-    """Caches the paginated list body. Only a 200 is stored: a bad page raises."""
-
-    def list(self, request, *args, **kwargs):
-        list_page = super().list
-        return Response(
-            cached(
-                "type-list",
-                owner_id=request.user.pk,
-                params={
-                    "model": self.model.__name__,
-                    "page": request.query_params.get("page", "1"),
-                    "pageSize": self.paginator.get_page_size(request),
-                    # `next` and `previous` are absolute URLs.
-                    "scheme": request.scheme,
-                    "host": request.get_host(),
-                },
-                ttl=TYPE_LIST_CACHE_SECONDS,
-                compute=lambda: list_page(request, *args, **kwargs).data,
-            )
-        )
-
-
-class QuestionnaireTypeViewSet(CachedListViewSet):
-    model = QuestionnaireType
-    serializer_class = QuestionnaireTypeSerializer
-
-    def perform_create(self, serializer):
-        super().perform_create(serializer)
-        bump_owner_generation(self.request.user.pk)
-
-    def perform_update(self, serializer):
-        super().perform_update(serializer)
-        bump_owner_generation(self.request.user.pk)
-
-
-class BatteryTypeViewSet(CachedListViewSet):
-    model = BatteryType
-    serializer_class = BatteryTypeSerializer
-
-    def get_queryset(self):
-        return super().get_queryset().prefetch_related("items")
-
-    def perform_create(self, serializer):
-        questionnaire_types = serializer.validated_data.pop("questionnaireTypeIds", [])
-        battery_type = serializer.save(owner=self.request.user)
-        services.set_battery_type_items(battery_type, questionnaire_types)
-        bump_owner_generation(self.request.user.pk)
-
-    def perform_update(self, serializer):
-        questionnaire_types = serializer.validated_data.pop(
-            "questionnaireTypeIds", None
-        )
-        battery_type = serializer.save()
-        if questionnaire_types is not None:
-            services.set_battery_type_items(battery_type, questionnaire_types)
-        # After the items, so a reader cannot cache the old ones as current.
-        bump_owner_generation(self.request.user.pk)
-        # UpdateModelMixin clears the prefetched `items` before the response.
 
 
 class QuestionnaireViewSet(OwnedModelViewSet):

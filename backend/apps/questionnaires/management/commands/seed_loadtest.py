@@ -3,7 +3,8 @@ import os
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.questionnaires.seeding import owner_email, seed_loadtest
+from apps.questionnaires.catalog_port import owner_email
+from apps.questionnaires.seeding import seed_loadtest
 
 
 class Command(BaseCommand):

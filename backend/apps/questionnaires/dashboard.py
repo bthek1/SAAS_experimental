@@ -30,13 +30,8 @@ from django.db.models import (
 from django.db.models.functions import Coalesce, NullIf, TruncDate
 from django.utils import timezone
 
-from .models import (
-    Battery,
-    BatteryType,
-    BatteryTypeItem,
-    Questionnaire,
-    QuestionnaireType,
-)
+from .catalog_port import BatteryType, BatteryTypeItem, QuestionnaireType
+from .models import Battery, Questionnaire
 
 STALE_AFTER = timedelta(days=7)
 LIST_LIMIT = 10

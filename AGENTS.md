@@ -143,9 +143,13 @@ DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOS
 `base.py`.
 
 **Layout:** project package `core/` (settings, `celery.py`, `urls.py`), one app per domain under
-`apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`), `questionnaires`
-(user-owned questionnaire/battery types and instances, public share-link completion) and `utils`
-(health check and Celery task demo endpoints).
+`apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`), `catalog` (user-owned
+questionnaire and battery types), `questionnaires` (instances made from them, public share-link
+completion, dashboards, PDFs) and `utils` (health check, Celery task demo endpoints, shared cache
+and owner-scoping helpers).
+
+`questionnaires` reaches `catalog` only through `apps/questionnaires/catalog_port.py`, and `catalog`
+never imports `questionnaires` (#13, `tests/test_service_boundary.py`). Tests and factories are exempt.
 
 **Views and URLs**
 - All endpoints are under `/api/`.

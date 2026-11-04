@@ -14,48 +14,16 @@ import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from .models import (
-    Battery,
-    BatteryType,
-    BatteryTypeItem,
-    Questionnaire,
-    QuestionnaireType,
-)
+from .catalog_port import create_owner, owner_email, owner_exists, seed_owner_types
+from .models import Battery, Questionnaire
 
 SPAN_DAYS = 90
 SUBMITTED_SHARE = 0.7
-TYPES_PER_OWNER = 3
 BATTERY_SHARE = 0.2  # of each owner's questionnaires, two per battery
 SEVERITIES = ["Minimal", "Mild", "Moderate", "Severe"]
-
-
-def owner_email(n: int) -> str:
-    return f"loadtest-{n}@example.com"
-
-
-def scored_survey(title: str) -> dict:
-    """Two rating questions and the three metric kinds the dashboard reads."""
-    return {
-        "title": title,
-        "pages": [
-            {
-                "name": "page1",
-                "elements": [
-                    {"type": "rating", "name": "a", "title": "Item A"},
-                    {"type": "rating", "name": "b", "title": "Item B"},
-                ],
-            }
-        ],
-        "calculatedValues": [
-            {"name": "total", "title": "Total score", "expression": "{a} + {b}"},
-            {"name": "severity", "title": "Severity", "expression": "..."},
-            {"name": "flag", "title": "Flagged", "expression": "{a} > 4"},
-        ],
-    }
 
 
 def _response(rng: random.Random) -> tuple[dict, dict]:
@@ -89,35 +57,22 @@ def seed_loadtest(
 ) -> SeedResult:
     now = now or timezone.now()
     result = SeedResult()
-    user_model = get_user_model()
     for n in range(owners):
         email = owner_email(n)
-        if user_model.objects.filter(email=email).exists():
+        if owner_exists(email):
             result.owners_skipped += 1
             continue
         # One generator per owner, so adding owners never changes earlier ones.
         rng = random.Random(f"{seed}-{n}")  # noqa: S311 - test data, not security
         with transaction.atomic():
-            owner = user_model.objects.create_user(email=email, password=password)
+            owner = create_owner(email, password)
             _seed_owner(owner, questionnaires_per_owner, rng, now, result)
         result.owners_created += 1
     return result
 
 
 def _seed_owner(owner, count, rng, now, result) -> None:
-    types = QuestionnaireType.objects.bulk_create(
-        QuestionnaireType(
-            owner=owner,
-            title=f"Scale {i + 1}",
-            questionnaire_json=scored_survey(f"Scale {i + 1}"),
-        )
-        for i in range(TYPES_PER_OWNER)
-    )
-    battery_type = BatteryType.objects.create(owner=owner, title="Intake battery")
-    BatteryTypeItem.objects.bulk_create(
-        BatteryTypeItem(battery_type=battery_type, questionnaire_type=qt, order=i)
-        for i, qt in enumerate(types[:2])
-    )
+    types, battery_type = seed_owner_types(owner)
 
     def created_at() -> datetime:
         return now - timedelta(seconds=rng.uniform(0, SPAN_DAYS * 86400))
