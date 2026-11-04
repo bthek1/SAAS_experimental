@@ -1,7 +1,27 @@
 import { defineConfig, devices } from "@playwright/test";
-import { API_PORT, API_URL, WEB_PORT, WEB_URL } from "./e2e/integration/ports";
+import {
+  API_PORT,
+  API_URL,
+  CATALOG_PORT,
+  INSTANCES_PORT,
+  WEB_PORT,
+  WEB_URL,
+} from "./e2e/integration/ports";
 
-// Full-stack suite: a real Django backend with a fresh SQLite database per run.
+// Full-stack suite: both real Django services behind the gateway's dev router, each with a
+// fresh SQLite database per run.
+
+function service(name: string, port: number) {
+  return {
+    command:
+      `rm -f ${name}/e2e.sqlite3 && uv run python ${name}/manage.py migrate --noinput` +
+      ` && uv run python ${name}/manage.py runserver ${port} --noreload`,
+    cwd: "../backend",
+    env: { DJANGO_SETTINGS_MODULE: "core.settings.e2e" },
+    url: `http://localhost:${port}/internal/health/`,
+    reuseExistingServer: false,
+  };
+}
 
 // https://playwright.dev/docs/test-webserver#multiple-web-servers
 export default defineConfig({
@@ -18,12 +38,14 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   // Never reuse servers: a reused backend would carry data over from an earlier run.
   webServer: [
+    service("catalog", CATALOG_PORT),
+    service("instances", INSTANCES_PORT),
     {
+      // The gateway, from the same route table as nginx.
       command:
-        "rm -f e2e.sqlite3 && uv run python manage.py migrate --noinput" +
-        ` && uv run python manage.py runserver ${API_PORT} --noreload`,
-      cwd: "../backend",
-      env: { DJANGO_SETTINGS_MODULE: "core.settings.e2e" },
+        `python3 ../infra/gateway/dev_router.py --port ${API_PORT}` +
+        ` --service catalog=http://localhost:${CATALOG_PORT}` +
+        ` --service instances=http://localhost:${INSTANCES_PORT}`,
       url: `${API_URL}/api/health/`,
       reuseExistingServer: false,
     },

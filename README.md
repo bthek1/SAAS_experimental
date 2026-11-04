@@ -20,7 +20,8 @@ cp .env.example .env
 just up
 
 # 4. Run migrations (first time), in a second terminal
-just compose exec backend python manage.py migrate
+just compose exec catalog python manage.py migrate
+just compose exec instances python manage.py migrate
 ```
 
 `just compose <args>` runs any `docker compose` command against `infra/docker/docker-compose.yml`
@@ -31,10 +32,10 @@ compose file's folder, and create a separate set of containers and volumes.
 | Service | URL |
 |---------|-----|
 | Frontend | http://localhost:5174 |
-| Backend API | http://localhost:8005/api/ |
-| Django admin | http://localhost:8005/admin/ |
+| API (gateway) | http://localhost:8005/api/ |
+| Django admin | http://localhost:8005/admin/ (`catalog`), http://localhost:8005/instances-admin/ (`instances`, its own staff accounts) |
 | Health check | http://localhost:8005/api/health/ |
-| Flower (Celery UI) | http://localhost:5555 (`cd backend && uv run celery -A core flower --port=5555`) |
+| Flower (Celery UI) | http://localhost:5555 (`cd backend/catalog && uv run celery -A core flower --port=5555`) |
 
 ---
 
@@ -43,10 +44,10 @@ compose file's folder, and create a separate set of containers and volumes.
 ```bash
 cp .env.example .env
 just install            # uv sync + npm install
-just dev                # db + redis + celery in Docker, backend and frontend locally
+just dev                # dbs + redis + celery in Docker, services and frontend locally
 ```
 
-The backend runs on `:8005` and the frontend on `:5174`. Run `just --list` for every command.
+The API is on `:8005` through the gateway's dev router (`catalog` `:8006`, `instances` `:8007`), and the frontend on `:5174`. Run `just --list` for every command.
 
 PDF export (WeasyPrint) needs Pango and a font on the host. The Docker images already include
 them. On Debian/Ubuntu run `sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
@@ -56,7 +57,7 @@ fonts-dejavu-core`; on macOS run `brew install pango`. Without them, everything 
 ### Tests
 
 ```bash
-just be-test            # backend (pytest)
+just be-test            # backend: pytest for each service, then the repo-level checks
 just fe-test            # frontend unit and route tests (Vitest)
 
 cd frontend
@@ -222,18 +223,37 @@ own copy of each type (#13):
 - `manage.py reconcile_refs [--dry-run]` compares every copy with `catalog` and repairs differences.
   It lists any copy whose type is gone but which instances still use, and leaves those in place.
 
+### Moving a pre-split database
+
+A database from before #13 holds everything. It stays `catalog`'s, and instance rows are copied out:
+
+```bash
+cd backend
+uv run python catalog/manage.py adopt_monolith_db   # adds the new columns, safe to repeat
+uv run python catalog/manage.py migrate
+uv run python instances/manage.py migrate
+uv run python instances/manage.py import_from_monolith --source "$OLD_DATABASE_URL"
+uv run python instances/manage.py reconcile_refs --dry-run    # expect no differences, with both services up
+```
+
+`import_from_monolith` only reads the source, refuses a destination that already has rows, and fails if a
+row count differs. Afterwards the old `questionnaires_questionnaire` and `questionnaires_battery` tables are
+unused in `catalog`'s database. Dropping them is a separate, deliberate step: check the service first.
+`questionnaires_questionnairetype`, `questionnaires_batterytype` and `questionnaires_batterytypeitem` keep
+their names and belong to `catalog`, so never drop those.
+
 ## Project Structure
 
 ```
 /
-├── backend/          Django REST API
-│   ├── core/         Settings, URLs, WSGI
-│   ├── apps/         Domain applications
-│   │   ├── accounts/ User model (email-based), registration, JWT auth
-│   │   ├── questionnaires/ Questionnaire/battery types and instances, share-link completion
-│   │   └── utils/    Health check, Celery task demo endpoints
-│   ├── tests/        Repo-level tests (infra layout, k6 targets, observability config)
-│   └── manage.py
+├── backend/          uv workspace: one lock, a package per service
+│   ├── common/       Shared infrastructure: settings, cache, metrics, peer calls. No models.
+│   ├── catalog/      Service: manage.py, core/, apps/
+│   │   └── apps/     accounts (users, JWT), catalog (types, outbox), utils (health, Celery demo)
+│   ├── instances/    Service: manage.py, core/, apps/
+│   │   └── apps/     questionnaires (instances, share links, dashboards, PDFs, type copies)
+│   ├── contracts/    JSON shapes of /internal/ calls, tested by both services
+│   └── tests/        Repo-level tests (service boundary, gateway, infra layout, k6 targets)
 ├── frontend/         React SPA
 │   ├── e2e/          Playwright end-to-end specs
 │   └── src/
@@ -245,7 +265,8 @@ own copy of each type (#13):
 │       ├── schemas/  Zod validation schemas
 │       ├── store/    Zustand global state slices
 │       └── types/    TypeScript types from API contracts
-├── infra/docker/     Dockerfiles + compose files (dev stack, prod backend, load-test stack)
+├── infra/docker/     Dockerfiles + compose files (dev stack, prod services, load-test stack)
+├── infra/gateway/    routes.json, the only route table; generated nginx.conf; dev router
 ├── infra/observability/  Prometheus config + rules, Grafana provisioning and generated dashboards
 ├── infra/pulumi/     Pulumi program: the load-test LXC containers on Proxmox (#9)
 ├── infra/ansible/    Ansible: configures those containers (just converge)
@@ -264,7 +285,7 @@ own copy of each type (#13):
 | Auth | JWT (`djangorestframework-simplejwt`) |
 | Database | PostgreSQL 16 |
 | Async tasks | Celery + Redis (`django-celery-results`, `django-celery-beat`) |
-| Cache | Redis, through Django's cache framework and `apps/utils/cache.py` |
+| Cache | Redis, through Django's cache framework and `common/cache.py` |
 | Dependency manager | [uv](https://github.com/astral-sh/uv) |
 | Frontend language | TypeScript |
 | Frontend bundler | Vite |

@@ -1,12 +1,18 @@
 services:
-  web:
+  gateway:
     build:
-      context: ../../backend
-      dockerfile: ../infra/docker/backend.prod.Dockerfile
-    volumes:
-      - ../../backend:/app
+      context: ../gateway
+      dockerfile: ../docker/gateway.Dockerfile
     ports:
       - "8000:8000"
+    depends_on:
+      - catalog
+      - instances
+
+  catalog:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/catalog.prod.Dockerfile
     depends_on:
       - db
       - redis
@@ -16,7 +22,48 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: core.settings.dev
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CACHE_REDIS_URL: redis://redis:6379/1
+      CATALOG_INTERNAL_URL: http://catalog:8000
+      INSTANCES_INTERNAL_URL: http://instances:8000
+
+  instances:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/instances.prod.Dockerfile
+    depends_on:
+      - instances_db
+      - redis
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.dev
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
+      CACHE_REDIS_URL: redis://redis:6379/1
+      CATALOG_INTERNAL_URL: http://catalog:8000
+      INSTANCES_INTERNAL_URL: http://instances:8000
+      JWT_SIGNING_KEY: ""
+
+  relay_outbox:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/catalog.prod.Dockerfile
+    command: ["python", "manage.py", "relay_outbox"]
+    depends_on:
+      - db
+      - instances
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.dev
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
+      CACHE_REDIS_URL: redis://redis:6379/1
+      CATALOG_INTERNAL_URL: http://catalog:8000
+      INSTANCES_INTERNAL_URL: http://instances:8000
 
   # Cache only. Eviction is per instance and could drop queued tasks, so a Celery
   # broker gets its own Redis. Not published: see docker-compose.yml.
@@ -40,5 +87,15 @@ services:
     ports:
       - "5432:5432"
 
+  instances_db:
+    image: postgres:16
+    volumes:
+      - instances_postgres_data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_DB: instancesdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+
 volumes:
   postgres_data:
+  instances_postgres_data:

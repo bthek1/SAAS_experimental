@@ -2,9 +2,10 @@
 # `just k6 <scenario>` and `just loadtest-down`, which pass `--env-file .env` and
 # `-p <repo-dir-name>-loadtest`, so nothing here touches the dev stack's containers or volumes.
 #
-# backend: the prod image under gunicorn with core.settings.loadtest, so k6 measures
-# production code, not runserver. Prometheus scrapes its /metrics and receives k6's results
-# by remote write. Grafana shows both. Every host port is bound to 127.0.0.1.
+# catalog and instances: the prod images under gunicorn with core.settings.loadtest, behind the
+# gateway, so k6 measures production code, not runserver. Prometheus scrapes each service's
+# /metrics directly and receives k6's results by remote write. Grafana shows both. Every host
+# port is bound to 127.0.0.1. Needs JWT_SIGNING_KEY and JWT_VERIFYING_KEY in .env.
 services:
   db:
     image: postgres:16
@@ -16,6 +17,20 @@ services:
       - loadtest_postgres:/var/lib/postgresql/data/
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "appuser", "-d", "appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  instances_db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: instancesdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    volumes:
+      - loadtest_instances_postgres:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "appuser", "-d", "instancesdb"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -37,16 +52,16 @@ services:
     depends_on:
       - redis
 
-  backend:
+  catalog:
     build:
       context: ../../backend
-      dockerfile: ../infra/docker/backend.prod.Dockerfile
-    # gunicorn reads backend/gunicorn.conf.py (multiprocess metrics); flags win over it.
+      dockerfile: ../infra/docker/catalog.prod.Dockerfile
+    # gunicorn reads gunicorn.conf.py (multiprocess metrics); flags win over it.
+    # adopt_monolith_db does nothing unless this volume predates the split (#13).
     command: >-
-      sh -c "python manage.py migrate --noinput
+      sh -c "python manage.py adopt_monolith_db
+      && python manage.py migrate --noinput
       && exec gunicorn --bind :8000 --workers ${LOADTEST_WORKERS:-2} core.wsgi"
-    ports:
-      - "127.0.0.1:8095:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -58,10 +73,14 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: core.settings.loadtest
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CACHE_REDIS_URL: redis://redis:6379/1
-      # api.loadtest.internal is the network alias k6 and Prometheus use: private by name,
-      # which core.settings.loadtest requires of every ALLOWED_HOSTS entry.
-      ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal
+      # The names here are private by suffix, which core.settings.loadtest requires of every entry.
+      ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal,catalog.loadtest.internal,instances.loadtest.internal
+      CATALOG_INTERNAL_URL: http://catalog.loadtest.internal:8000
+      INSTANCES_INTERNAL_URL: http://instances.loadtest.internal:8000
+      CATALOG_TO_INSTANCES_TOKEN: ${CATALOG_TO_INSTANCES_TOKEN:-loadtest-local-catalog-to-instances}
+      INSTANCES_TO_CATALOG_TOKEN: ${INSTANCES_TO_CATALOG_TOKEN:-loadtest-local-instances-to-catalog}
       # Prometheus alone (its fixed address below), not the whole subnet: published ports
       # arrive from the subnet's gateway, so a subnet-wide rule would admit the host too.
       METRICS_ALLOWED_CIDRS: 10.95.0.10/32
@@ -72,13 +91,112 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/internal/health/')"
       interval: 5s
       timeout: 3s
       retries: 20
     networks:
       default:
         aliases:
+          - catalog.loadtest.internal
+
+  instances:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/instances.prod.Dockerfile
+    command: >-
+      sh -c "python manage.py migrate --noinput
+      && exec gunicorn --bind :8000 --workers ${LOADTEST_WORKERS:-2} core.wsgi"
+    depends_on:
+      instances_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.loadtest
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
+      CACHE_REDIS_URL: redis://redis:6379/1
+      # The names here are private by suffix, which core.settings.loadtest requires of every entry.
+      ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal,catalog.loadtest.internal,instances.loadtest.internal
+      CATALOG_INTERNAL_URL: http://catalog.loadtest.internal:8000
+      INSTANCES_INTERNAL_URL: http://instances.loadtest.internal:8000
+      CATALOG_TO_INSTANCES_TOKEN: ${CATALOG_TO_INSTANCES_TOKEN:-loadtest-local-catalog-to-instances}
+      INSTANCES_TO_CATALOG_TOKEN: ${INSTANCES_TO_CATALOG_TOKEN:-loadtest-local-instances-to-catalog}
+      # Prometheus alone (its fixed address below), not the whole subnet: published ports
+      # arrive from the subnet's gateway, so a subnet-wide rule would admit the host too.
+      METRICS_ALLOWED_CIDRS: 10.95.0.10/32
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus-multiproc
+      LOADTEST_OWNER_PASSWORD: ${LOADTEST_OWNER_PASSWORD:-loadtest-local-only}
+      # Withheld even if .env sets it: this service verifies tokens and never mints them.
+      JWT_SIGNING_KEY: ""
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/internal/health/')"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      default:
+        aliases:
+          - instances.loadtest.internal
+
+  relay_outbox:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/catalog.prod.Dockerfile
+    command: ["python", "manage.py", "relay_outbox"]
+    depends_on:
+      catalog:
+        condition: service_healthy
+      instances:
+        condition: service_healthy
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.loadtest
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
+      CACHE_REDIS_URL: redis://redis:6379/1
+      # The names here are private by suffix, which core.settings.loadtest requires of every entry.
+      ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal,catalog.loadtest.internal,instances.loadtest.internal
+      CATALOG_INTERNAL_URL: http://catalog.loadtest.internal:8000
+      INSTANCES_INTERNAL_URL: http://instances.loadtest.internal:8000
+      CATALOG_TO_INSTANCES_TOKEN: ${CATALOG_TO_INSTANCES_TOKEN:-loadtest-local-catalog-to-instances}
+      INSTANCES_TO_CATALOG_TOKEN: ${INSTANCES_TO_CATALOG_TOKEN:-loadtest-local-instances-to-catalog}
+      # Prometheus alone (its fixed address below), not the whole subnet: published ports
+      # arrive from the subnet's gateway, so a subnet-wide rule would admit the host too.
+      METRICS_ALLOWED_CIDRS: 10.95.0.10/32
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus-multiproc
+      LOADTEST_OWNER_PASSWORD: ${LOADTEST_OWNER_PASSWORD:-loadtest-local-only}
+
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: ../docker/gateway.Dockerfile
+    ports:
+      - "127.0.0.1:8095:8000"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      instances:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8000/api/health/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      default:
+        aliases:
+          # What k6 targets. Private by name.
           - api.loadtest.internal
 
   prometheus:
@@ -132,7 +250,7 @@ services:
       K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM: "true"
       K6_PROMETHEUS_RW_PUSH_INTERVAL: 5s
     depends_on:
-      backend:
+      gateway:
         condition: service_healthy
 
 networks:
@@ -144,5 +262,6 @@ networks:
 
 volumes:
   loadtest_postgres:
+  loadtest_instances_postgres:
   loadtest_prometheus:
   loadtest_grafana:

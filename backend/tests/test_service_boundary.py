@@ -1,97 +1,94 @@
-"""The import boundary between `catalog` and `questionnaires` (#13).
-
-Tests, factories and conftest files are exempt: they sit outside the runtime
-dependency the split has to break.
-"""
+"""The boundaries between the services and `common` (#13)."""
 
 import ast
 from pathlib import Path
 
 import pytest
 
-APPS = Path(__file__).resolve().parent.parent / "apps"
-PORT = "catalog_port.py"
+BACKEND = Path(__file__).resolve().parent.parent
+CATALOG = BACKEND / "catalog"
+INSTANCES = BACKEND / "instances"
+COMMON = BACKEND / "common" / "common"
+
+CATALOG_ONLY = ("apps.catalog", "apps.accounts", "apps.utils")
+INSTANCES_ONLY = ("apps.questionnaires",)
 
 
-def imported_modules(source: str, package: str) -> set[str]:
-    """Absolute dotted names of everything `source` imports, from `package`."""
+def imported_modules(source: str) -> set[str]:
     modules: set[str] = set()
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
+        elif isinstance(node, ast.ImportFrom) and not node.level:
             base = node.module or ""
-            if node.level:
-                parents = package.split(".")[: -(node.level - 1) or None]
-                base = ".".join([*parents, base]) if base else ".".join(parents)
             modules.add(base)
             modules.update(f"{base}.{alias.name}" for alias in node.names)
     return modules
 
 
-def imports_app(source: str, package: str, app: str) -> bool:
-    target = f"apps.{app}"
+def imports_any(source: str, targets: tuple[str, ...]) -> bool:
     return any(
         module == target or module.startswith(f"{target}.")
-        for module in imported_modules(source, package)
+        for module in imported_modules(source)
+        for target in targets
     )
 
 
-def runtime_modules(app: str):
-    for path in sorted((APPS / app).rglob("*.py")):
-        name = path.name
-        if name.startswith("test_") or name in {"factories.py", "conftest.py"}:
-            continue
-        if "migrations" in path.parts:
-            continue
-        package = ".".join(path.relative_to(APPS.parent).parent.parts)
-        yield path, package
-
-
-def violations(importer: str, imported: str, allowed: frozenset[str] = frozenset()):
+def python_files(root: Path) -> list[Path]:
     return [
-        str(path.relative_to(APPS.parent))
-        for path, package in runtime_modules(importer)
-        if path.name not in allowed and imports_app(path.read_text(), package, imported)
+        path
+        for path in sorted(root.rglob("*.py"))
+        if "migrations" not in path.parts and ".venv" not in path.parts
     ]
 
 
-def test_instances_reach_catalog_only_through_the_port():
-    assert violations("questionnaires", "catalog", frozenset({PORT})) == []
+def offenders(root: Path, targets: tuple[str, ...]) -> list[str]:
+    return [
+        str(path.relative_to(BACKEND))
+        for path in python_files(root)
+        if imports_any(path.read_text(), targets)
+    ]
 
 
-def test_catalog_never_imports_instances():
-    assert violations("catalog", "questionnaires") == []
+def test_no_import_between_services():
+    # Tests too: the two `apps` packages never exist in one process.
+    assert offenders(INSTANCES, CATALOG_ONLY) == []
+    assert offenders(CATALOG, INSTANCES_ONLY) == []
 
 
-@pytest.mark.parametrize(
-    ("source", "package"),
-    [
-        ("from apps.catalog.models import QuestionnaireType", "apps.questionnaires"),
-        ("import apps.catalog.models", "apps.questionnaires"),
-        ("from apps import catalog", "apps.questionnaires"),
-        ("from ..catalog import models", "apps.questionnaires"),
-    ],
-)
-def test_the_check_catches_a_forbidden_import(source, package):
-    assert imports_app(source, package, "catalog")
+def test_common_imports_no_service():
+    assert offenders(COMMON, ("apps", "core", *CATALOG_ONLY, *INSTANCES_ONLY)) == []
 
 
-def test_the_check_allows_unrelated_imports():
-    source = (
-        "from .catalog_port import BatteryType\nfrom apps.utils.cache import cached"
-    )
-    assert not imports_app(source, "apps.questionnaires", "catalog")
+def test_common_has_no_models():
+    assert not (COMMON / "models.py").exists()
+    for path in python_files(COMMON):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.ClassDef):
+                bases = [ast.unparse(base) for base in node.bases]
+                assert "models.Model" not in bases, f"{path}: {node.name}"
 
 
 def test_instances_never_call_get_user_model():
-    offenders = []
-    for path, package in runtime_modules("questionnaires"):
+    found = []
+    for path in python_files(INSTANCES):
         source = path.read_text()
-        if (
-            "get_user_model" in source
-            or "AUTH_USER_MODEL" in source
-            or imports_app(source, package, "accounts")
-        ):
-            offenders.append(str(path.relative_to(APPS.parent)))
-    assert offenders == []
+        if "get_user_model" in source or "AUTH_USER_MODEL" in source:
+            found.append(str(path.relative_to(BACKEND)))
+    assert found == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from apps.catalog.models import QuestionnaireType",
+        "import apps.catalog.models",
+        "from apps import catalog",
+    ],
+)
+def test_the_check_catches_a_forbidden_import(source):
+    assert imports_any(source, CATALOG_ONLY)
+
+
+def test_the_check_allows_unrelated_imports():
+    assert not imports_any("from common.cache import cached", CATALOG_ONLY)

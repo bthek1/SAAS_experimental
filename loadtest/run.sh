@@ -41,8 +41,8 @@ run_local() {
   local project lt leftover tty=() quiet=()
   project="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]')-loadtest"
   lt=(docker compose --env-file "$ROOT/.env" -f "$ROOT/infra/docker/docker-compose.loadtest.yml" -p "$project")
-  "${lt[@]}" ps --status running backend | grep -q backend || {
-    echo "the load-test backend is not running: just loadtest-up" >&2
+  "${lt[@]}" ps --status running gateway | grep -q gateway || {
+    echo "the load-test stack is not running: just loadtest-up" >&2
     exit 1
   }
   # Two k6 runs at once would load the backend together and skew both. A run

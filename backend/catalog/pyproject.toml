@@ -1,0 +1,33 @@
+[project]
+name = "catalog"
+version = "0.1.0"
+description = "Owns questionnaire and battery types, and accounts"
+requires-python = ">=3.14"
+dependencies = [
+  "common",
+  "celery[redis] ~=5.6",
+  "django-celery-results>=2.6.0",
+  "django-celery-beat>=2.9.0",
+]
+
+# Not installed as a package: `core` and `apps` exist in both services, and resolve
+# from the working directory (manage.py, gunicorn) or `pythonpath` below (pytest).
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+common = { workspace = true }
+
+[tool.pytest.ini_options]
+addopts = "--tb=short --show-capture=no -ra --ds=core.settings.test"
+pythonpath = ["."]
+python_files = ["test_*.py", "tests.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["apps"]
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "integration: marks tests as integration tests requiring external APIs",
+  "development: marks tests that only run with development settings",
+]

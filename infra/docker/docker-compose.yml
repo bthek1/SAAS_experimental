@@ -24,15 +24,27 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
 
-  backend:
+  # This database holds only what instances owns. `db` above is catalog's.
+  instances_db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: instancesdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+    ports:
+      - "5437:5432"
+    volumes:
+      - instances_postgres_data:/var/lib/postgresql/data/
+
+  catalog:
     build:
       context: ../../backend
-      dockerfile: ../infra/docker/backend.Dockerfile
-    command: python manage.py runserver 0.0.0.0:8005
+      dockerfile: ../infra/docker/catalog.Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ../../backend:/app
     ports:
-      - "8005:8005"
+      - "8006:8000"
     depends_on:
       - db
       - redis
@@ -41,13 +53,73 @@ services:
         required: false
     environment:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CELERY_BROKER_URL: redis://redis:6379/0
       CACHE_REDIS_URL: redis://redis:6379/1
+      CATALOG_INTERNAL_URL: http://catalog:8000
+      INSTANCES_INTERNAL_URL: http://instances:8000
+
+  instances:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/instances.Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ../../backend:/app
+    ports:
+      - "8007:8000"
+    depends_on:
+      - instances_db
+      - redis
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: redis://redis:6379/1
+      CATALOG_INTERNAL_URL: http://catalog:8000
+      INSTANCES_INTERNAL_URL: http://instances:8000
+      # Withheld even if .env sets it: this service verifies tokens and never mints them.
+      JWT_SIGNING_KEY: ""
+
+  # Retries type and user events that the immediate push could not deliver.
+  relay_outbox:
+    build:
+      context: ../../backend
+      dockerfile: ../infra/docker/catalog.Dockerfile
+    command: python manage.py relay_outbox
+    volumes:
+      - ../../backend:/app
+    depends_on:
+      - db
+      - instances
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: redis://redis:6379/1
+      CATALOG_INTERNAL_URL: http://catalog:8000
+      INSTANCES_INTERNAL_URL: http://instances:8000
+
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: ../docker/gateway.Dockerfile
+    ports:
+      - "8005:8000"
+    depends_on:
+      - catalog
+      - instances
 
   celery_worker:
     build:
       context: ../../backend
-      dockerfile: ../infra/docker/backend.Dockerfile
+      dockerfile: ../infra/docker/catalog.Dockerfile
     command: celery -A core worker --loglevel=info --concurrency=2
     volumes:
       - ../../backend:/app
@@ -64,12 +136,12 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CACHE_REDIS_URL: redis://redis:6379/1
       # Results go to the Django DB backend (see CELERY_RESULT_BACKEND in
-      # core/settings/base.py) so the task-status API and admin can read them.
+      # core/settings/service.py) so the task-status API and admin can read them.
 
   celery_beat:
     build:
       context: ../../backend
-      dockerfile: ../infra/docker/backend.Dockerfile
+      dockerfile: ../infra/docker/catalog.Dockerfile
     command: celery -A core beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - ../../backend:/app
@@ -83,7 +155,7 @@ services:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       CELERY_BROKER_URL: redis://redis:6379/0
       # Results go to the Django DB backend (see CELERY_RESULT_BACKEND in
-      # core/settings/base.py) so the task-status API and admin can read them.
+      # core/settings/service.py) so the task-status API and admin can read them.
 
   frontend:
     build:
@@ -103,3 +175,4 @@ services:
 
 volumes:
   postgres_data:
+  instances_postgres_data:

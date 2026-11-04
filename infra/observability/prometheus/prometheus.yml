@@ -12,12 +12,18 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # /metrics answers only peers in METRICS_ALLOWED_CIDRS (the compose subnet).
+  # Each service directly: the gateway never routes /metrics. It answers only peers in
+  # METRICS_ALLOWED_CIDRS (Prometheus's fixed address).
   - job_name: django
     static_configs:
-      - targets: ["api.loadtest.internal:8000"]
+      - targets: ["catalog.loadtest.internal:8000"]
         labels:
-          instance: backend
+          instance: catalog
+          service: catalog
+      - targets: ["instances.loadtest.internal:8000"]
+        labels:
+          instance: instances
+          service: instances
 
   - job_name: redis
     static_configs:

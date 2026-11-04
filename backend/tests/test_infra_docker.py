@@ -23,8 +23,16 @@ LOADTEST_COMPOSE = DOCKER_DIR / "docker-compose.loadtest.yml"
 COMPOSE_FILES = [DEV_COMPOSE, PROD_COMPOSE, LOADTEST_COMPOSE]
 
 # Host ports documented in AGENTS.md ("Local services and ports").
-DEV_HOST_PORTS = {"db": "5435", "redis": "6380", "backend": "8005", "frontend": "5174"}
-LOADTEST_HOST_PORTS = {"backend": "8095", "prometheus": "9095", "grafana": "3005"}
+DEV_HOST_PORTS = {
+    "db": "5435",
+    "instances_db": "5437",
+    "redis": "6380",
+    "gateway": "8005",
+    "catalog": "8006",
+    "instances": "8007",
+    "frontend": "5174",
+}
+LOADTEST_HOST_PORTS = {"gateway": "8095", "prometheus": "9095", "grafana": "3005"}
 
 # Folders that never hold project files.
 SKIP_DIRS = {
@@ -193,13 +201,33 @@ def test_loadtest_host_ports_match_docs_and_stay_on_loopback() -> None:
 
 
 @requires_docker
-def test_loadtest_backend_runs_the_loadtest_settings_under_gunicorn() -> None:
-    backend = _compose_config(LOADTEST_COMPOSE)["services"]["backend"]
-    assert backend["build"]["dockerfile"].endswith("backend.prod.Dockerfile")
-    assert backend["environment"]["DJANGO_SETTINGS_MODULE"] == "core.settings.loadtest"
-    assert "gunicorn" in " ".join(backend["command"])
-    assert backend["environment"]["PROMETHEUS_MULTIPROC_DIR"]
-    assert backend["environment"]["METRICS_ALLOWED_CIDRS"].endswith("/32")
+@pytest.mark.parametrize("name", ["catalog", "instances"])
+def test_loadtest_services_run_the_loadtest_settings_under_gunicorn(name: str) -> None:
+    service = _compose_config(LOADTEST_COMPOSE)["services"][name]
+    assert service["build"]["dockerfile"].endswith(f"{name}.prod.Dockerfile")
+    assert service["environment"]["DJANGO_SETTINGS_MODULE"] == "core.settings.loadtest"
+    assert "gunicorn" in " ".join(service["command"])
+    assert service["environment"]["PROMETHEUS_MULTIPROC_DIR"]
+    assert service["environment"]["METRICS_ALLOWED_CIDRS"].endswith("/32")
+
+
+@requires_docker
+@pytest.mark.parametrize("compose_file", COMPOSE_FILES, ids=lambda p: p.name)
+def test_instances_never_get_the_signing_key(compose_file: Path) -> None:
+    # An env_file may set it, so it has to be blanked explicitly.
+    instances = _compose_config(compose_file)["services"]["instances"]
+    assert instances["environment"]["JWT_SIGNING_KEY"] == ""
+
+
+@requires_docker
+@pytest.mark.parametrize("compose_file", COMPOSE_FILES, ids=lambda p: p.name)
+def test_each_service_has_its_own_database(compose_file: Path) -> None:
+    services = _compose_config(compose_file)["services"]
+    assert "@db:" in services["catalog"]["environment"]["DATABASE_URL"]
+    assert (
+        "@instances_db:"
+        in (services["instances"]["environment"]["INSTANCES_DATABASE_URL"])
+    )
 
 
 @requires_docker
@@ -221,8 +249,9 @@ def test_cache_redis_has_eviction_and_no_persistence(compose_file: Path) -> None
     assert command[command.index("--appendonly") + 1] == "no"
     assert not redis.get("ports"), "the cache Redis must not be published"
     assert re.fullmatch(r"redis:\d+\.\d+\.\d+-alpine", redis["image"])
-    backend = services.get("backend") or services["web"]
-    assert backend["environment"]["CACHE_REDIS_URL"].startswith("redis://redis:6379/")
+    for name in ("catalog", "instances"):
+        url = services[name]["environment"]["CACHE_REDIS_URL"]
+        assert url.startswith("redis://redis:6379/")
 
 
 WEASYPRINT_PACKAGES = (
@@ -234,10 +263,18 @@ WEASYPRINT_PACKAGES = (
 
 
 @pytest.mark.parametrize(
-    "dockerfile", ["backend.Dockerfile", "backend.prod.Dockerfile"]
+    "dockerfile", ["instances.Dockerfile", "instances.prod.Dockerfile"]
 )
-def test_backend_images_install_weasyprint_libs(dockerfile: str) -> None:
+def test_instances_images_install_weasyprint_libs(dockerfile: str) -> None:
     # PDF export (apps/questionnaires/pdf.py) needs Pango and a font at runtime.
     text = (DOCKER_DIR / dockerfile).read_text()
     for package in WEASYPRINT_PACKAGES:
         assert package in text, f"{dockerfile} does not install {package}"
+
+
+@pytest.mark.parametrize(
+    "dockerfile", ["catalog.Dockerfile", "catalog.prod.Dockerfile"]
+)
+def test_catalog_images_leave_weasyprint_out(dockerfile: str) -> None:
+    text = (DOCKER_DIR / dockerfile).read_text()
+    assert not any(package in text for package in WEASYPRINT_PACKAGES)

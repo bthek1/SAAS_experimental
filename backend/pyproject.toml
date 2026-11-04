@@ -3,36 +3,21 @@ name = "saas-experimental"
 version = "0.1.0"
 description = "SAAS_experimental: Django REST Framework + React"
 authors = [{ name = "Benedict Thekkel", email = "bthekkel1@gmail.com" }]
-readme = "README.md"
 requires-python = ">=3.14"
-dependencies = [
-  "django ~=6.0",
-  "djangorestframework ~=3.18",
-  "djangorestframework-simplejwt ~=5.5",
-  "django-cors-headers ~=4.9",
-  "django-environ ~=0.14",
-  "gunicorn ~=26.2",
-  "psycopg[binary] ~=3.3",
-  "celery[redis] ~=5.6",
-  "django-celery-results>=2.6.0",
-  "django-celery-beat>=2.9.0",
-  "weasyprint>=70.0",
-  "django-prometheus ~=2.5",
-  "redis~=6.4",
-  "tzdata>=2025.1",
-  "cryptography>=45",
-]
+# Installs every service into one dev environment. Images install one service each:
+# `uv sync --package catalog`.
+dependencies = ["catalog", "instances", "common"]
 
-[build-system]
-requires = ["setuptools>=80.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+[tool.uv]
+package = false
 
-[tool.setuptools]
-packages = ["core", "apps"]
+[tool.uv.workspace]
+members = ["common", "catalog", "instances"]
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
+[tool.uv.sources]
+catalog = { workspace = true }
+instances = { workspace = true }
+common = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -51,24 +36,14 @@ dev = [
 ]
 
 
-[tool.pytest.ini_options]
-log_cli = false
-log_cli_level = "INFO"
-# --ds beats a DJANGO_SETTINGS_MODULE env var (the root .env sets it to dev); the ini key does not.
-addopts = "--tb=short --show-capture=no -ra --ds=core.settings.test"
-DJANGO_SETTINGS_MODULE = "core.settings.test"
-python_files = ["*test*.py", "tests/*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-testpaths = ["apps", "tests"]
-console_output_style = "progress"
-filterwarnings = ["ignore::DeprecationWarning"]
-markers = [
-  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-  "integration: marks tests as integration tests requiring external APIs",
-  "development: marks tests that only run with development settings",
-]
 
+# Repo-level checks only, with no Django. Each service has its own config, so run
+# `uv run pytest catalog`, `uv run pytest instances` and `uv run pytest tests`.
+[tool.pytest.ini_options]
+addopts = "--tb=short --show-capture=no -ra -p no:django"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.ruff]
 line-length = 88
@@ -132,7 +107,7 @@ max-complexity = 10
 [tool.ruff.lint.per-file-ignores]
 "*/tests/*" = ["S101", "ARG", "PLR2004"]
 "*/migrations/*" = ["ALL"]
-"manage.py" = ["T20"]
+"**/manage.py" = ["T20"]
 "*/settings/*" = ["F405", "F403"]
 
 
