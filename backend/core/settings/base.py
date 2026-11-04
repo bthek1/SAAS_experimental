@@ -161,3 +161,8 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# ─── Service boundary (#13) ───────────────────────────────────────────────────
+# How catalog and instances reach each other. See apps/utils/peers.py.
+INSTANCES_CLIENT = "core.wiring.InProcessInstances"
+CATALOG_CLIENT = "core.wiring.InProcessCatalog"

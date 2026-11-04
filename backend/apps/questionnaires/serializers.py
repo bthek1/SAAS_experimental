@@ -4,8 +4,42 @@ from rest_framework import serializers
 
 from apps.utils.owned import OwnedPrimaryKeyRelatedField
 
-from .catalog_port import BatteryType, QuestionnaireType, QuestionnaireTypeSerializer
-from .models import Battery, Questionnaire
+from . import refs
+from .models import Battery, BatteryTypeRef, Questionnaire, QuestionnaireTypeRef
+
+
+class OwnedRefField(OwnedPrimaryKeyRelatedField):
+    """An owned type's copy. A copy that has not arrived yet is fetched once.
+
+    `catalog` being unreachable is a 503, since the id may well be valid. Saying 400
+    would tell the owner their type does not exist.
+    """
+
+    def to_internal_value(self, data):
+        try:
+            return super().to_internal_value(data)
+        except serializers.ValidationError as exc:
+            if "does_not_exist" not in exc.get_codes():
+                raise
+            ref = refs.read_through_or_503(self.get_queryset().model, data)
+            if ref is None or ref.owner_id != self.context["request"].user.pk:
+                raise
+            return ref
+
+
+class QuestionnaireTypeRefSerializer(serializers.ModelSerializer):
+    """Same shape as `catalog`'s type response, embedded in each questionnaire."""
+
+    questionnaireJson = serializers.JSONField(  # noqa: N815
+        source="questionnaire_json", read_only=True
+    )
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)  # noqa: N815
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)  # noqa: N815
+
+    class Meta:
+        model = QuestionnaireTypeRef
+        fields = ["id", "title", "questionnaireJson", "createdAt", "updatedAt"]
+        read_only_fields = fields
 
 
 class BatterySlotSerializer(serializers.ModelSerializer):
@@ -29,8 +63,8 @@ class BatterySlotSerializer(serializers.ModelSerializer):
 
 
 class BatterySerializer(serializers.ModelSerializer):
-    batteryTypeId = OwnedPrimaryKeyRelatedField(  # noqa: N815
-        source="battery_type", queryset=BatteryType.objects.all()
+    batteryTypeId = OwnedRefField(  # noqa: N815
+        source="battery_type", queryset=BatteryTypeRef.objects.all()
     )
     batteryTypeName = serializers.CharField(  # noqa: N815
         source="battery_type.title", read_only=True
@@ -62,10 +96,10 @@ class BatterySerializer(serializers.ModelSerializer):
 
 
 class QuestionnaireSerializer(serializers.ModelSerializer):
-    questionnaireTypeId = OwnedPrimaryKeyRelatedField(  # noqa: N815
-        source="questionnaire_type", queryset=QuestionnaireType.objects.all()
+    questionnaireTypeId = OwnedRefField(  # noqa: N815
+        source="questionnaire_type", queryset=QuestionnaireTypeRef.objects.all()
     )
-    questionnaireType = QuestionnaireTypeSerializer(  # noqa: N815
+    questionnaireType = QuestionnaireTypeRefSerializer(  # noqa: N815
         source="questionnaire_type", read_only=True
     )
     batteryId = serializers.UUIDField(source="battery_id", read_only=True)  # noqa: N815
@@ -100,8 +134,8 @@ class QuestionnaireSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def validate_questionnaireTypeId(  # noqa: N802
-        self, value: QuestionnaireType
-    ) -> QuestionnaireType:
+        self, value: QuestionnaireTypeRef
+    ) -> QuestionnaireTypeRef:
         if (
             self.instance is not None
             and value.pk != self.instance.questionnaire_type_id
@@ -168,16 +202,16 @@ class SubmitSerializer(serializers.Serializer):
 class QuestionnaireListQuerySerializer(serializers.Serializer):
     """Filters on `GET /api/questionnaires/` (#10)."""
 
-    questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815
-        queryset=QuestionnaireType.objects.all(), required=False
+    questionnaireType = OwnedRefField(  # noqa: N815
+        queryset=QuestionnaireTypeRef.objects.all(), required=False
     )
     submitted = serializers.BooleanField(required=False, allow_null=True, default=None)
 
 
 class DashboardQuerySerializer(serializers.Serializer):
     days = serializers.ChoiceField(choices=[7, 30, 90], required=False)
-    questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815
-        queryset=QuestionnaireType.objects.all(), required=False
+    questionnaireType = OwnedRefField(  # noqa: N815
+        queryset=QuestionnaireTypeRef.objects.all(), required=False
     )
     tz = serializers.CharField(required=False, max_length=64)
 
@@ -190,6 +224,6 @@ class DashboardQuerySerializer(serializers.Serializer):
 
 
 class DashboardScoresQuerySerializer(DashboardQuerySerializer):
-    questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815
-        queryset=QuestionnaireType.objects.all()
+    questionnaireType = OwnedRefField(  # noqa: N815
+        queryset=QuestionnaireTypeRef.objects.all()
     )

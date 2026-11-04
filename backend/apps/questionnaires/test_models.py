@@ -1,8 +1,9 @@
 import pytest
 from django.db.models import RestrictedError
 
+from apps.catalog.models import BatteryType, QuestionnaireType
+
 from . import services
-from .catalog_port import BatteryType, QuestionnaireType
 from .factories import (
     BatteryTypeFactory,
     QuestionnaireFactory,
@@ -72,7 +73,7 @@ class TestBattery:
     def test_type_in_battery_type_cannot_be_deleted(self, user, qtype):
         BatteryTypeFactory(owner=user, questionnaire_types=[qtype])
         with pytest.raises(RestrictedError):
-            qtype.delete()
+            QuestionnaireType.objects.get(pk=qtype.pk).delete()
 
     def test_str(self, user):
         bt = BatteryTypeFactory(owner=user, title="Intake")

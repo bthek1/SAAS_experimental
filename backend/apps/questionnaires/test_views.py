@@ -2,8 +2,9 @@ import uuid
 
 import pytest
 
+from apps.catalog.models import QuestionnaireType
+
 from . import services
-from .catalog_port import QuestionnaireType
 from .factories import (
     BatteryTypeFactory,
     QuestionnaireFactory,

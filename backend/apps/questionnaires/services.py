@@ -4,8 +4,8 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import APIException
 
-from .catalog_port import BatteryType
-from .models import Battery, Questionnaire
+from . import refs
+from .models import Battery, BatteryTypeRef, Questionnaire
 
 
 class AlreadySubmitted(APIException):
@@ -14,21 +14,24 @@ class AlreadySubmitted(APIException):
     default_code = "already_submitted"
 
 
-@transaction.atomic
-def create_battery(battery_type: BatteryType, name: str = "") -> Battery:
-    """Create a Battery and one Questionnaire per item of its type, in order."""
-    battery = Battery.objects.create(
-        owner=battery_type.owner, battery_type=battery_type, name=name
-    )
-    Questionnaire.objects.bulk_create(
-        Questionnaire(
-            owner=battery_type.owner,
-            questionnaire_type_id=item.questionnaire_type_id,
-            battery=battery,
-            battery_order=item.order,
+def create_battery(battery_type: BatteryTypeRef, name: str = "") -> Battery:
+    """Create a Battery and one Questionnaire per slot of its type, in order."""
+    slots = list(battery_type.slots.order_by("order"))
+    # Outside the transaction: this can call `catalog`, and each slot needs a copy.
+    refs.ensure_questionnaire_types([slot.questionnaire_type_id for slot in slots])
+    with transaction.atomic():
+        battery = Battery.objects.create(
+            owner=battery_type.owner, battery_type=battery_type, name=name
         )
-        for item in battery_type.items.order_by("order")
-    )
+        Questionnaire.objects.bulk_create(
+            Questionnaire(
+                owner=battery_type.owner,
+                questionnaire_type_id=slot.questionnaire_type_id,
+                battery=battery,
+                battery_order=slot.order,
+            )
+            for slot in slots
+        )
     return battery
 
 

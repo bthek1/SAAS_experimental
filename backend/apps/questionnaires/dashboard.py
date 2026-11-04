@@ -30,8 +30,13 @@ from django.db.models import (
 from django.db.models.functions import Coalesce, NullIf, TruncDate
 from django.utils import timezone
 
-from .catalog_port import BatteryType, BatteryTypeItem, QuestionnaireType
-from .models import Battery, Questionnaire
+from .models import (
+    Battery,
+    BatteryTypeRef,
+    BatteryTypeRefSlot,
+    Questionnaire,
+    QuestionnaireTypeRef,
+)
 
 STALE_AFTER = timedelta(days=7)
 LIST_LIMIT = 10
@@ -98,7 +103,7 @@ def _median_hours(submitted: QuerySet[Questionnaire], count: int) -> float | Non
 def dashboard_summary(
     owner,
     days: int | None = None,
-    questionnaire_type: QuestionnaireType | None = None,
+    questionnaire_type: QuestionnaireTypeRef | None = None,
     tz: tzinfo = UTC,
 ) -> dict[str, Any]:
     now = timezone.now().astimezone(tz)
@@ -106,8 +111,8 @@ def dashboard_summary(
 
     questionnaires = Questionnaire.objects.filter(owner=owner)
     batteries = Battery.objects.filter(owner=owner)
-    qtypes = QuestionnaireType.objects.filter(owner=owner)
-    btypes = BatteryType.objects.filter(owner=owner)
+    qtypes = QuestionnaireTypeRef.objects.filter(owner=owner)
+    btypes = BatteryTypeRef.objects.filter(owner=owner)
     if questionnaire_type is not None:
         questionnaires = questionnaires.filter(questionnaire_type=questionnaire_type)
         # A subquery rather than a join, so the slot counts below still see every
@@ -119,8 +124,8 @@ def dashboard_summary(
         )
         qtypes = qtypes.filter(pk=questionnaire_type.pk)
         btypes = btypes.filter(
-            pk__in=BatteryTypeItem.objects.filter(
-                questionnaire_type=questionnaire_type
+            pk__in=BatteryTypeRefSlot.objects.filter(
+                questionnaire_type_id=questionnaire_type.pk
             ).values("battery_type_id")
         )
 
@@ -328,7 +333,7 @@ def _add_points(metrics: dict[str, dict[str, Any]], rows: Iterable[tuple]) -> No
 
 def dashboard_scores(
     owner,
-    questionnaire_type: QuestionnaireType,
+    questionnaire_type: QuestionnaireTypeRef,
     days: int | None = None,
     tz: tzinfo = UTC,
 ) -> dict[str, Any]:

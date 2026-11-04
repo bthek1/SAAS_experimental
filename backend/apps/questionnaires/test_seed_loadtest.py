@@ -6,7 +6,9 @@ from django.core.management import CommandError, call_command
 from django.test import override_settings
 from freezegun import freeze_time
 
-from .catalog_port import QuestionnaireType, owner_email
+from apps.catalog.models import QuestionnaireType
+
+from .catalog_port import owner_email
 from .models import Battery, Questionnaire
 from .seeding import seed_loadtest
 

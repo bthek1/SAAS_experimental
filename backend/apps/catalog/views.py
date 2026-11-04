@@ -1,9 +1,10 @@
+from django.db import transaction
 from rest_framework.response import Response
 
 from apps.utils.cache import bump_owner_generation, cached
 from apps.utils.owned import OwnedModelViewSet
 
-from . import services
+from . import events, services
 from .models import BatteryType, QuestionnaireType
 from .serializers import BatteryTypeSerializer, QuestionnaireTypeSerializer
 
@@ -33,17 +34,26 @@ class CachedListViewSet(OwnedModelViewSet):
             )
         )
 
+    def perform_destroy(self, instance):
+        services.delete_type(instance)
+        # So a dashboard never links to a deleted row.
+        bump_owner_generation(self.request.user.pk)
+
 
 class QuestionnaireTypeViewSet(CachedListViewSet):
     model = QuestionnaireType
     serializer_class = QuestionnaireTypeSerializer
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
+        with transaction.atomic():
+            super().perform_create(serializer)
+            events.record_change(serializer.instance)
         bump_owner_generation(self.request.user.pk)
 
     def perform_update(self, serializer):
-        super().perform_update(serializer)
+        with transaction.atomic():
+            super().perform_update(serializer)
+            events.record_change(serializer.instance)
         bump_owner_generation(self.request.user.pk)
 
 
@@ -56,17 +66,21 @@ class BatteryTypeViewSet(CachedListViewSet):
 
     def perform_create(self, serializer):
         questionnaire_types = serializer.validated_data.pop("questionnaireTypeIds", [])
-        battery_type = serializer.save(owner=self.request.user)
-        services.set_battery_type_items(battery_type, questionnaire_types)
+        with transaction.atomic():
+            battery_type = serializer.save(owner=self.request.user)
+            services.set_battery_type_items(battery_type, questionnaire_types)
+            events.record_change(battery_type)
         bump_owner_generation(self.request.user.pk)
 
     def perform_update(self, serializer):
         questionnaire_types = serializer.validated_data.pop(
             "questionnaireTypeIds", None
         )
-        battery_type = serializer.save()
-        if questionnaire_types is not None:
-            services.set_battery_type_items(battery_type, questionnaire_types)
+        with transaction.atomic():
+            battery_type = serializer.save()
+            if questionnaire_types is not None:
+                services.set_battery_type_items(battery_type, questionnaire_types)
+            events.record_change(battery_type)
         # After the items, so a reader cannot cache the old ones as current.
         bump_owner_generation(self.request.user.pk)
         # UpdateModelMixin clears the prefetched `items` before the response.

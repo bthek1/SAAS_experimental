@@ -1,6 +1,25 @@
 from django.contrib import admin
 
-from .models import Battery, Questionnaire
+from .models import Battery, BatteryTypeRef, Questionnaire, QuestionnaireTypeRef
+
+
+class ReadOnlyAdmin(admin.ModelAdmin):
+    """Copies change only through events from `catalog`."""
+
+    def has_add_permission(self, request):  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None):  # noqa: ARG002
+        return False
+
+    def has_delete_permission(self, request, obj=None):  # noqa: ARG002
+        return False
+
+
+@admin.register(QuestionnaireTypeRef, BatteryTypeRef)
+class TypeRefAdmin(ReadOnlyAdmin):
+    list_display = ("title", "owner", "version", "updated_at")
+    search_fields = ("title",)
 
 
 @admin.register(Battery)

@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.utils import cache as cache_module
 
-from . import services
+from . import refs, services
 from .factories import (
     BatteryTypeFactory,
     QuestionnaireFactory,
@@ -321,3 +321,44 @@ def test_redis_down_does_not_fail_a_write(auth_client, rows, mocker, on_commit):
         )
     assert response.status_code == 200
     assert broken.set.called
+
+
+def test_type_edit_invalidates_dashboard(auth_client, qtype, on_commit):
+    summary = auth_client.get(SUMMARY).json()
+    assert [t["title"] for t in summary["byQuestionnaireType"]] == [qtype.title]
+
+    with on_commit():
+        auth_client.patch(
+            f"/api/questionnaire-types/{qtype.pk}/", {"title": "Renamed"}, format="json"
+        )
+
+    # Through the event: the title comes from this service's own copy.
+    summary = auth_client.get(SUMMARY).json()
+    assert [t["title"] for t in summary["byQuestionnaireType"]] == ["Renamed"]
+
+
+def test_an_event_invalidates_only_its_own_owner(
+    auth_client, other_client, qtype, other_user, on_commit
+):
+    QuestionnaireTypeFactory(owner=other_user, title="Theirs")
+    other_client.get(SUMMARY)
+    version = qtype.version + 1
+    with on_commit():
+        refs.apply_event(
+            {
+                "type": "questionnaire_type.changed",
+                "aggregateId": str(qtype.pk),
+                "version": version,
+                "data": {
+                    "ownerId": str(qtype.owner_id),
+                    "title": "Renamed",
+                    "questionnaireJson": {},
+                    "createdAt": qtype.created_at.isoformat(),
+                    "updatedAt": qtype.updated_at.isoformat(),
+                },
+            }
+        )
+    theirs = other_client.get(SUMMARY).json()
+    assert [t["title"] for t in theirs["byQuestionnaireType"]] == ["Theirs"]
+    mine = auth_client.get(SUMMARY).json()
+    assert [t["title"] for t in mine["byQuestionnaireType"]] == ["Renamed"]

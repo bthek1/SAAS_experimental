@@ -8,9 +8,13 @@ MOVED = ["questionnairetype", "batterytype", "batterytypeitem"]
 
 def relabel_content_types(apps, from_label, to_label):
     # Keeps granted permissions and admin history pointing at the moved models.
-    apps.get_model("contenttypes", "ContentType").objects.filter(
-        app_label=from_label, model__in=MOVED
-    ).update(app_label=to_label)
+    content_type = apps.get_model("contenttypes", "ContentType")
+    for model in MOVED:
+        moving = content_type.objects.filter(app_label=from_label, model=model)
+        if moving.exists():
+            # A separate `migrate catalog` has already created an empty target.
+            content_type.objects.filter(app_label=to_label, model=model).delete()
+            moving.update(app_label=to_label)
 
 
 def forwards(apps, schema_editor):

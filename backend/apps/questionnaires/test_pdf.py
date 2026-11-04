@@ -198,13 +198,16 @@ class TestPdfCache:
         assert auth_client.get(pdf_url(submitted.id)).content != before
         assert render.call_args.args[0].name == "Sam"
 
-    def test_type_title_change_renders_again(self, auth_client, submitted, render):
+    def test_type_title_change_renders_again(
+        self, auth_client, submitted, render, django_capture_on_commit_callbacks
+    ):
         before = auth_client.get(pdf_url(submitted.id)).content
-        auth_client.patch(
-            f"/api/questionnaire-types/{submitted.questionnaire_type_id}/",
-            {"title": "Retitled"},
-            format="json",
-        )
+        with django_capture_on_commit_callbacks(execute=True):
+            auth_client.patch(
+                f"/api/questionnaire-types/{submitted.questionnaire_type_id}/",
+                {"title": "Retitled"},
+                format="json",
+            )
         assert auth_client.get(pdf_url(submitted.id)).content != before
         assert render.call_args.args[0].questionnaire_type.title == "Retitled"
 

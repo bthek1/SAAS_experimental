@@ -151,6 +151,13 @@ and owner-scoping helpers).
 `questionnaires` reaches `catalog` only through `apps/questionnaires/catalog_port.py`, and `catalog`
 never imports `questionnaires` (#13, `tests/test_service_boundary.py`). Tests and factories are exempt.
 
+**Service boundary (#13).** `questionnaires` reads only its own copies of types (`QuestionnaireTypeRef`,
+`BatteryTypeRef`), written only by `apps/questionnaires/refs.py`. Every write to a type must call
+`catalog.events.record_change()` in the same transaction, including admin and seeding, and a delete
+goes through `catalog.services.delete_type()`. Peers are reached only through the clients in
+`apps/utils/peers.py`. The subtle rules (versions, tombstones, why read-through is authoritative) are
+at the top of `refs.py`. `questionnaires` factories create the catalog row and return its copy.
+
 **Views and URLs**
 - All endpoints are under `/api/`.
 - Use class-based views (`APIView`, `generics.*`, `ViewSet`). `apps/utils/views.py` uses

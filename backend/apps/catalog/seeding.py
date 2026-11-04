@@ -2,6 +2,7 @@
 
 from django.contrib.auth import get_user_model
 
+from . import events
 from .models import BatteryType, BatteryTypeItem, QuestionnaireType
 
 TYPES_PER_OWNER = 3
@@ -40,7 +41,8 @@ def scored_survey(title: str) -> dict:
     }
 
 
-def seed_owner_types(owner) -> tuple[list[QuestionnaireType], BatteryType]:
+def seed_owner_types(owner) -> tuple[list[dict], dict]:
+    """Create the owner's types, returning a snapshot of each, as events will carry."""
     types = QuestionnaireType.objects.bulk_create(
         QuestionnaireType(
             owner=owner,
@@ -54,4 +56,6 @@ def seed_owner_types(owner) -> tuple[list[QuestionnaireType], BatteryType]:
         BatteryTypeItem(battery_type=battery_type, questionnaire_type=qt, order=i)
         for i, qt in enumerate(types[:2])
     )
-    return types, battery_type
+    for instance in [*types, battery_type]:
+        events.record_change(instance)
+    return [events.snapshot(qt) for qt in types], events.snapshot(battery_type)

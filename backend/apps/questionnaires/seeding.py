@@ -13,12 +13,14 @@ new ones.
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from django.db import transaction
 from django.utils import timezone
 
+from . import refs
 from .catalog_port import create_owner, owner_email, owner_exists, seed_owner_types
-from .models import Battery, Questionnaire
+from .models import Battery, BatteryTypeRef, Questionnaire, QuestionnaireTypeRef
 
 SPAN_DAYS = 90
 SUBMITTED_SHARE = 0.7
@@ -72,7 +74,16 @@ def seed_loadtest(
 
 
 def _seed_owner(owner, count, rng, now, result) -> None:
-    types, battery_type = seed_owner_types(owner)
+    # The copies are written directly: delivery only happens after the commit.
+    sources, battery_source = seed_owner_types(owner)
+    for source in [*sources, battery_source]:
+        refs.store_snapshot(source)
+    types = list(
+        QuestionnaireTypeRef.objects.filter(
+            pk__in=[UUID(source["aggregateId"]) for source in sources]
+        ).order_by("title")
+    )
+    battery_type = BatteryTypeRef.objects.get(pk=UUID(battery_source["aggregateId"]))
 
     def created_at() -> datetime:
         return now - timedelta(seconds=rng.uniform(0, SPAN_DAYS * 86400))
