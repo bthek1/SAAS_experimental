@@ -150,9 +150,9 @@
 
   <div class="tiles">
     <div class="tile hero">
-      <span class="muted">Capacity on the final code, mixed traffic</span>
-      <span class="value">~430–573 req/s</span>
-      <span class="muted small">Up from ~86 req/s at the start. Three runs of the same test on the same code gave this range,
+      <span class="muted">Capacity on the latest code, mixed traffic</span>
+      <span class="value">~430–581 req/s</span>
+      <span class="muted small">Up from ~86 req/s at the start. Three runs before the split into two services and one after gave this range,
         so read any single knee as rough. The earlier runs also used different ramps.
         <a href="#changes">See below.</a></span>
     </div>
@@ -163,13 +163,13 @@
     </div>
     <div class="tile">
       <span class="muted">Failed requests</span>
-      <span class="value">0</span>
-      <span class="muted small">In 7.0 M requests across the 28 runs behind this page. Overload showed up as queueing, not errors</span>
+      <span class="value">1</span>
+      <span class="muted small">In 8.4 M requests across the 35 runs behind this page, a connection reset whose cause wasn't found. Overload showed up as queueing, not errors</span>
     </div>
     <div class="tile">
       <span class="muted">Busiest container</span>
-      <span class="value">saas-app</span>
-      <span class="muted small">82 % CPU at ~573 req/s, against 24 % on saas-db</span>
+      <span class="value">saas-instances</span>
+      <span class="muted small">79 % CPU at ~581 req/s, against 24 % on saas-db. Before the split, this load was on saas-app</span>
     </div>
   </div>
 
@@ -321,6 +321,35 @@
     <li><strong>The indexes cost little.</strong> A submit-style update went from about 0.266 to 0.277 ms per row.</li>
   </ul>
 
+  <h2 id="split">What splitting into two services did</h2>
+  <p>The backend became two services, <code>catalog</code> and <code>instances</code>, behind a gateway. At the same fixed rates
+    it cost <strong>no measurable latency or CPU</strong>, despite the extra hop. <strong>Peak capacity isn't shown to have moved:</strong> one
+    mixed stress run reached ~581 req/s, against ~430 to ~573 before. The real cost is what has to run: 5 app-tier cores instead of 2, and
+    about twice the memory in use. The gain is that respondents keep working while <code>catalog</code> is down.</p>
+  <div class="card">
+    <h3>Holding 5 minutes at a fixed rate, one run each</h3>
+    <p class="muted small">No failed or dropped requests in any of the four. CPU and memory are one reading, 5 minutes in. The differences are small enough to be run-to-run variation.</p>
+    <div id="split-hold-table"></div>
+  </div>
+  <div class="card">
+    <h3>Stress, mixed traffic, at matching rates</h3>
+    <p class="muted small">Each cell is before / after the split. Busiest app container is saas-app before and saas-instances after.</p>
+    <div id="split-stress-table"></div>
+  </div>
+  <div class="card">
+    <h3>What each deploy runs</h3>
+    <div id="split-deploy-table"></div>
+  </div>
+  <ul>
+    <li><strong>Respondents survived the outage.</strong> With <code>catalog</code> stopped for about two-thirds of a 3-minute run, 900 of 900 share-link
+      opens and 900 of 900 submits succeeded. Logging in failed, as expected, and worked again once it returned.</li>
+    <li><strong>Queued events caught up.</strong> With <code>instances</code> stopped, 4 type changes waited in the outbox, and it was empty within 24 seconds of the restart.</li>
+    <li><strong>One service does nearly all the work.</strong> Under this traffic <code>instances</code> used about 0.8 cores and <code>catalog</code> about 0.05, so the extra cores aren't what carried the load.</li>
+    <li><strong>The break looks the same as before.</strong> Latency was steady, then within 15 seconds k6 hit its limit of 300 VUs, with CPU to spare.
+      Read-mostly traffic reached ~431 req/s, in one run with no comparable earlier run.</li>
+    <li><strong>The one failed request is here.</strong> A connection reset from saas-instances during the mixed stress run, whose cause wasn't found.</li>
+  </ul>
+
   <h2>Holding a steady rate</h2>
   <p>The same 10-minute hold, before and after. Runs add rows, so latency drifts upward during a hold. The cache
     cuts that drift but doesn't remove it, because a miss still pays for the full query. The earlier run also used
@@ -340,7 +369,8 @@
       not confirmed. Until this is understood, a single knee can't prove a gain under about 100 req/s.</li>
     <li><strong>Make a cache miss cheaper.</strong> On the deploy it still takes 124 to 179 ms at about 18,000 rows per owner, and
       low-traffic owners rarely get a hit. A scores miss still reads every row in the window for its totals.</li>
-    <li><strong>Make saas-app cheaper per request, or give it more cores.</strong> It is still the busiest container.</li>
+    <li><strong>Resize the app tier.</strong> saas-instances is now the busiest container, and <code>catalog</code> uses about 3 % of its 2 cores. Moving cores across hasn't been tried.</li>
+    <li><strong>Soak the split.</strong> Only short runs from reset data have been measured so far, and the cause of its one connection reset wasn't found.</li>
         <li><strong>Pre-allocate k6's VUs.</strong> New VUs log in during a slowdown, which may feed the break and make
       the knee partly a test artefact.</li>
   </ul>
@@ -348,7 +378,8 @@
   <h2 id="how-measured">How this was measured</h2>
   <ul>
     <li><strong>Deploy:</strong> unprivileged LXC containers on one Proxmox host. saas-app has 2 cores and 2 GB, saas-db 2 cores
-      and 1 GB (Postgres 16), and k6 runs from its own container. saas-cache (1 core, 512 MB, Redis 7) was added for the cache runs.</li>
+      and 1 GB (Postgres 16), and k6 runs from its own container. saas-cache (1 core, 512 MB, Redis 7) was added for the cache runs.
+      The split added saas-instances (2 cores, 2 GB) and saas-gateway (1 core, 512 MB, nginx), and saas-app now runs only <code>catalog</code>.</li>
     <li><strong>Data:</strong> every measured run starts from <code>just loadtest-reset</code>: 20 owners × 200
       questionnaires. Runs add rows, so only runs with the same settings compare cleanly.</li>
     <li><strong>Mixed traffic:</strong> 50 % owner reads, 30 % respondent flow, 15 % battery create, 5 % health check.
@@ -724,6 +755,34 @@ renderTable("true-p95-table",
     ["476", "7.3 ms", "50 ms", "21 ms", "67 %", "18 %"],
     ["546", "10.7 ms", "76 ms", "24 ms", "77 %", "22 %"],
     ["573", "15.1 ms", "98 ms", "36 ms", "82 %", "24 %"],
+  ]);
+renderTable("split-hold-table",
+  [{ title: "" }, { title: "Mixed, before", num: true }, { title: "Mixed, split", num: true }, { title: "Read, before", num: true }, { title: "Read, split", num: true }],
+  [
+    ["Requests", "110,315", "110,543", "75,854", "76,091"],
+    ["Mean", "4.82 ms", "4.73 ms", "4.16 ms", "3.80 ms"],
+    ["p95, all requests", "10.16 ms", "10.17 ms", "8.94 ms", "8.09 ms"],
+    ["Max", "164 ms", "115 ms", "133 ms", "115 ms"],
+    ["App-tier CPU, in cores", "0.85", "0.88", "0.69", "0.66"],
+    ["saas-db CPU, in cores", "0.21", "0.19", "0.13", "0.12"],
+    ["App-tier memory in use", "605 MB", "1,120 MB", "619 MB", "1,264 MB"],
+  ]);
+renderTable("split-stress-table",
+  [{ title: "req/s", num: true }, { title: "Mean", num: true }, { title: "Slowest group p95", num: true }, { title: "Django p95", num: true }, { title: "Busiest app container CPU", num: true }],
+  [
+    ["350 / 358", "5.3 / 5.0 ms", "25 / 23 ms", "12 / 10 ms", "48 / 44 %"],
+    ["433 / 432", "6.3 / 6.5 ms", "39 / 41 ms", "18 / 18 ms", "60 / 56 %"],
+    ["476 / 485", "7.3 / 7.6 ms", "50 / 54 ms", "21 / 21 ms", "67 / 63 %"],
+    ["546 / 549", "10.7 / 14.2 ms", "76 / 85 ms", "24 / 33 ms", "77 / 74 %"],
+    ["573 / 581", "15.1 / 18.2 ms", "98 / 108 ms", "36 / 42 ms", "82 / 79 %"],
+  ]);
+renderTable("split-deploy-table",
+  [{ title: "Container" }, { title: "Before" }, { title: "Split" }],
+  [
+    ["saas-gateway", "none", "1 core, 512 MB, nginx"],
+    ["saas-app", "2 cores, 2 GB, 5 workers × 4 threads", "2 cores, 2 GB, 3 workers × 4 threads"],
+    ["saas-instances", "none", "2 cores, 2 GB, 5 workers × 4 threads"],
+    ["App tier total", "2 cores, 2 GB, 20 threads", "5 cores, 4.5 GB, 32 threads"],
   ]);
 lineChart("near-peak-chart", {
   label: "Mean latency by minute at about 445 requests per second. Run 1 rises to 129 milliseconds in minute 6, recovers by minute 10 and ends at 24. Run 2 rises steadily from 7 to 16.",

@@ -73,11 +73,12 @@ battery, and check that one user cannot see another's data.
 
 ### Load tests (k6 + Prometheus + Grafana)
 
-A separate Docker stack runs the prod backend image (gunicorn, `core.settings.loadtest`) with its
-own Postgres, Prometheus and Grafana. It never touches the dev stack. k6 runs in a container.
+A separate Docker stack runs both prod service images (gunicorn, `core.settings.loadtest`) behind the
+gateway, with their own Postgres databases, Prometheus and Grafana. It needs `JWT_SIGNING_KEY` and
+`JWT_VERIFYING_KEY` in `.env` (see `.env.example`). It never touches the dev stack. k6 runs in a container.
 
 ```bash
-just loadtest-up                       # backend :8095, Prometheus :9095, Grafana :3005 (all 127.0.0.1)
+just loadtest-up                       # gateway :8095, Prometheus :9095, Grafana :3005 (all 127.0.0.1)
 just loadtest-seed --owners 5 --questionnaires-per-owner 200
 just k6 smoke                          # 1 VU, 1 minute, every endpoint group
 just k6 load RATE=20 HOLD=10m          # mixed traffic held at RATE iterations/s
@@ -86,13 +87,14 @@ just loadtest-down                     # stop (volumes kept)
 ```
 
 Each run prints a `testid` and a Grafana link to the **k6** dashboard for that run (login `admin`,
-password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`, `respondent` and
-`pdf`. Plan and baselines: issue #9.
+password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`, `respondent`,
+`pdf` and `outage`. Plan and baselines: issue #9.
 
 ### Load-test deploy (Proxmox LXC containers)
 
-The baseline runs on four LXC containers on the Proxmox host (`saas-app` .241, `saas-db` .242,
-`saas-monitor` .243, `saas-loadgen` .244 on `192.168.2.0/24`). Pulumi creates them and Ansible
+The baseline runs on seven LXC containers on the Proxmox host (`saas-app` .241, which is `catalog`,
+`saas-db` .242, `saas-monitor` .243, `saas-loadgen` .244, `saas-cache` .245, `saas-instances` .246,
+`saas-gateway` .247, on `192.168.2.0/24`). Pulumi creates them and Ansible
 configures them. One-time setup (state, passphrase, API token): `infra/pulumi/Pulumi.loadtest.yaml.example`.
 
 ```bash
@@ -100,7 +102,7 @@ just infra-test                 # Pulumi + Ansible helper tests (no Proxmox need
 just infra-preview              # review: what would change on the host
 just infra-up                   # apply exactly that plan
 just converge                   # Ansible: install and configure everything (idempotent)
-just k6 smoke TARGET=lxc        # k6 on saas-loadgen against saas-app
+just k6 smoke TARGET=lxc        # k6 on saas-loadgen, through saas-gateway
 ```
 
 Grafana: `http://192.168.2.243:3000` (password: `just infra stack output grafana_admin_password
@@ -222,6 +224,22 @@ own copy of each type (#13):
   until it arrives. That is normally immediate. Deleting a user also removes their rows there.
 - `manage.py reconcile_refs [--dry-run]` compares every copy with `catalog` and repairs differences.
   It lists any copy whose type is gone but which instances still use, and leaves those in place.
+
+### A stuck outbox
+
+`OutboxStuck` fires when an event has waited over a minute (`app_outbox_oldest_pending_seconds`). Respondents are
+not affected, but `instances` serves older definitions and deactivated users keep access there.
+
+```bash
+just compose logs -f relay_outbox                      # or: journalctl -u saas-relay on saas-app
+cd backend && uv run python catalog/manage.py relay_outbox --once   # delivered: N, pending: M
+```
+
+- **`delivered: 0` and all events pending:** `instances` is unreachable, or the tokens differ. `OutboxEvent.last_error`
+  in catalog's admin says which. They drain by themselves once it is back.
+- **One event keeps failing while others deliver:** `instances` refuses it (`400`). The event's `last_error` has the
+  reason. Fix the cause, or repair the copies with `reconcile_refs`.
+- After any long outage, `uv run python instances/manage.py reconcile_refs --dry-run` shows whether copies differ.
 
 ### Moving a pre-split database
 

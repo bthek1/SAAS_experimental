@@ -66,7 +66,7 @@ just db-reset       # DESTRUCTIVE: drops the Postgres volume, then re-migrates
 
 just loadtest-up    # load-test stack: prod backend + Postgres + Prometheus + Grafana (#9)
 just loadtest-seed --owners 5 --questionnaires-per-owner 200
-just k6 <scenario> [KEY=VALUE…]  # smoke load stress soak respondent pdf
+just k6 <scenario> [KEY=VALUE…]  # smoke load stress soak respondent pdf outage
 just loadtest-down  # keeps its volumes
 
 just infra-test     # Pulumi program tests (mocks, no Proxmox)
@@ -74,7 +74,7 @@ just infra-preview  # preview the LXC containers, save the plan
 just infra-up       # apply exactly the saved plan
 just infra <args>   # any pulumi command on the loadtest stack
 just converge [--tags app] [--check --diff]  # Ansible: configure the containers
-just k6 <scenario> TARGET=lxc  # run from saas-loadgen against saas-app
+just k6 <scenario> TARGET=lxc  # run from saas-loadgen through saas-gateway
 ```
 
 Rarer tasks have no recipe. Run them directly:
@@ -412,7 +412,8 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 
 k6 scripts live in `loadtest/k6/` (`lib/config.js`, `lib/api.js`, `scenarios/*.js`).
 `loadtest/run.sh` (`just k6`) runs one scenario in the `grafana/k6` container against the local
-load-test stack. Results go to Prometheus by remote write, tagged `testid=<scenario>-<UTC time>`.
+load-test stack's gateway. `outage` proves the respondent flow survives `catalog` being stopped: stop it
+yourself once the run starts (see the scenario's header). Results go to Prometheus by remote write, tagged `testid=<scenario>-<UTC time>`.
 The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 
 - ⚠️ **k6 only ever targets a private address.** `lib/config.js` refuses any other `BASE_URL`
@@ -438,7 +439,7 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
   edit `grafana/build_dashboards.py`, then run `python3 infra/observability/grafana/build_dashboards.py`.
   `backend/tests/test_observability.py` fails if the committed JSON is stale, and also runs
   promtool on the config and rules (needs Docker).
-- On the load-test stack, `/metrics` admits only Prometheus's fixed address (`10.95.0.10/32`).
+- Prometheus scrapes each service directly, with a `service` label. On the load-test stack, `/metrics` admits only Prometheus's fixed address (`10.95.0.10/32`).
   A subnet-wide rule would also admit the host, because published ports arrive from the
   subnet's gateway.
 
@@ -446,9 +447,10 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 
 ## Infra: Proxmox LXC containers (`infra/pulumi/`)
 
-The load-test deploy (#9, Phases 3–5) runs in five unprivileged LXC containers on the Proxmox
-host `192.168.2.70` (node `bthek1`): `saas-app` 241, `saas-db` 242, `saas-monitor` 243,
-`saas-loadgen` 244, `saas-cache` 245. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
+The load-test deploy (#9, Phases 3–5, #13) runs in seven unprivileged LXC containers on the Proxmox
+host `192.168.2.70` (node `bthek1`): `saas-app` 241 (the `catalog` service; it kept its role and id so
+Pulumi never replaces it), `saas-db` 242, `saas-monitor` 243, `saas-loadgen` 244, `saas-cache` 245,
+`saas-instances` 246, `saas-gateway` 247. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
 creates bare containers. Ansible (Phase 4) configures them.
 
 - ⚠️ **Guest ids 241–249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
@@ -480,16 +482,22 @@ baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the 
 it to `frontend/public/loadtest-results.html` (the "Load tests" sidebar link), whose figures are
 copied by hand. Files in `public/` have no login, so keep LAN addresses and secrets out of it.
 Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_enabled` in
-`infra/ansible/group_vars/app.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
+`infra/ansible/group_vars/{app,instances}.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
+`just loadtest-reset` rsyncs the working tree, so it deploys whatever is checked out.
 
 **Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
-(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-app), `monitor` (saas-monitor) and
+(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-app and saas-instances, told apart by
+`app_service` and `app_unit` in `group_vars`), `gateway` (saas-gateway), `monitor` (saas-monitor) and
 `loadgen` (saas-loadgen). The inventory (`inventory/pulumi.py`) reads the Pulumi stack outputs, secrets
 included, and refuses any non-private address. Nothing secret is stored in the repo.
 
 - Everything is installed natively, with no Docker:
-  - the backend is the working tree rsynced to `/srv/app/backend`, `uv sync` (Python 3.14),
-    gunicorn under systemd (`saas-app.service`, env in `/etc/saas-app/app.env`);
+  - each service is the working tree rsynced to `/srv/app/backend`, `uv sync --package <service>` (Python
+    3.14), gunicorn under systemd (`saas-app.service` for catalog, `saas-instances.service`, env in
+    `/etc/<unit>/app.env`), and `saas-relay.service` on saas-app retries events;
+  - nginx from apt on saas-gateway, its config from `infra/gateway/build_nginx.py --address ...`;
+  - saas-db holds `catalogdb` and `instancesdb` with separate login roles. The monolith's `appdb` is still
+    there, unused, as a way back;
   - Postgres 16 and Redis from apt (Redis: no RDB or AOF, `maxmemory` + `allkeys-lru`);
   - Prometheus, Grafana, node_exporter, postgres_exporter, redis_exporter, k6 and uv as release binaries
     pinned by version **and sha256** in `group_vars/all.yml`. Bump both together.
@@ -497,7 +505,8 @@ included, and refuses any non-private address. Nothing secret is stored in the r
   always reports changed hides real changes: fix it rather than ignore it. `ansible-lint`
   (production profile) passes: `uvx --from 'ansible-lint==25.*' ansible-lint site.yml`.
 - **Firewall:** nftables, input default-deny, per group in `group_vars/<group>.yml`. SSH only from
-  `admin_hosts`. Never enable the Proxmox datacenter firewall for this (it covers the whole host).
+  `admin_hosts`. A service's port admits only the gateway, its peer service and the scraper, so
+  `/internal/` is unreachable from anywhere else, and k6 and you go through the gateway. Never enable the Proxmox datacenter firewall for this (it covers the whole host).
 - **CPU and memory per container come from its cgroup**, not node_exporter. Inside an LXC,
   `/proc/stat` counts the host's work on the container's cores (an idle container read 16 %
   busy). `roles/common/files/container-metrics.sh` writes `container_*` metrics to node_exporter's
@@ -506,7 +515,7 @@ included, and refuses any non-private address. Nothing secret is stored in the r
 - The Grafana datasource URL is `${PROMETHEUS_URL}` (compose: `http://prometheus:9090`,
   saas-monitor: `http://localhost:9090`). Rules, provisioning and dashboards are the same files
   as the local stack's.
-- `TARGET=lxc` runs k6 on saas-loadgen. `/root/k6.env` (written by `roles/loadgen`) holds
+- `TARGET=lxc` runs k6 on saas-loadgen, through saas-gateway. `/root/k6.env` (written by `roles/loadgen`) holds
   `BASE_URL`, `OWNERS`, the owner password and the remote-write settings, so `run.sh` passes no
   secret on a command line. Grafana is `http://192.168.2.243:3000` (user `admin`, password:
   `just infra stack output grafana_admin_password --show-secrets`).
