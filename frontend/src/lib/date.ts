@@ -46,3 +46,12 @@ export function formatRelative(
   if (!isValid(d)) return ''
   return formatDistanceToNow(d, { addSuffix: true, ...options })
 }
+
+/**
+ * The browser's IANA time zone, such as "Australia/Sydney". Undefined when it has none
+ * to report, so callers fall back to the server's default.
+ */
+export function browserTimeZone(): string | undefined {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return zone && zone !== 'Etc/Unknown' ? zone : undefined
+}

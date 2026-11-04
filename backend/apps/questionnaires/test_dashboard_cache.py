@@ -71,6 +71,41 @@ def test_hit_matches_miss_byte_for_byte(auth_client, rows, url):
     assert hit.content == uncached.content
 
 
+def test_time_zones_do_not_share_a_cached_value(auth_client, qtype):
+    # 14:00 UTC on the 29th is the 30th in Sydney.
+    when = datetime(2026, 10, 29, 14, 0, tzinfo=UTC)
+    with freeze_time(when):
+        submit(QuestionnaireFactory(questionnaire_type=qtype))
+
+    def by_day(**params):
+        with freeze_time(NOW):
+            body = auth_client.get(SUMMARY, {"days": 7, **params}).json()
+        return {d["date"]: d["count"] for d in body["submissionsByDay"]}
+
+    assert by_day()["2026-10-29"] == 1
+    assert by_day(tz="Australia/Sydney")["2026-10-30"] == 1
+    # Each is now a hit, and still its own.
+    assert by_day()["2026-10-29"] == 1
+    assert by_day(tz="Australia/Sydney")["2026-10-30"] == 1
+
+
+def test_time_zones_do_not_share_cached_scores(auth_client, qtype):
+    # 00:30 on the 24th in Sydney: inside its 7-day window, before UTC's.
+    with freeze_time(datetime(2026, 10, 23, 13, 30, tzinfo=UTC)):
+        submit(QuestionnaireFactory(questionnaire_type=qtype))
+
+    def counts(**params):
+        query = {"questionnaireType": qtype.pk, "days": 7, **params}
+        with freeze_time(NOW):
+            body = auth_client.get(SCORES, query).json()
+        return [m["count"] for m in body["metrics"]]
+
+    assert counts() == []
+    assert counts(tz="Australia/Sydney") == [1]
+    assert counts() == []
+    assert counts(tz="Australia/Sydney") == [1]
+
+
 def test_hit_skips_dashboard_queries(auth_client, rows, django_assert_num_queries):  # noqa: ARG001
     auth_client.get(SUMMARY)
     # auth_client is force-authenticated, so no user lookup.

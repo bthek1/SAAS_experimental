@@ -113,7 +113,20 @@ class Questionnaire(TimestampedModel):
     submitted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TimestampedModel.Meta):
-        indexes = [models.Index(fields=["owner", "-created_at"])]
+        indexes = [
+            models.Index(fields=["owner", "-created_at"]),
+            # Partial: most dashboard reads only want submitted rows.
+            models.Index(
+                fields=["owner", "-submitted_at"],
+                condition=models.Q(submitted_at__isnull=False),
+                name="q_owner_submitted",
+            ),
+            models.Index(
+                fields=["owner", "questionnaire_type", "-submitted_at"],
+                condition=models.Q(submitted_at__isnull=False),
+                name="q_owner_type_submitted",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.questionnaire_type.title} - {self.name or self.share_token}"

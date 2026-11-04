@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { formatDate, formatDateTime, formatRelative } from './date'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { browserTimeZone, formatDate, formatDateTime, formatRelative } from './date'
 
 describe('formatDate', () => {
   it('returns empty string for null', () => {
@@ -61,5 +61,27 @@ describe('formatRelative', () => {
   it('accepts an ISO string', () => {
     const result = formatRelative('2020-01-01T00:00:00Z')
     expect(result).toMatch(/ago|years/)
+  })
+})
+
+describe('browserTimeZone', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function stubZone(timeZone: string) {
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone }),
+    } as Intl.DateTimeFormat)
+  }
+
+  it('returns the IANA name the browser reports', () => {
+    stubZone('Australia/Sydney')
+    expect(browserTimeZone()).toBe('Australia/Sydney')
+  })
+
+  it('returns undefined when the browser has no usable zone', () => {
+    stubZone('Etc/Unknown')
+    expect(browserTimeZone()).toBeUndefined()
+    stubZone('')
+    expect(browserTimeZone()).toBeUndefined()
   })
 })

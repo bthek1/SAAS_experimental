@@ -5,7 +5,9 @@ import {
   type ChartPalette,
   distributionOption,
   escapeHtml,
+  flaggedCount,
   flaggedPoints,
+  hasMorePoints,
   numericScoreOption,
   formatDuration,
   formatPercent,
@@ -117,6 +119,24 @@ describe("score options", () => {
 
   it("lists flagged responses newest first", () => {
     expect(flaggedPoints(flag).map((p) => p.name)).toEqual(["Dee"])
+  })
+
+  it("counts flagged responses from the distribution, not the returned points", () => {
+    const capped: BooleanScoreMetric = {
+      ...flag,
+      count: 900,
+      distribution: [
+        { value: false, count: 860 },
+        { value: true, count: 40 },
+      ],
+    }
+    expect(flaggedCount(capped)).toBe(40)
+    expect(flaggedCount({ ...flag, distribution: [{ value: false, count: 2 }] })).toBe(0)
+  })
+
+  it("knows when only the latest points were returned", () => {
+    expect(hasMorePoints(flag)).toBe(false)
+    expect(hasMorePoints({ ...flag, count: 900 })).toBe(true)
   })
 
   it("escapes HTML", () => {

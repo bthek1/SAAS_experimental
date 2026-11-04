@@ -6,7 +6,9 @@ import {
   barChartHeight,
   type ChartPalette,
   distributionOption,
+  flaggedCount,
   flaggedPoints,
+  hasMorePoints,
   numericScoreOption,
 } from "@/lib/dashboard"
 import type { BooleanScoreMetric, ScoreMetric } from "@/types/dashboard"
@@ -18,12 +20,15 @@ function FlagCard({ metric }: { metric: BooleanScoreMetric }) {
       <CardHeader>
         <CardTitle>{metric.label}</CardTitle>
         <CardDescription>
-          {flagged.length} of {metric.points.length} responses
+          {flaggedCount(metric)} of {metric.count} responses
+          {hasMorePoints(metric) && `. Listing flagged responses among the latest ${metric.points.length}.`}
         </CardDescription>
       </CardHeader>
       <CardContent>
         {flagged.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">None flagged.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            {flaggedCount(metric) === 0 ? "None flagged." : "None flagged in the latest responses."}
+          </p>
         ) : (
           <ul className="divide-y text-sm">
             {flagged.map((p) => (
@@ -51,7 +56,9 @@ function MetricCard({ metric, palette }: { metric: ScoreMetric; palette: ChartPa
       return (
         <ChartCard
           title={metric.label}
-          description={`Average ${metric.mean} across ${metric.points.length} responses`}
+          description={`Average ${metric.mean} across ${metric.count} responses${
+            hasMorePoints(metric) ? `. Chart shows the latest ${metric.points.length}.` : ""
+          }`}
           option={numericScoreOption(metric, palette)}
         />
       )
@@ -59,7 +66,7 @@ function MetricCard({ metric, palette }: { metric: ScoreMetric; palette: ChartPa
       return (
         <ChartCard
           title={metric.label}
-          description={`${metric.points.length} responses`}
+          description={`${metric.count} responses`}
           option={distributionOption(metric, palette)}
           height={barChartHeight(metric.distribution.length)}
         />

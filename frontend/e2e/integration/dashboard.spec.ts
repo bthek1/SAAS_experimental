@@ -62,3 +62,25 @@ test("dashboard counts what was sent and charts the submitted score", async ({
   await expect(score).toContainText("Average 7 across 1 responses");
   await expect(score.locator("canvas").first()).toBeVisible();
 });
+
+test.describe("in Sydney", () => {
+  test.use({ timezoneId: "Australia/Sydney" });
+
+  test("the window starts at midnight in the browser's time zone", async ({ page, request }) => {
+    const summary = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/dashboard/");
+    await loginAs(page, request);
+    await page.goto("/dashboard");
+
+    const response = await summary;
+    expect(new URL(response.url()).searchParams.get("tz")).toBe("Australia/Sydney");
+    const { range } = (await response.json()) as { range: { from: string } };
+    // Sydney is UTC+10 or +11, depending on daylight saving.
+    expect(range.from).toMatch(/T00:00:00\+1[01]:00$/);
+  });
+});
+
+test("an unknown time zone is refused", async ({ page, request }) => {
+  const owner = await loginAs(page, request);
+  const response = await api(request, owner.access).get("/dashboard/?tz=Not/AZone");
+  expect(response.status()).toBe(400);
+});

@@ -5,6 +5,7 @@ import type {
   CategoricalScoreMetric,
   DashboardSummary,
   NumericScoreMetric,
+  ScoreMetric,
 } from "@/types/dashboard"
 
 /** Resolved theme colours for charts (see `useChartPalette`). */
@@ -194,7 +195,17 @@ export function distributionOption(
   }
 }
 
-/** Responses whose boolean metric is true, newest first. */
+/** All responses in the window whose boolean metric is true, not only the returned points. */
+export function flaggedCount(metric: BooleanScoreMetric): number {
+  return metric.distribution.find((d) => d.value)?.count ?? 0
+}
+
+/** The API returns only the latest points, so a chart or list can show fewer than `count`. */
+export function hasMorePoints(metric: ScoreMetric): boolean {
+  return metric.points.length < metric.count
+}
+
+/** Returned responses whose boolean metric is true, newest first. */
 export function flaggedPoints(metric: BooleanScoreMetric) {
   return metric.points.filter((p) => p.value).reverse()
 }

@@ -51,6 +51,9 @@ interface ScoreMetricBase<K extends string, V> {
   name: string
   label: string
   kind: K
+  /** Responses with this metric in the window. */
+  count: number
+  /** The latest responses only, so it can be shorter than `count`. */
   points: ScorePoint<V>[]
 }
 

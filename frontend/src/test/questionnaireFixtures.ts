@@ -162,6 +162,7 @@ export const dashboardScores: DashboardScores = {
       name: "total",
       label: "Total score",
       kind: "numeric",
+      count: 2,
       mean: 7,
       points: [
         { questionnaireId: "q-2", name: "Bob", submittedAt: "2026-10-28T10:00:00Z", value: 4 },
@@ -172,6 +173,7 @@ export const dashboardScores: DashboardScores = {
       name: "severity",
       label: "Severity",
       kind: "categorical",
+      count: 2,
       distribution: [
         { value: "Mild", count: 1 },
         { value: "Moderate", count: 1 },
@@ -190,6 +192,7 @@ export const dashboardScores: DashboardScores = {
       name: "flag",
       label: "Needs follow-up",
       kind: "boolean",
+      count: 2,
       distribution: [
         { value: false, count: 1 },
         { value: true, count: 1 },

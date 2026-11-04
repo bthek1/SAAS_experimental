@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from rest_framework import serializers
 
 from .models import Battery, BatteryType, Questionnaire, QuestionnaireType
@@ -227,6 +229,14 @@ class DashboardQuerySerializer(serializers.Serializer):
     questionnaireType = OwnedPrimaryKeyRelatedField(  # noqa: N815
         queryset=QuestionnaireType.objects.all(), required=False
     )
+    tz = serializers.CharField(required=False, max_length=64)
+
+    def validate_tz(self, value: str) -> ZoneInfo:
+        try:
+            return ZoneInfo(value)
+        # A directory such as "America", or a name that is not a valid path.
+        except (ZoneInfoNotFoundError, ValueError, OSError) as exc:
+            raise serializers.ValidationError("Unknown time zone.") from exc
 
 
 class DashboardScoresQuerySerializer(DashboardQuerySerializer):

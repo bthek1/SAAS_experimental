@@ -138,8 +138,8 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | `POST` | `/api/batteries/` | JWT | `{batteryTypeId, name?}` | `201 {id, batteryTypeId, batteryTypeName, name, shareToken, questionnaires: [{order, questionnaireId, shareToken, questionnaireTypeName, submittedAt}], isComplete, createdAt, updatedAt}` |
 | `GET` / `DELETE` | `/api/batteries/<id>/` | JWT | | `200 Battery` / `204` |
 | `GET` | `/api/batteries/by-token/<shareToken>/` | Public | | `200 {id, name, batteryTypeName, questionnaires: [{order, shareToken, questionnaireTypeName, submittedAt}], isComplete}` |
-| `GET` | `/api/dashboard/?days=&questionnaireType=` | JWT | | `200 {range: {days, from, to}, kpis: {questionnairesSent, questionnairesSubmitted, questionnairesPending, completionRate, medianHoursToComplete, batteriesTotal, batteriesComplete, batteriesInProgress, batteriesNotStarted}, submissionsByDay: [{date, count}], byQuestionnaireType: [{id, title, sent, submitted, pending}], byBatteryType: [{id, title, complete, inProgress, notStarted}], recentSubmissions: [{id, name, questionnaireTypeTitle, submittedAt}], stalePending: [{id, name, questionnaireTypeTitle, shareToken, createdAt, ageDays}]}` |
-| `GET` | `/api/dashboard/scores/?questionnaireType=&days=` | JWT | | `200 {questionnaireTypeId, metrics: [{name, label, kind: "numeric" \| "categorical" \| "boolean", points: [{questionnaireId, name, submittedAt, value}], mean?, distribution?: [{value, count}]}]}` |
+| `GET` | `/api/dashboard/?days=&questionnaireType=&tz=` | JWT | | `200 {range: {days, from, to}, kpis: {questionnairesSent, questionnairesSubmitted, questionnairesPending, completionRate, medianHoursToComplete, batteriesTotal, batteriesComplete, batteriesInProgress, batteriesNotStarted}, submissionsByDay: [{date, count}], byQuestionnaireType: [{id, title, sent, submitted, pending}], byBatteryType: [{id, title, complete, inProgress, notStarted}], recentSubmissions: [{id, name, questionnaireTypeTitle, submittedAt}], stalePending: [{id, name, questionnaireTypeTitle, shareToken, createdAt, ageDays}]}` |
+| `GET` | `/api/dashboard/scores/?questionnaireType=&days=&tz=` | JWT | | `200 {questionnaireTypeId, metrics: [{name, label, kind: "numeric" \| "categorical" \| "boolean", count, points: [{questionnaireId, name, submittedAt, value}], mean?, distribution?: [{value, count}]}]}` |
 
 - Validation errors return `400` with DRF's `{field: [messages]}` shape. Missing or bad JWTs return `401`.
 - **Pagination (#10).** Every list endpoint returns `Page[X]` = `{count, next, previous, results: [X]}`.
@@ -176,8 +176,10 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 - **Questionnaire-type and battery-type lists are cached for up to 5 minutes (#11).** Any write
   through the API shows up at once. Only edits in Django admin can take that long.
 - Share tokens are bearer secrets: anyone holding the link can submit once. They do not expire.
-- **Dashboard.** `days` is `7`, `30` or `90` (omit for all time; anything else is `400`). A
-  window starts at UTC midnight `days - 1` days ago, and day buckets are UTC. KPIs and
+- **Dashboard.** `days` is `7`, `30` or `90` (omit for all time; anything else is `400`). `tz` is
+  an IANA time zone such as `Australia/Sydney` (default UTC; an unknown name is `400`). The SPA
+  sends the browser's. A window starts at midnight in `tz`, `days - 1` days ago, and
+  `submissionsByDay` uses dates in `tz`; `range.from` and `range.to` carry its offset. KPIs and
   `byQuestionnaireType` count the questionnaires *created* in the window and how many of those
   are submitted, so `completionRate` (0-1) never exceeds 1. `submissionsByDay` (zero-filled) and
   `recentSubmissions` (latest 10) go by `submittedAt`. `stalePending` lists up to 10 unsubmitted
@@ -185,11 +187,13 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
   types (`400` otherwise); it narrows batteries to those containing that type, but a battery's
   status still counts all of its questionnaires. `medianHoursToComplete` is `null` with no
   submissions.
-- **Dashboard scores.** `questionnaireType` is required. Covers that type's submitted
-  questionnaires (by `submittedAt` in the window), grouped by `metrics` key. A metric's `kind`
-  comes from its first value; later values of another kind are skipped. Numeric metrics get
-  `mean`; categorical and boolean ones get `distribution` (most common first). Labels and order
-  follow the type's current `calculatedValues` (`title`, else `name`), then names only older
+- **Dashboard scores.** `questionnaireType` is required, and `days` and `tz` work as above. Covers
+  that type's submitted questionnaires (by `submittedAt` in the window), grouped by `metrics` key. A
+  metric's `kind` comes from its first value; later values of another kind are skipped. `count`
+  (responses with that metric) and `mean` (numeric) or `distribution` (categorical and boolean, most
+  common first) cover every row in the window. `points` holds only the latest 500 rows, oldest
+  first, so it can be shorter than `count`, and empty for a metric only older rows have. Labels and
+  order follow the type's current `calculatedValues` (`title`, else `name`), then names only older
   responses have.
 
 ---

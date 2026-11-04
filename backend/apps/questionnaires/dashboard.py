@@ -1,7 +1,8 @@
 """Owner-scoped aggregates for the dashboard.
 
-A window of `days` starts at UTC midnight `days - 1` days ago, so "7" is today plus the
-six days before it. `None` means all time.
+A window of `days` starts at midnight in `tz`, `days - 1` days ago, so "7" is today
+plus the six days before it. `None` means all time. `submissionsByDay` buckets by date
+in `tz`.
 
 Questionnaire KPIs and per-type counts follow a cohort: the questionnaires
 *created* in the window, and how many of those have been submitted (whenever
@@ -11,11 +12,21 @@ Pending items older than STALE_AFTER are listed whatever the window, since they
 need following up.
 """
 
-from datetime import datetime, timedelta
-from statistics import median
+from collections import Counter
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
 
-from django.db.models import Count, Q, QuerySet, Value
+from django.db.models import (
+    Count,
+    DurationField,
+    ExpressionWrapper,
+    F,
+    FilteredRelation,
+    Q,
+    QuerySet,
+    Value,
+)
 from django.db.models.functions import Coalesce, NullIf, TruncDate
 from django.utils import timezone
 
@@ -29,6 +40,7 @@ from .models import (
 
 STALE_AFTER = timedelta(days=7)
 LIST_LIMIT = 10
+SCORE_POINT_LIMIT = 500
 
 # Questionnaires created by a battery have no name of their own; show the battery's.
 RESPONDENT = Coalesce(NullIf("name", Value("")), "battery__name", Value(""))
@@ -53,7 +65,7 @@ def _submissions_by_day(
     submitted: QuerySet[Questionnaire], start: datetime | None, now: datetime
 ) -> list[dict[str, Any]]:
     counts = dict(
-        submitted.annotate(day=TruncDate("submitted_at"))
+        submitted.annotate(day=TruncDate("submitted_at", tzinfo=now.tzinfo))
         .values("day")
         .annotate(count=Count("id"))
         .values_list("day", "count")
@@ -68,10 +80,33 @@ def _submissions_by_day(
     return series
 
 
+def _median_hours(submitted: QuerySet[Questionnaire], count: int) -> float | None:
+    """Sorted in the database, so only the middle one or two rows reach Python."""
+    if count == 0:
+        return None
+    durations = (
+        submitted.annotate(
+            duration=ExpressionWrapper(
+                F("submitted_at") - F("created_at"), output_field=DurationField()
+            )
+        )
+        .order_by("duration")
+        .values_list("duration", flat=True)
+    )
+    middle = list(durations[(count - 1) // 2 : count // 2 + 1])
+    if not middle:
+        return None
+    seconds = sum(duration.total_seconds() for duration in middle) / len(middle)
+    return round(seconds / 3600, 1)
+
+
 def dashboard_summary(
-    owner, days: int | None = None, questionnaire_type: QuestionnaireType | None = None
+    owner,
+    days: int | None = None,
+    questionnaire_type: QuestionnaireType | None = None,
+    tz: tzinfo = UTC,
 ) -> dict[str, Any]:
-    now = timezone.now()
+    now = timezone.now().astimezone(tz)
     start = window_start(days, now)
 
     questionnaires = Questionnaire.objects.filter(owner=owner)
@@ -104,12 +139,6 @@ def dashboard_summary(
     counts = cohort.aggregate(
         sent=Count("id"), submitted=Count("id", filter=~Q(submitted_at=None))
     )
-    durations = [
-        (submitted_at - created_at).total_seconds() / 3600
-        for created_at, submitted_at in cohort.exclude(submitted_at=None).values_list(
-            "created_at", "submitted_at"
-        )
-    ]
 
     in_cohort = Q(instances__owner=owner)
     if start is not None:
@@ -125,14 +154,20 @@ def dashboard_summary(
         .values("id", "title", "sent", "submitted")
     )
 
-    battery_rows = batteries.annotate(
-        total=Count("questionnaires", distinct=True),
-        submitted=Count(
-            "questionnaires",
-            filter=~Q(questionnaires__submitted_at=None),
-            distinct=True,
-        ),
-    ).values_list("battery_type_id", "total", "submitted")
+    # The owner condition sits on the join. Without it, stale planner statistics (a
+    # fast-growing table) can pick a scan of every owner's questionnaires.
+    battery_rows = (
+        batteries.annotate(
+            own=FilteredRelation(
+                "questionnaires", condition=Q(questionnaires__owner=owner)
+            )
+        )
+        .annotate(
+            total=Count("own"),
+            submitted=Count("own", filter=Q(own__submitted_at__isnull=False)),
+        )
+        .values_list("battery_type_id", "total", "submitted")
+    )
     status_by_btype: dict[Any, dict[str, int]] = {}
     battery_kpis = {"complete": 0, "inProgress": 0, "notStarted": 0}
     for btype_id, total, submitted in battery_rows:
@@ -170,7 +205,9 @@ def dashboard_summary(
                 if counts["sent"]
                 else 0.0
             ),
-            "medianHoursToComplete": round(median(durations), 1) if durations else None,
+            "medianHoursToComplete": _median_hours(
+                cohort.exclude(submitted_at=None), counts["submitted"]
+            ),
             "batteriesTotal": sum(battery_kpis.values()),
             "batteriesComplete": battery_kpis["complete"],
             "batteriesInProgress": battery_kpis["inProgress"],
@@ -235,30 +272,13 @@ def _metric_labels(questionnaire_json: dict) -> dict[str, str]:
     return labels
 
 
-def dashboard_scores(
-    owner, questionnaire_type: QuestionnaireType, days: int | None = None
-) -> dict[str, Any]:
-    """Every stored metric of one type's submitted questionnaires, by metric.
-
-    A metric's kind comes from its first value (number, string or bool); later
-    values of another kind are skipped. Labels and order follow the type's current
-    `calculatedValues`, then any names that only older snapshots had.
-    """
-    start = window_start(days, timezone.now())
-    rows = Questionnaire.objects.filter(
-        owner=owner, questionnaire_type=questionnaire_type
-    ).exclude(submitted_at=None)
-    if start is not None:
-        rows = rows.filter(submitted_at__gte=start)
-
-    labels = _metric_labels(questionnaire_type.questionnaire_json)
+def _metric_totals(
+    stored_metrics: Iterable[dict | None], labels: dict[str, str]
+) -> dict[str, dict[str, Any]]:
+    """One entry per metric, with `count` and `mean` or `distribution`, no points."""
     metrics: dict[str, dict[str, Any]] = {}
-    points = (
-        rows.annotate(respondent=RESPONDENT)
-        .order_by("submitted_at")
-        .values_list("id", "respondent", "submitted_at", "metrics_json")
-    )
-    for qid, name, submitted_at, stored in points:
+    totals: dict[str, Any] = {}
+    for stored in stored_metrics:
         for metric, value in (stored or {}).items():
             kind = _metric_kind(value)
             if kind is None:
@@ -269,10 +289,37 @@ def dashboard_scores(
                     "name": metric,
                     "label": labels.get(metric, metric),
                     "kind": kind,
+                    "count": 0,
                     "points": [],
                 },
             )
             if entry["kind"] != kind:
+                continue
+            entry["count"] += 1
+            if kind == "numeric":
+                totals[metric] = totals.get(metric, 0) + value
+            else:
+                totals.setdefault(metric, Counter())[value] += 1
+
+    for metric, entry in metrics.items():
+        if entry["kind"] == "numeric":
+            entry["mean"] = round(totals[metric] / entry["count"], 2)
+        else:
+            entry["distribution"] = [
+                {"value": value, "count": count}
+                for value, count in sorted(
+                    totals[metric].items(),
+                    key=lambda item: (-item[1], str(item[0])),
+                )
+            ]
+    return metrics
+
+
+def _add_points(metrics: dict[str, dict[str, Any]], rows: Iterable[tuple]) -> None:
+    for qid, name, submitted_at, stored in rows:
+        for metric, value in (stored or {}).items():
+            entry = metrics.get(metric)
+            if entry is None or _metric_kind(value) != entry["kind"]:
                 continue
             entry["points"].append(
                 {
@@ -283,20 +330,43 @@ def dashboard_scores(
                 }
             )
 
-    for entry in metrics.values():
-        values = [p["value"] for p in entry["points"]]
-        if entry["kind"] == "numeric":
-            entry["mean"] = round(sum(values) / len(values), 2)
-        else:
-            counts: dict[Any, int] = {}
-            for value in values:
-                counts[value] = counts.get(value, 0) + 1
-            entry["distribution"] = [
-                {"value": value, "count": count}
-                for value, count in sorted(
-                    counts.items(), key=lambda item: (-item[1], str(item[0]))
-                )
-            ]
+
+def dashboard_scores(
+    owner,
+    questionnaire_type: QuestionnaireType,
+    days: int | None = None,
+    tz: tzinfo = UTC,
+) -> dict[str, Any]:
+    """Every stored metric of one type's submitted questionnaires, by metric.
+
+    `count`, `mean` and `distribution` cover every row in the window. `points` holds
+    only the latest SCORE_POINT_LIMIT rows, which bounds the response: a cache hit
+    still has to unpickle and render all of it.
+
+    A metric's kind comes from its first value (number, string or bool); later
+    values of another kind are skipped. Labels and order follow the type's current
+    `calculatedValues`, then any names that only older snapshots had.
+    """
+    start = window_start(days, timezone.now().astimezone(tz))
+    rows = Questionnaire.objects.filter(
+        owner=owner, questionnaire_type=questionnaire_type
+    ).exclude(submitted_at=None)
+    if start is not None:
+        rows = rows.filter(submitted_at__gte=start)
+
+    labels = _metric_labels(questionnaire_type.questionnaire_json)
+    stored_metrics = rows.order_by("submitted_at", "id").values_list(
+        "metrics_json", flat=True
+    )
+    metrics = _metric_totals(stored_metrics.iterator(chunk_size=2000), labels)
+    latest = (
+        rows.annotate(respondent=RESPONDENT)
+        .order_by("-submitted_at", "-id")
+        .values_list("id", "respondent", "submitted_at", "metrics_json")[
+            :SCORE_POINT_LIMIT
+        ]
+    )
+    _add_points(metrics, reversed(list(latest)))
 
     order = list(labels)
     ordered = sorted(

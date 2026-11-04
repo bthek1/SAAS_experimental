@@ -35,6 +35,7 @@ const SCORES = {
       name: "phq9_total",
       label: "PHQ-9 total",
       kind: "numeric",
+      count: 2,
       mean: 8,
       points: [
         { questionnaireId: "q-1", name: "Alex", submittedAt: "2026-10-28T10:00:00Z", value: 6 },
@@ -112,6 +113,16 @@ test("filters update the URL and the request", async ({ page }) => {
   await page.getByRole("button", { name: "All time" }).click();
   await expect(page).toHaveURL(/range=all/);
   await expect.poll(() => queries.at(-1)?.has("days")).toBe(false);
+});
+
+test.describe("in Sydney", () => {
+  test.use({ timezoneId: "Australia/Sydney" });
+
+  test("requests send the browser's time zone", async ({ page }) => {
+    const queries = await mockApi(page);
+    await signIn(page);
+    await expect.poll(() => queries.at(-1)?.get("tz")).toBe("Australia/Sydney");
+  });
 });
 
 test("selecting a questionnaire type shows its score charts", async ({ page }) => {

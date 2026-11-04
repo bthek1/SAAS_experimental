@@ -19,6 +19,7 @@ dependencies = [
   "weasyprint>=70.0",
   "django-prometheus ~=2.5",
   "redis~=6.4",
+  "tzdata>=2025.1",
 ]
 
 [build-system]

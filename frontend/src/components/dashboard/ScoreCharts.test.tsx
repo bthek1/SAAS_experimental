@@ -44,6 +44,53 @@ describe("ScoreCharts", () => {
     expect(within(flag).queryByRole("link", { name: "Bob" })).not.toBeInTheDocument()
   })
 
+  it("counts every response when only the latest points are returned", async () => {
+    const [total, , flag] = dashboardScores.metrics
+    renderScores([
+      { ...total, count: 900 } as ScoreMetric,
+      {
+        ...flag,
+        count: 900,
+        distribution: [
+          { value: false, count: 860 },
+          { value: true, count: 40 },
+        ],
+      } as ScoreMetric,
+    ])
+    const totalCard = await screen.findByRole("region", { name: "Total score" })
+    expect(
+      within(totalCard).getByText("Average 7 across 900 responses. Chart shows the latest 2."),
+    ).toBeInTheDocument()
+    const flagCard = screen.getByRole("region", { name: "Needs follow-up" })
+    expect(
+      within(flagCard).getByText(/40 of 900 responses\. Listing flagged responses among the latest 2\./),
+    ).toBeInTheDocument()
+  })
+
+  it("says when flagged responses are only among older rows", async () => {
+    const [, , flag] = dashboardScores.metrics
+    renderScores([
+      {
+        ...flag,
+        count: 900,
+        distribution: [
+          { value: false, count: 899 },
+          { value: true, count: 1 },
+        ],
+        points: flag.points.map((p) => ({ ...p, value: false })),
+      } as ScoreMetric,
+    ])
+    const card = await screen.findByRole("region", { name: "Needs follow-up" })
+    expect(within(card).getByText("None flagged in the latest responses.")).toBeInTheDocument()
+  })
+
+  it("reads the categorical total from count", async () => {
+    const [, severity] = dashboardScores.metrics
+    renderScores([{ ...severity, count: 900 } as ScoreMetric])
+    const card = await screen.findByRole("region", { name: "Severity" })
+    expect(within(card).getByText("900 responses")).toBeInTheDocument()
+  })
+
   it("explains when there are no scores", async () => {
     renderScores([])
     expect(await screen.findByText(/no scored responses in this period/i)).toBeInTheDocument()

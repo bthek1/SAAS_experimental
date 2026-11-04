@@ -201,6 +201,30 @@ credentials. `DATABASE_URL` configures the database.
   `loadtest`. `apps/questionnaires/test_query_counts.py` fails if a hot path's query count grows
   with rows; add new k6-loaded endpoints to it.
 
+**Dashboard (#19)** (`apps/questionnaires/dashboard.py`)
+- Keep work on a miss, and the size of what is cached, bounded by the page rather than the owner's
+  rows. A cache hit still unpickles and renders the whole value, so a large response costs on every
+  request. `dashboard/scores/` returns only the latest `SCORE_POINT_LIMIT` rows as `points`, while
+  `count`, `mean` and `distribution` cover the whole window. In the SPA, read counts from those
+  fields, never `points.length`.
+- Let the database sort or aggregate instead of loading rows into Python, as `_median_hours` does:
+  parsing timestamps was the largest Python cost of a miss. Use what both databases support, since
+  tests run on SQLite (so no `PERCENTILE_CONT`).
+- `tz` is validated to a `ZoneInfo` by the query serializer, and is part of the cache key. Windows
+  use `timezone.now().astimezone(tz)`, and `TruncDate` takes `tzinfo`. Stored datetimes stay UTC.
+  `tzdata` is a direct dependency, so zone names resolve on hosts and images without system data.
+- SQLite tests say nothing about query plans. Check a dashboard query with `EXPLAIN` on Postgres
+  with realistic rows, and with stale statistics too: a fast-growing table is where a plan turns
+  into a full scan. `battery_rows` keeps the owner on the join for this reason, and `by_qtype`
+  does not, because there it measured slower and never scanned.
+- To profile or compare without touching the dev or load-test stacks, start a throwaway Postgres
+  with its own port (`docker run --rm --tmpfs /var/lib/postgresql/data -p 127.0.0.1:5499:5432 ...`),
+  point `DATABASE_URL` at it (it overrides `.env`), then run `migrate` and `seed_loadtest --password
+  <any>`. Run `VACUUM (PARALLEL 0, ANALYZE)` first: plain `VACUUM ANALYZE` can run out of Docker's
+  small `/dev/shm`, and without statistics the plans are not realistic. Time outside freezegun,
+  whose fake datetimes show up in the profile. `seed_loadtest` clamps many `submitted_at` to one
+  instant, so don't compare those rows by order.
+
 **Celery**
 - App in `core/celery.py`. Tasks in `apps/<app>/tasks.py`, auto-discovered, defined with
   `@shared_task`.
@@ -217,6 +241,8 @@ credentials. `DATABASE_URL` configures the database.
   is computed. `CACHE_ENABLED=false` bypasses the cache without a code change.
 - Run auth and validation before reading the cache, so a deactivated user or a foreign id is
   still refused on a hit.
+- Anything that changes a cached value goes in `params`, including `tz` on the dashboards. Bump
+  `version` when the value's shape changes (`dashboard-scores` is on 2).
 - `bump_owner_generation()` makes all of an owner's entries unreachable, after the commit. Do not
   delete keys or scan for them. Views call it on type writes and on any delete, not on questionnaire
   or battery creation or on submit: those are too frequent, so dashboards lag them by up to the TTL.

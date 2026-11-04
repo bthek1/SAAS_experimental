@@ -1152,6 +1152,7 @@ dependencies = [
     { name = "gunicorn" },
     { name = "psycopg", extra = ["binary"] },
     { name = "redis" },
+    { name = "tzdata" },
     { name = "weasyprint" },
 ]
 
@@ -1185,6 +1186,7 @@ requires-dist = [
     { name = "gunicorn", specifier = "~=26.2" },
     { name = "psycopg", extras = ["binary"], specifier = "~=3.3" },
     { name = "redis", specifier = "~=6.4" },
+    { name = "tzdata", specifier = ">=2025.1" },
     { name = "weasyprint", specifier = ">=70.0" },
 ]
 

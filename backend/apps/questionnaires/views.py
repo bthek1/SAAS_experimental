@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import UTC
 
 from django.db.models import Prefetch, RestrictedError
 from django.http import HttpResponse
@@ -276,6 +277,7 @@ class DashboardView(APIView):
         query.is_valid(raise_exception=True)
         days = query.validated_data.get("days")
         questionnaire_type = query.validated_data.get("questionnaireType")
+        tz = query.validated_data.get("tz", UTC)
         return Response(
             cached(
                 "dashboard",
@@ -283,10 +285,14 @@ class DashboardView(APIView):
                 params={
                     "days": days,
                     "questionnaireType": questionnaire_type and questionnaire_type.pk,
+                    "tz": str(tz),
                 },
                 ttl=DASHBOARD_CACHE_SECONDS,
                 compute=lambda: dashboard.dashboard_summary(
-                    request.user, days=days, questionnaire_type=questionnaire_type
+                    request.user,
+                    days=days,
+                    questionnaire_type=questionnaire_type,
+                    tz=tz,
                 ),
             )
         )
@@ -300,14 +306,20 @@ class DashboardScoresView(APIView):
         query.is_valid(raise_exception=True)
         days = query.validated_data.get("days")
         questionnaire_type = query.validated_data["questionnaireType"]
+        tz = query.validated_data.get("tz", UTC)
         return Response(
             cached(
                 "dashboard-scores",
                 owner_id=request.user.pk,
-                params={"days": days, "questionnaireType": questionnaire_type.pk},
+                params={
+                    "days": days,
+                    "questionnaireType": questionnaire_type.pk,
+                    "tz": str(tz),
+                },
                 ttl=DASHBOARD_CACHE_SECONDS,
+                version=2,
                 compute=lambda: dashboard.dashboard_scores(
-                    request.user, questionnaire_type, days=days
+                    request.user, questionnaire_type, days=days, tz=tz
                 ),
             )
         )
