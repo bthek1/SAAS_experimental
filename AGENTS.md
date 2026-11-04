@@ -430,7 +430,8 @@ creates bare containers. Ansible (Phase 4) configures them.
 since runs add data and change the numbers (it also empties the cache). Change one thing at a time and re-stress. Quicker runs:
 `just k6 stress TARGET=lxc STEP=10 MAX_RATE=500 START_RATE=150` skips the low rates, and to compare two
 configs, `just k6 load TARGET=lxc RATE=<fixed> HOLD=5m` on each, back to back, is quicker and less
-affected by run-to-run variation than comparing knees. Only compare runs with the same settings. Record each
+affected by run-to-run variation than comparing knees. Only compare runs with the same settings. Stop a soak
+after 5 minutes in a row over 1 % dropped iterations: it won't stop itself. Record each
 baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables), then add
 it to `frontend/public/loadtest-results.html` (the "Load tests" sidebar link), whose figures are
 copied by hand. Files in `public/` have no login, so keep LAN addresses and secrets out of it.

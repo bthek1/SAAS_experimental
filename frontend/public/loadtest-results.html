@@ -146,9 +146,10 @@
   <div class="tiles">
     <div class="tile hero">
       <span class="muted">Capacity on the final code, mixed traffic</span>
-      <span class="value">~480 req/s</span>
-      <span class="muted small">Up from ~86 req/s at the start. Treat that as a rough ratio: the runs
-        used different ramps, and repeat runs can differ by ~90 req/s. <a href="#changes">See below.</a></span>
+      <span class="value">~430–497 req/s</span>
+      <span class="muted small">Up from ~86 req/s at the start. Two runs of the same test gave this range, and both ended
+        suddenly with CPU to spare. The runs also used different ramps, and repeats can differ by ~90 req/s.
+        <a href="#changes">See below.</a></span>
     </div>
     <div class="tile">
       <span class="muted">p95, 10 minutes at ~215 req/s</span>
@@ -158,12 +159,12 @@
     <div class="tile">
       <span class="muted">Failed requests</span>
       <span class="value">0</span>
-      <span class="muted small">In 4.0 M requests across the 22 runs behind this page. Overload showed up as queueing, not errors</span>
+      <span class="muted small">In 5.6 M requests across the 25 runs behind this page. Overload showed up as queueing, not errors</span>
     </div>
     <div class="tile">
-      <span class="muted">First limit now</span>
-      <span class="value">saas-app CPU</span>
-      <span class="muted small">83 % at capacity, against 23 % on saas-db</span>
+      <span class="muted">Busiest container</span>
+      <span class="value">saas-app</span>
+      <span class="muted small">74 % CPU at ~497 req/s, against 21 % on saas-db. The run ended before it was full</span>
     </div>
   </div>
 
@@ -177,7 +178,8 @@
     <p class="small" style="margin: 16px 0 0"><strong>Read the gaps with care.</strong> The grey run repeated
       the settings above it and came out ~89 req/s higher, for a reason that was never found. A gain smaller
       than that isn't proven by the knee alone. The two big gains also show at matching rates: at ~125 req/s
-      pagination cut the slowest group's p95 from 109 to 16 ms, and the cache cut Postgres rows read 7 to 14 times.</p>
+      pagination cut the slowest group's p95 from 109 to 16 ms, and the cache cut Postgres rows read 7 to 14 times.
+      The later dashboard fixes used a shorter ramp, so they are <a href="#dashboard-fixes">compared separately</a>.</p>
     <details>
       <summary>Show the numbers at each knee</summary>
       <div id="changes-table"></div>
@@ -239,14 +241,19 @@
   <div id="failure-table"></div>
 
   <h2>What happens as data grows</h2>
-  <p>A soak at a constant ~350 req/s, about 73 % of the knee, with the cache on. The respondent flow adds rows
-    all the time, roughly 8,000 questionnaires a minute. p95 rises steadily, then the deploy
-    <strong>falls off a cliff at about 236,000 rows</strong> (~12,000 per owner), and saas-app runs out of CPU.
-    No request failed, but k6 dropped 7,511 iterations and the run was stopped at minute 35.</p>
+  <p>A soak at a constant ~350 req/s with the cache on. The respondent flow adds about 8,000 questionnaires a minute.
+    The first run <strong>fell off a cliff at about 236,000 rows</strong> (~12,000 per owner): saas-app ran out of CPU, k6
+    dropped 7,511 iterations, and it was stopped at minute 35. After the dashboard fixes, the same command held the rate to
+    minute 44, <strong>about 355,000 rows, with nothing dropped</strong>. No request failed in either run.</p>
+  <div class="legend">
+    <span><span class="key" style="background:var(--off)"></span>Before the fixes</span>
+    <span><span class="key" style="background:var(--s1)"></span>After the fixes</span>
+  </div>
   <div class="pair">
     <div class="card">
       <h3>Slowest group p95, ms, by minute</h3>
       <div class="chart" id="soak-latency"></div>
+      <p class="muted small">Minute 45 of the later run is off the scale at 9,466 ms.</p>
     </div>
     <div class="card">
       <h3>saas-app CPU, %, by minute</h3>
@@ -254,13 +261,45 @@
     </div>
   </div>
   <ul>
-    <li><strong>Likely cause: dashboard work in Python.</strong> A miss loads every submitted row in the cohort,
-      and <code>dashboard/scores/</code> returns every submitted row with no limit (1.06 MB here). No CPU profile
-      was taken, so this isn't confirmed.</li>
-    <li><strong>The cache doesn't bound this.</strong> Hit ratios held at ~90 % and ~75 %, but a scores hit still
-      costs 39 ms to unpickle and render.</li>
-    <li><strong>This is one run at one rate.</strong> All rows are dated today, the worst case for the
+    <li><strong>The new limit wasn't found.</strong> The later run was stopped at minute 45 to save time. CPU and Django p95 began
+      rising at minute 42, and minute 45 had a 9.5 s spike, so another limit may be close.</li>
+    <li><strong>Drift is less than half.</strong> The slowest group's p95 rises about 0.22 ms per 1,000 rows, against about
+      0.5 before. It is reduced, not gone.</li>
+    <li><strong>This is one run each, at one rate.</strong> All rows are dated today, the worst case for the
       <code>days</code> windows. Read it as data per owner, not as time.</li>
+  </ul>
+
+  <h2 id="dashboard-fixes">What the dashboard fixes did</h2>
+  <p>Four changes, deployed together, so k6 can't separate them: a 500-row limit on the points in
+    <code>dashboard/scores/</code>, the median found in the database, the owner on the battery join, and two partial indexes.
+    The biggest effect is on rows per owner. In short stress runs the slowest group's p95 is about halved at matching rates,
+    but <strong>the knee didn't clearly move</strong>: both runs collapsed suddenly with CPU to spare.</p>
+  <div class="card">
+    <h3>Stress: slowest group p95, ms, by request rate</h3>
+    <div class="legend">
+      <span><span class="key" style="background:var(--off)"></span>Before the fixes</span>
+      <span><span class="key" style="background:var(--s1)"></span>After, run 1</span>
+      <span><span class="key" style="background:var(--s3)"></span>After, run 2</span>
+    </div>
+    <div class="chart" id="fixes-chart"></div>
+    <p class="muted small">Off the scale, so not drawn: a stall before the fixes at 284 req/s (1.2 s), and one in run 2 at 383 req/s (892 ms).</p>
+  </div>
+  <div class="card">
+    <h3>One owner's reads on the deploy, at the end of each soak</h3>
+    <p class="muted small">Median of 3 for the later run, with no other traffic. That owner has 18,416 questionnaires; the earlier one had 15,346.</p>
+    <div id="reads-table"></div>
+  </div>
+  <div class="card">
+    <h3>Profile of a cache miss</h3>
+    <p class="muted small">A throwaway Postgres on the dev host, so read these as ratios. 300,000 questionnaires, the owner has 15,000, cache off. Median of 3 alternating rounds.</p>
+    <div id="profile-table"></div>
+  </div>
+  <ul>
+    <li><strong>The profile confirms the likely causes.</strong> Parsing the timestamps the median loaded was the largest
+      Python cost of a summary miss, and a scores hit cost as much as a miss because it unpickled and rendered the whole body.</li>
+    <li><strong>A stale-statistics trap is gone.</strong> With stale planner statistics, the battery query scanned every owner's
+      rows: 73.7 ms, against 5.3 ms with the owner on the join. With normal statistics both take 4.3 ms.</li>
+    <li><strong>The indexes cost little.</strong> A submit-style update went from about 0.266 to 0.277 ms per row.</li>
   </ul>
 
   <h2>Holding a steady rate</h2>
@@ -275,12 +314,13 @@
 
   <h2>Still open</h2>
   <ul>
-    <li><strong>Make saas-app cheaper per request, or give it more cores.</strong> It is now the first limit.</li>
-    <li><strong>Fix the dashboard miss path and limit <code>dashboard/scores/</code>.</strong> Low-traffic owners rarely
-      get a hit, and two of the dashboard's queries scan the whole table, whoever is asking. Scoping them to the
-      owner saved ~9 of ~29 ms when tested as SQL. It hasn't been re-stressed.</li>
-    <li><strong>Explain the stalls.</strong> Three of the four final stress runs froze briefly well under their knee.
-      It isn't the cache, as the worst was with it off. Something below the app is suspected but not confirmed.</li>
+    <li><strong>Find the next limit.</strong> The last soak was stopped at minute 45, so run one until it gives out.</li>
+    <li><strong>Explain the stalls.</strong> Brief freezes well under the knee, now seen in 5 runs, and sudden collapses ended both
+      latest stress runs with CPU to spare. They hide any knee above about 450 req/s. They aren't from the cache, as the worst
+      was with it off. Something below the app is suspected but not confirmed.</li>
+    <li><strong>Make a cache miss cheaper.</strong> On the deploy it still takes 124 to 179 ms at about 18,000 rows per owner, and
+      low-traffic owners rarely get a hit. A scores miss still reads every row in the window for its totals.</li>
+    <li><strong>Make saas-app cheaper per request, or give it more cores.</strong> It is still the busiest container.</li>
     <li><strong>Explain the ~264 against ~353 req/s gap</strong> between runs with the same settings.</li>
     <li><strong>Pre-allocate k6's VUs.</strong> New VUs log in during a slowdown, which may feed the break and make
       the knee partly a test artefact.</li>
@@ -320,6 +360,9 @@ const RUNS = {
   "stress-20261103T121030Z": [[191.8,31,38,8,0],[229.9,17,45,11,0],[240.8,535,49,13,0],[268.6,20363,77,16,515],[264.9,317,51,16,0],[274.5,251,52,17,0],[286.4,191,54,19,0],[296.6,143,58,22,0],[307.4,106,61,23,0],[319,75,64,26,0],[328.8,57,67,28,0],[338.7,62,70,32,0],[352.2,74,74,36,0],[360.4,91,77,39,0]],
   "stress-20261103T122641Z": [[168.7,27,25,5,0],[228.5,14,36,6,0],[239.5,14,37,7,0],[251.4,13,39,7,0],[260.9,14,41,7,0],[273.8,14,42,8,0],[283.3,14,45,8,0],[296.7,14,47,9,0],[304.3,14,48,9,0],[315.5,14,50,9,0],[326.5,15,52,10,0],[339.6,15,55,10,0],[349.8,16,57,10,0],[360.2,16,59,11,0],[371.4,17,61,11,0],[382.2,17,63,12,0],[392.3,18,66,12,0],[406.4,19,67,13,0],[415.4,19,68,13,0],[425.4,20,74,14,0],[435.8,21,73,14,0],[447.9,24,78,14,0],[459,25,77,15,0]],
   "soak-20261103T133342Z": [[352.7,4375,47,10,0],[351.3,522,44,10,0],[350.9,31,48,11,0],[351,32,59,14,0],[350.5,36,55,13,0],[348.9,41,56,13,0],[350.1,42,50,13,0],[352.3,48,62,15,0],[349.6,53,61,16,0],[351.9,55,51,14,0],[352.3,59,52,14,0],[353.8,61,54,15,0],[352.5,67,65,17,0],[353.6,75,65,17,0],[352.7,79,57,19,0],[351.8,82,60,19,0],[353.9,86,59,19,0],[354.4,90,57,18,0],[351.9,94,60,20,0],[348.9,99,61,20,0],[352,102,60,20,0],[353.9,106,61,20,0],[352.7,109,63,21,0],[355.4,113,63,22,0],[356.3,118,62,22,0],[354.1,121,63,22,0],[351.7,126,66,23,0],[353.1,130,66,23,0],[341,144,83,27,357],[352.6,151,69,24,0],[338.4,167,85,27,448],[332.7,202,92,28,570],[305.1,283,93,28,1607],[307.3,357,93,29,1692],[290,422,93,30,2260]],
+  "stress-20261104T052442Z": [[183.7,70,28,6,0],[252.6,24,33,8,0],[266.4,12,34,8,0],[284.5,13,38,9,0],[299.5,14,43,10,0],[318.5,18,54,12,0],[329.7,20,57,13,0],[350,20,49,12,0],[365.1,22,55,13,0],[381.9,24,56,14,0],[397.3,26,64,16,0],[416.3,28,65,17,0],[430.3,33,76,20,0]],
+  "stress-20261104T053920Z": [[231.5,23,33,7,0],[260,12,34,9,0],[276,13,37,9,0],[292.7,14,38,9,0],[307.8,15,42,10,0],[321.5,16,45,11,0],[337.4,17,48,13,0],[352.5,19,52,13,0],[369.3,20,53,14,0],[382.5,892,58,15,0],[401,24,60,16,0],[419.5,26,61,16,0],[436.3,27,64,18,0],[445.3,29,66,18,0],[467.4,31,70,19,0],[479.8,34,77,21,0],[497.5,37,74,21,0]],
+  "soak-20261104T055745Z": [[353.6,6127,54,13,0],[350.8,921,48,12,0],[353.4,116,48,12,0],[353.9,50,50,13,0],[353.2,30,50,13,0],[350.8,24,49,13,0],[348.8,25,51,13,0],[352.7,27,52,14,0],[347.6,28,51,14,0],[349.8,29,50,13,0],[348.3,30,50,13,0],[351.2,32,55,14,0],[352.6,33,54,15,0],[353.2,34,60,16,0],[349.7,35,51,14,0],[349.7,39,66,20,0],[353.2,40,52,16,0],[353,41,54,17,0],[352.8,43,53,16,0],[351.9,45,55,16,0],[352.9,47,57,19,0],[351.9,49,56,19,0],[352.4,51,49,17,0],[353.1,53,54,18,0],[347,55,52,18,0],[353.3,57,53,19,0],[350.8,59,54,19,0],[351.1,61,48,19,0],[352.2,63,53,19,0],[350.6,65,52,19,0],[353,67,54,20,0],[352.4,69,57,22,0],[355.3,70,55,22,0],[353.4,72,56,22,0],[354.7,74,55,22,0],[353.9,75,56,23,0],[350.6,77,55,22,0],[351.6,78,56,23,0],[351.1,80,57,24,0],[350.3,81,57,24,0],[350.2,83,59,25,0],[349.2,85,69,29,0],[349.2,89,77,31,0],[355.1,93,70,30,0],[350.6,9466,67,29,0]],
   "load-20261102T052551Z": [[132.2,12,21,5,0],[216.4,17,37,9,0],[214,18,33,10,0],[215,20,33,11,0],[215,25,36,13,0],[215.3,27,35,13,0],[216.8,32,37,15,0],[214,41,40,18,0],[214.4,59,44,21,0],[212.8,61,38,18,0],[213.2,63,38,19,0]],
   "load-20261103T125112Z": [[212,11,28,6,0],[217.4,12,28,7,0],[214.7,14,28,7,0],[215.4,16,29,7,0],[214.3,18,30,8,0],[214.6,20,29,8,0],[213.3,21,32,9,0],[215.8,24,31,8,0],[218.6,26,32,9,0],[216.6,29,31,9,0]],
 };
@@ -616,19 +659,52 @@ renderTable("failure-table",
     ["Redis frozen", "80 s", "0 of 31,500", "Cached reads waited out the 100 ms socket timeout: dashboard p95 went from 9 to 112 ms. Other endpoints were unaffected.", "load-20261103T111556Z"],
   ]);
 
-const SOAK = "soak-20261103T133342Z";
-const soakOpts = { xMin: 0, xMax: 35, xStep: 5, xLabel: "Minute of the run", sharedX: true, height: 260, tipTitle: (p) => "Minute " + p.x };
-const soakMarker = [{ x: 29, text: "drops begin" }];
+const SOAK_BEFORE = "soak-20261103T133342Z";
+const SOAK_AFTER = "soak-20261104T055745Z";
+const soakOpts = { xMin: 0, xMax: 45, xStep: 5, xLabel: "Minute of the run", sharedX: true, height: 260, endLabels: true, tipTitle: (p) => "Minute " + p.x };
+const soakMarker = [{ x: 29, text: "drops begin, before" }];
 lineChart("soak-latency", Object.assign({}, soakOpts, {
-  label: "Slowest group p95 rises steadily from about 30 to 130 milliseconds over 28 minutes, then climbs to 422 milliseconds by minute 35.",
-  series: [minuteSeries({ name: "Slowest group p95", run: SOAK, color: "var(--s1)" }, 1, 3)],
+  label: "Before the fixes, slowest group p95 reaches 130 milliseconds by minute 28 and 422 by minute 35. After them it reaches 61 by minute 28 and 93 by minute 44.",
+  series: [
+    minuteSeries({ name: "Before the fixes", run: SOAK_BEFORE, color: "var(--off)", endLabel: "422 ms" }, 1, 3),
+    minuteSeries({ name: "After the fixes", run: SOAK_AFTER, color: "var(--s1)", endLabel: "93 ms" }, 1, 3),
+  ],
   yMax: 500, format: ms, markers: soakMarker,
 }));
 lineChart("soak-cpu", Object.assign({}, soakOpts, {
-  label: "saas-app CPU holds between 48 and 66 percent for 28 minutes, then reaches 93 percent by minute 35.",
-  series: [minuteSeries({ name: "saas-app CPU", run: SOAK, color: "var(--s1)" }, 2, 3)],
+  label: "Before the fixes, saas-app CPU reaches 93 percent by minute 35. After them it stays between 48 and 66 percent to minute 41, then reaches 77 percent.",
+  series: [
+    minuteSeries({ name: "Before the fixes", run: SOAK_BEFORE, color: "var(--off)", endLabel: "93 %" }, 2, 3),
+    minuteSeries({ name: "After the fixes", run: SOAK_AFTER, color: "var(--s1)", endLabel: "67 %" }, 2, 3),
+  ],
   yMax: 100, format: (v) => v + " %", markers: soakMarker,
 }));
+
+lineChart("fixes-chart", {
+  label: "At matching rates the slowest group's p95 is about half after the fixes: 34 against 68 milliseconds at about 480 requests per second.",
+  series: [
+    rateSeries({ name: "Before the fixes", run: "stress-20261103T115330Z", color: "var(--off)", endLabel: "~480" }),
+    rateSeries({ name: "After, run 1", run: "stress-20261104T052442Z", color: "var(--s1)", endLabel: "~430" }),
+    rateSeries({ name: "After, run 2", run: "stress-20261104T053920Z", color: "var(--s3)", endLabel: "~497" }),
+  ],
+  xMin: 150, xMax: 550, xStep: 50, yMax: 100, endLabels: true, height: 300,
+  xLabel: "Requests per second", format: ms,
+});
+renderTable("reads-table",
+  [{ title: "Read" }, { title: "Miss, before", num: true }, { title: "Miss, after", num: true }, { title: "Hit, before", num: true }, { title: "Hit, after", num: true }, { title: "Body, before", num: true }, { title: "Body, after", num: true }],
+  [
+    ["dashboard/?days=30", "275 ms", "172 ms", "4 ms", "2.7 ms", "5 KB", "5 KB"],
+    ["dashboard/", "239 ms", "141 ms", "4 ms", "3.2 ms", "7 KB", "7 KB"],
+    ["dashboard/scores/", "97 ms", "48 ms", "39 ms", "9.9 ms", "1.06 MB", "205 KB"],
+  ]);
+renderTable("profile-table",
+  [{ title: "Call" }, { title: "Miss, before", num: true }, { title: "Miss, after", num: true }, { title: "Python CPU, before", num: true }, { title: "Python CPU, after", num: true }, { title: "Hit, before", num: true }, { title: "Hit, after", num: true }],
+  [
+    ["Summary, 30 days", "36.4 ms", "14.7 ms", "15.1 ms", "3.7 ms", "0.1 ms", "0.1 ms"],
+    ["Summary, all time", "66.4 ms", "17.9 ms", "39.5 ms", "4.3 ms", "0.1 ms", "0.1 ms"],
+    ["Scores, 30 days", "9.6 ms", "8.5 ms", "6.0 ms", "6.4 ms", "8.1 ms", "3.0 ms"],
+    ["Scores, all time", "26.3 ms", "18.3 ms", "19.3 ms", "13.7 ms", "27.6 ms", "3.0 ms"],
+  ]);
 
 lineChart("hold-chart", {
   label: "Slowest group p95 over a 10-minute hold: it rises from 12 to 63 milliseconds before the cache, and from 11 to 29 milliseconds with it.",
