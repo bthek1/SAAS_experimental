@@ -74,7 +74,7 @@ def iter_snapshots(kind: str) -> Iterator[dict]:
         yield snapshot(instance)
 
 
-def _emit(event_type: str, aggregate_id, version: int, data: dict) -> OutboxEvent:
+def emit(event_type: str, aggregate_id, version: int, data: dict) -> OutboxEvent:
     event = OutboxEvent.objects.create(
         event_type=event_type, aggregate_id=aggregate_id, version=version, data=data
     )
@@ -93,14 +93,12 @@ def record_change(instance: QuestionnaireType | BatteryType) -> OutboxEvent:
     locked.version += 1
     locked.save(update_fields=["version"])
     instance.version = locked.version
-    return _emit(
-        f"{kind_of(locked)}.changed", locked.pk, locked.version, _state(locked)
-    )
+    return emit(f"{kind_of(locked)}.changed", locked.pk, locked.version, _state(locked))
 
 
 @transaction.atomic
 def record_deleted(instance: QuestionnaireType | BatteryType) -> OutboxEvent:
-    return _emit(
+    return emit(
         f"{kind_of(instance)}.deleted",
         instance.pk,
         instance.version + 1,

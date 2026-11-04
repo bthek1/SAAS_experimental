@@ -160,6 +160,10 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Asymmetric, so `instances` can verify a token but never mint one (#13).
+    "ALGORITHM": "RS256",
+    "SIGNING_KEY": env.str("JWT_SIGNING_KEY", default="", multiline=True),
+    "VERIFYING_KEY": env.str("JWT_VERIFYING_KEY", default="", multiline=True),
 }
 
 # ─── Service boundary (#13) ───────────────────────────────────────────────────

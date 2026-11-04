@@ -27,8 +27,11 @@ from apps.utils.peers import (
 )
 
 from .models import (
+    Battery,
     BatteryTypeRef,
     BatteryTypeRefSlot,
+    BlockedOwner,
+    Questionnaire,
     QuestionnaireTypeRef,
     RetiredRef,
 )
@@ -106,17 +109,44 @@ def _apply_deleted(kind: str, ref_id, version: int) -> str:
     return APPLIED
 
 
+def _apply_user_event(action: str, owner_id, version: int) -> str:
+    row = BlockedOwner.objects.select_for_update().filter(pk=owner_id).first()
+    if row is not None and (row.deleted or row.version >= version):
+        return IGNORED
+    BlockedOwner.objects.update_or_create(
+        owner_id=owner_id,
+        defaults={
+            "blocked": action != "reactivated",
+            "deleted": action == "deleted",
+            "version": version,
+        },
+    )
+    if action == "deleted":
+        # In this order: the copies are RESTRICTed by what is made from them.
+        Questionnaire.objects.filter(owner_id=owner_id).delete()
+        Battery.objects.filter(owner_id=owner_id).delete()
+        for model in MODELS.values():
+            model.objects.filter(owner_id=owner_id).delete()
+    bump_owner_generation(owner_id)
+    return APPLIED
+
+
 @transaction.atomic
 def apply_event(event: dict) -> str:
     """Apply one event from `catalog`. Safe to call any number of times."""
     kind, _, action = event["type"].rpartition(".")
     ref_id = event["aggregateId"]
+    if kind == "user" and action in {"deactivated", "reactivated", "deleted"}:
+        return _apply_user_event(action, ref_id, event["version"])
     if kind not in MODELS or action not in {"changed", "deleted"}:
         raise ValueError(f"unknown event type {event['type']!r}")
     if RetiredRef.objects.filter(kind=kind, ref_id=ref_id).exists():
         return IGNORED
     if action == "deleted":
         return _apply_deleted(kind, ref_id, event["version"])
+    # An owner's type event can arrive after the event that deleted the owner.
+    if BlockedOwner.objects.filter(pk=event["data"]["ownerId"], deleted=True).exists():
+        return IGNORED
     return _upsert(kind, ref_id, event["version"], event["data"])
 
 

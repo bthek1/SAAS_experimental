@@ -1,8 +1,16 @@
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *
+from .dev_keys import DEV_SIGNING_KEY
 
 DEBUG = False
 
 SECRET_KEY = env("SECRET_KEY")
+
+if not SIMPLE_JWT["SIGNING_KEY"] or not SIMPLE_JWT["VERIFYING_KEY"]:
+    raise ImproperlyConfigured("Set JWT_SIGNING_KEY and JWT_VERIFYING_KEY.")
+if SIMPLE_JWT["SIGNING_KEY"].strip() == DEV_SIGNING_KEY.strip():
+    raise ImproperlyConfigured("JWT_SIGNING_KEY is the published dev key.")
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 

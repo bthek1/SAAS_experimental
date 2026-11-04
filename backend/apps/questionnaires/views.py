@@ -18,6 +18,7 @@ from apps.utils.cache import cached
 from apps.utils.owned import OwnedModelViewSet
 
 from . import dashboard, services
+from .auth import OwnerJWTAuthentication
 from .models import Battery, Questionnaire
 from .pdf import generate_response_pdf
 from .serializers import (
@@ -58,6 +59,7 @@ class PDFRenderer(BaseRenderer):
 
 
 class QuestionnaireViewSet(OwnedModelViewSet):
+    authentication_classes = [OwnerJWTAuthentication]
     model = Questionnaire
     serializer_class = QuestionnaireSerializer
 
@@ -144,6 +146,7 @@ def with_slots(queryset):
 
 
 class BatteryViewSet(OwnedModelViewSet):
+    authentication_classes = [OwnerJWTAuthentication]
     model = Battery
     serializer_class = BatterySerializer
     http_method_names = ["get", "post", "delete", "head", "options"]
@@ -172,6 +175,8 @@ class BatteryViewSet(OwnedModelViewSet):
 
 
 class DashboardView(APIView):
+    authentication_classes = [OwnerJWTAuthentication]
+
     def get(self, request):
         query = DashboardQuerySerializer(
             data=request.query_params, context={"request": request}
@@ -191,7 +196,7 @@ class DashboardView(APIView):
                 },
                 ttl=DASHBOARD_CACHE_SECONDS,
                 compute=lambda: dashboard.dashboard_summary(
-                    request.user,
+                    request.user.pk,
                     days=days,
                     questionnaire_type=questionnaire_type,
                     tz=tz,
@@ -201,6 +206,8 @@ class DashboardView(APIView):
 
 
 class DashboardScoresView(APIView):
+    authentication_classes = [OwnerJWTAuthentication]
+
     def get(self, request):
         query = DashboardScoresQuerySerializer(
             data=request.query_params, context={"request": request}
@@ -221,7 +228,7 @@ class DashboardScoresView(APIView):
                 ttl=DASHBOARD_CACHE_SECONDS,
                 version=2,
                 compute=lambda: dashboard.dashboard_scores(
-                    request.user, questionnaire_type, days=days, tz=tz
+                    request.user.pk, questionnaire_type, days=days, tz=tz
                 ),
             )
         )

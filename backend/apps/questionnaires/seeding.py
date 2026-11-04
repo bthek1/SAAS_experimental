@@ -89,12 +89,12 @@ def _seed_owner(owner, count, rng, now, result) -> None:
         return now - timedelta(seconds=rng.uniform(0, SPAN_DAYS * 86400))
 
     batteries = Battery.objects.bulk_create(
-        Battery(owner=owner, battery_type=battery_type, name=f"Battery {i + 1}")
+        Battery(owner_id=owner.pk, battery_type=battery_type, name=f"Battery {i + 1}")
         for i in range(int(count * BATTERY_SHARE) // 2)
     )
     rows = [
         Questionnaire(
-            owner=owner,
+            owner_id=owner.pk,
             questionnaire_type=qt,
             battery=battery,
             battery_order=order,
@@ -105,7 +105,7 @@ def _seed_owner(owner, count, rng, now, result) -> None:
     ]
     rows += [
         Questionnaire(
-            owner=owner,
+            owner_id=owner.pk,
             questionnaire_type=rng.choice(types),
             name=f"Respondent {len(batteries) + i + 1}",
         )

@@ -82,3 +82,16 @@ def test_the_check_allows_unrelated_imports():
         "from .catalog_port import BatteryType\nfrom apps.utils.cache import cached"
     )
     assert not imports_app(source, "apps.questionnaires", "catalog")
+
+
+def test_instances_never_call_get_user_model():
+    offenders = []
+    for path, package in runtime_modules("questionnaires"):
+        source = path.read_text()
+        if (
+            "get_user_model" in source
+            or "AUTH_USER_MODEL" in source
+            or imports_app(source, package, "accounts")
+        ):
+            offenders.append(str(path.relative_to(APPS.parent)))
+    assert offenders == []

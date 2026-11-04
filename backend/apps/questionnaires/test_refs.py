@@ -62,7 +62,7 @@ def test_event_creates_the_copy_with_the_source_timestamps(user):
     event = qtype_event(user, title="PHQ", questionnaire_json={"pages": [1]})
     assert refs.apply_event(event) == refs.APPLIED
     ref = QuestionnaireTypeRef.objects.get(pk=event["aggregateId"])
-    assert ref.owner == user
+    assert ref.owner_id == user.pk
     assert ref.title == "PHQ"
     assert ref.questionnaire_json == {"pages": [1]}
     assert ref.updated_at.isoformat() == STAMP
@@ -181,9 +181,10 @@ def test_two_owners_events_never_cross(user, other_user):
     mine, theirs = qtype_event(user), qtype_event(other_user)
     refs.apply_event(mine)
     refs.apply_event(theirs)
-    assert QuestionnaireTypeRef.objects.get(pk=mine["aggregateId"]).owner == user
+    assert QuestionnaireTypeRef.objects.get(pk=mine["aggregateId"]).owner_id == user.pk
     assert (
-        QuestionnaireTypeRef.objects.get(pk=theirs["aggregateId"]).owner == other_user
+        QuestionnaireTypeRef.objects.get(pk=theirs["aggregateId"]).owner_id
+        == other_user.pk
     )
 
 

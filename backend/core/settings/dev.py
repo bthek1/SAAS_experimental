@@ -1,6 +1,15 @@
 from .base import *
+from .dev_keys import DEV_SIGNING_KEY, DEV_VERIFYING_KEY
 
 DEBUG = True
+
+# A new dict: core/settings/__init__.py imports this module before any other, so
+# changing base's in place would hand the dev key to prod.
+SIMPLE_JWT = {
+    **SIMPLE_JWT,
+    "SIGNING_KEY": SIMPLE_JWT["SIGNING_KEY"] or DEV_SIGNING_KEY,
+    "VERIFYING_KEY": SIMPLE_JWT["VERIFYING_KEY"] or DEV_VERIFYING_KEY,
+}
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
 DATABASES = {

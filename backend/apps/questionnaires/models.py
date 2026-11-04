@@ -1,11 +1,10 @@
 import uuid
 
-from django.conf import settings
 from django.db import models
 
-# Instances (Battery, Questionnaire) carry their own `owner` as well as their type's.
-# Deleting a type that has instances is blocked (RESTRICT), but deleting a user still
-# works: every row is reached by a CASCADE through `owner`, which RESTRICT permits.
+# Owners live in `catalog`, so `owner_id` is a plain UUID here (#13). Deleting a type
+# that has instances is blocked (RESTRICT). Deleting a user reaches this service as an
+# event, which removes the owner's rows: see refs.py.
 
 
 class TimestampedModel(models.Model):
@@ -39,27 +38,19 @@ class TypeRef(models.Model):
 
 
 class QuestionnaireTypeRef(TypeRef):
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="questionnaire_type_refs",
-    )
+    owner_id = models.UUIDField(db_index=True)
     questionnaire_json = models.JSONField(default=dict, blank=True)
 
     class Meta(TypeRef.Meta):
-        indexes = [models.Index(fields=["owner", "-created_at"])]
+        indexes = [models.Index(fields=["owner_id", "-created_at"])]
 
 
 class BatteryTypeRef(TypeRef):
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="battery_type_refs",
-    )
+    owner_id = models.UUIDField(db_index=True)
     description = models.TextField(blank=True, default="")
 
     class Meta(TypeRef.Meta):
-        indexes = [models.Index(fields=["owner", "-created_at"])]
+        indexes = [models.Index(fields=["owner_id", "-created_at"])]
 
 
 class BatteryTypeRefSlot(models.Model):
@@ -95,10 +86,25 @@ class RetiredRef(models.Model):
         return f"{self.kind} {self.ref_id}"
 
 
+class BlockedOwner(models.Model):
+    """Who may no longer reach this service, kept current by events.
+
+    A reactivated owner keeps a row with `blocked` off, so an older deactivation
+    arriving late cannot block them again. A deleted owner's stays blocked: their
+    token still verifies until it expires, and there is no user here to check.
+    """
+
+    owner_id = models.UUIDField(primary_key=True)
+    blocked = models.BooleanField(default=True)
+    deleted = models.BooleanField(default=False)
+    version = models.PositiveBigIntegerField()
+
+    def __str__(self) -> str:
+        return str(self.owner_id)
+
+
 class Battery(TimestampedModel):
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="batteries"
-    )
+    owner_id = models.UUIDField(db_index=True)
     battery_type = models.ForeignKey(
         BatteryTypeRef, on_delete=models.RESTRICT, related_name="instances"
     )
@@ -107,18 +113,14 @@ class Battery(TimestampedModel):
 
     class Meta(TimestampedModel.Meta):
         verbose_name_plural = "batteries"
-        indexes = [models.Index(fields=["owner", "-created_at"])]
+        indexes = [models.Index(fields=["owner_id", "-created_at"])]
 
     def __str__(self) -> str:
         return f"{self.battery_type.title} - {self.name or self.share_token}"
 
 
 class Questionnaire(TimestampedModel):
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="questionnaires",
-    )
+    owner_id = models.UUIDField(db_index=True)
     questionnaire_type = models.ForeignKey(
         QuestionnaireTypeRef, on_delete=models.RESTRICT, related_name="instances"
     )
@@ -139,15 +141,15 @@ class Questionnaire(TimestampedModel):
 
     class Meta(TimestampedModel.Meta):
         indexes = [
-            models.Index(fields=["owner", "-created_at"]),
+            models.Index(fields=["owner_id", "-created_at"]),
             # Partial: most dashboard reads only want submitted rows.
             models.Index(
-                fields=["owner", "-submitted_at"],
+                fields=["owner_id", "-submitted_at"],
                 condition=models.Q(submitted_at__isnull=False),
                 name="q_owner_submitted",
             ),
             models.Index(
-                fields=["owner", "questionnaire_type", "-submitted_at"],
+                fields=["owner_id", "questionnaire_type", "-submitted_at"],
                 condition=models.Q(submitted_at__isnull=False),
                 name="q_owner_type_submitted",
             ),

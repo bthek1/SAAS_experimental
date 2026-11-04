@@ -16,6 +16,7 @@ from collections import Counter
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
+from uuid import UUID
 
 from django.db.models import (
     Count,
@@ -101,7 +102,7 @@ def _median_hours(submitted: QuerySet[Questionnaire], count: int) -> float | Non
 
 
 def dashboard_summary(
-    owner,
+    owner_id: UUID,
     days: int | None = None,
     questionnaire_type: QuestionnaireTypeRef | None = None,
     tz: tzinfo = UTC,
@@ -109,10 +110,10 @@ def dashboard_summary(
     now = timezone.now().astimezone(tz)
     start = window_start(days, now)
 
-    questionnaires = Questionnaire.objects.filter(owner=owner)
-    batteries = Battery.objects.filter(owner=owner)
-    qtypes = QuestionnaireTypeRef.objects.filter(owner=owner)
-    btypes = BatteryTypeRef.objects.filter(owner=owner)
+    questionnaires = Questionnaire.objects.filter(owner_id=owner_id)
+    batteries = Battery.objects.filter(owner_id=owner_id)
+    qtypes = QuestionnaireTypeRef.objects.filter(owner_id=owner_id)
+    btypes = BatteryTypeRef.objects.filter(owner_id=owner_id)
     if questionnaire_type is not None:
         questionnaires = questionnaires.filter(questionnaire_type=questionnaire_type)
         # A subquery rather than a join, so the slot counts below still see every
@@ -140,7 +141,7 @@ def dashboard_summary(
         sent=Count("id"), submitted=Count("id", filter=~Q(submitted_at=None))
     )
 
-    in_cohort = Q(instances__owner=owner)
+    in_cohort = Q(instances__owner_id=owner_id)
     if start is not None:
         in_cohort &= Q(instances__created_at__gte=start)
     by_qtype = (
@@ -159,7 +160,7 @@ def dashboard_summary(
     battery_rows = (
         batteries.annotate(
             own=FilteredRelation(
-                "questionnaires", condition=Q(questionnaires__owner=owner)
+                "questionnaires", condition=Q(questionnaires__owner_id=owner_id)
             )
         )
         .annotate(
@@ -332,7 +333,7 @@ def _add_points(metrics: dict[str, dict[str, Any]], rows: Iterable[tuple]) -> No
 
 
 def dashboard_scores(
-    owner,
+    owner_id: UUID,
     questionnaire_type: QuestionnaireTypeRef,
     days: int | None = None,
     tz: tzinfo = UTC,
@@ -349,7 +350,7 @@ def dashboard_scores(
     """
     start = window_start(days, timezone.now().astimezone(tz))
     rows = Questionnaire.objects.filter(
-        owner=owner, questionnaire_type=questionnaire_type
+        owner_id=owner_id, questionnaire_type=questionnaire_type
     ).exclude(submitted_at=None)
     if start is not None:
         rows = rows.filter(submitted_at__gte=start)

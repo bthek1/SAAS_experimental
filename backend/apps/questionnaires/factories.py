@@ -56,4 +56,4 @@ class QuestionnaireFactory(factory.django.DjangoModelFactory):
         model = Questionnaire
 
     questionnaire_type = factory.SubFactory(QuestionnaireTypeFactory)
-    owner = factory.SelfAttribute("questionnaire_type.owner")
+    owner_id = factory.SelfAttribute("questionnaire_type.owner_id")

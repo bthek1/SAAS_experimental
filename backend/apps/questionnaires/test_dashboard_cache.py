@@ -122,8 +122,8 @@ def test_hit_on_a_type_filter_costs_only_its_validation(
             auth_client.get(url, {"questionnaireType": rows.pk})
 
 
-def test_params_do_not_share_an_entry(auth_client, qtype):
-    other_type = QuestionnaireTypeFactory(owner=qtype.owner)
+def test_params_do_not_share_an_entry(auth_client, user, qtype):
+    other_type = QuestionnaireTypeFactory(owner=user)
     QuestionnaireFactory(questionnaire_type=qtype)
     assert sent(auth_client) == 1
     assert sent(auth_client, questionnaireType=other_type.pk) == 0
@@ -159,12 +159,13 @@ def test_foreign_questionnaire_type_is_still_400_on_a_cached_key(
     assert other_client.get(url, params).status_code == 400
 
 
-def test_deactivated_user_is_refused_after_caching(user, rows):  # noqa: ARG001
+def test_deactivated_user_is_refused_after_caching(user, rows, on_commit):  # noqa: ARG001
     client = APIClient()
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
     assert client.get(SUMMARY).status_code == 200
-    user.is_active = False
-    user.save()
+    with on_commit():
+        user.is_active = False
+        user.save()
     assert client.get(SUMMARY).status_code == 401
 
 

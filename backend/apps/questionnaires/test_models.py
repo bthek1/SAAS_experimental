@@ -20,7 +20,7 @@ class TestQuestionnaire:
         assert q.metrics_json == {}
         assert q.questionnaire_json_snapshot == {}
         assert q.submitted_at is None
-        assert q.owner == qtype.owner
+        assert q.owner_id == qtype.owner_id
 
     def test_share_tokens_are_unique(self, qtype):
         a = QuestionnaireFactory(questionnaire_type=qtype)
@@ -53,8 +53,8 @@ class TestBattery:
         slots = list(battery.questionnaires.order_by("battery_order"))
         assert [s.questionnaire_type for s in slots] == [qt2, qt1]
         assert [s.battery_order for s in slots] == [0, 1]
-        assert all(s.owner == user for s in slots)
-        assert battery.owner == user
+        assert all(s.owner_id == user.pk for s in slots)
+        assert battery.owner_id == user.pk
         assert battery.name == "Run 1"
 
     def test_create_battery_with_no_types(self, user):
@@ -81,11 +81,14 @@ class TestBattery:
 
 
 @pytest.mark.django_db
-def test_deleting_owner_cascades_everything(user, qtype):
+def test_deleting_owner_cascades_everything(
+    user, qtype, django_capture_on_commit_callbacks
+):
     bt = BatteryTypeFactory(owner=user, questionnaire_types=[qtype])
     services.create_battery(bt)
     QuestionnaireFactory(questionnaire_type=qtype)
-    user.delete()
+    with django_capture_on_commit_callbacks(execute=True):
+        user.delete()
     assert not QuestionnaireType.objects.exists()
     assert not BatteryType.objects.exists()
     assert not Battery.objects.exists()

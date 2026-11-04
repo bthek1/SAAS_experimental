@@ -253,7 +253,7 @@ def test_days_rejects_unsupported_value(auth_client, user):  # noqa: ARG001
 
 def test_battery_counts_only_its_owners_questionnaires(auth_client, user, other_user):
     btype = BatteryTypeFactory(owner=user)
-    battery = Battery.objects.create(owner=user, battery_type=btype)
+    battery = Battery.objects.create(owner_id=user.pk, battery_type=btype)
     foreign_type = QuestionnaireTypeFactory(owner=other_user)
     QuestionnaireFactory(questionnaire_type=foreign_type, battery=battery)
 
@@ -265,7 +265,7 @@ def test_battery_counts_only_its_owners_questionnaires(auth_client, user, other_
 
 def test_battery_without_questionnaires_counts_as_not_started(auth_client, user):
     btype = BatteryTypeFactory(owner=user)
-    Battery.objects.create(owner=user, battery_type=btype)
+    Battery.objects.create(owner_id=user.pk, battery_type=btype)
 
     data = get(auth_client).json()
 

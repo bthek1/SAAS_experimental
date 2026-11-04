@@ -67,7 +67,7 @@ class BatteryTypeViewSet(CachedListViewSet):
     def perform_create(self, serializer):
         questionnaire_types = serializer.validated_data.pop("questionnaireTypeIds", [])
         with transaction.atomic():
-            battery_type = serializer.save(owner=self.request.user)
+            battery_type = serializer.save(owner_id=self.request.user.pk)
             services.set_battery_type_items(battery_type, questionnaire_types)
             events.record_change(battery_type)
         bump_owner_generation(self.request.user.pk)

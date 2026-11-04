@@ -20,6 +20,7 @@ dependencies = [
   "django-prometheus ~=2.5",
   "redis~=6.4",
   "tzdata>=2025.1",
+  "cryptography>=45",
 ]
 
 [build-system]

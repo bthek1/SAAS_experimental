@@ -20,7 +20,7 @@ class OwnedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
     """Accept only primary keys of objects owned by the requesting user."""
 
     def get_queryset(self):
-        return super().get_queryset().filter(owner=self.context["request"].user)
+        return super().get_queryset().filter(owner_id=self.context["request"].user.pk)
 
 
 class OwnedModelViewSet(viewsets.ModelViewSet):
@@ -32,12 +32,12 @@ class OwnedModelViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Newest first, then id: bulk-created rows share a created_at, and a
         # tie would let a row repeat or vanish between pages.
-        return self.model.objects.filter(owner=self.request.user).order_by(
+        return self.model.objects.filter(owner_id=self.request.user.pk).order_by(
             "-created_at", "-id"
         )
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        serializer.save(owner_id=self.request.user.pk)
 
     def perform_destroy(self, instance):
         try:

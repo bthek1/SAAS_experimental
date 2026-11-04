@@ -36,3 +36,8 @@ def other_client(other_user):
 @pytest.fixture
 def qtype(user):
     return QuestionnaireTypeFactory(owner=user)
+
+
+@pytest.fixture
+def on_commit(django_capture_on_commit_callbacks):
+    return lambda: django_capture_on_commit_callbacks(execute=True)

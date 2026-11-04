@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from core.settings.dev_keys import DEV_SIGNING_KEY
+
 BACKEND = Path(__file__).resolve().parent.parent
 SETTINGS_DIR = BACKEND / "core" / "settings"
 
@@ -43,6 +45,8 @@ def load(allowed_hosts: str, **env: str) -> subprocess.CompletedProcess:
             **os.environ,
             "DJANGO_SETTINGS_MODULE": "core.settings.loadtest",
             "SECRET_KEY": "x" * 50,
+            "JWT_SIGNING_KEY": "not-the-dev-key",
+            "JWT_VERIFYING_KEY": "public",
             "DATABASE_URL": "postgres://u:p@127.0.0.1:5432/db",
             "CACHE_REDIS_URL": "redis://127.0.0.1:6379/1",
             "ALLOWED_HOSTS": allowed_hosts,
@@ -102,3 +106,15 @@ def test_conn_max_age_comes_from_the_environment():
     proc = load("localhost", CONN_MAX_AGE="0")
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["conn_max_age"] == 0
+
+
+def test_refuses_a_missing_jwt_key():
+    result = load("localhost", JWT_SIGNING_KEY="")
+    assert result.returncode != 0
+    assert "Set JWT_SIGNING_KEY" in result.stderr
+
+
+def test_refuses_the_published_dev_key():
+    result = load("localhost", JWT_SIGNING_KEY=DEV_SIGNING_KEY)
+    assert result.returncode != 0
+    assert "published dev key" in result.stderr

@@ -18,17 +18,24 @@ class ReadOnlyAdmin(admin.ModelAdmin):
 
 @admin.register(QuestionnaireTypeRef, BatteryTypeRef)
 class TypeRefAdmin(ReadOnlyAdmin):
-    list_display = ("title", "owner", "version", "updated_at")
+    list_display = ("title", "owner_id", "version", "updated_at")
     search_fields = ("title",)
 
 
 @admin.register(Battery)
 class BatteryAdmin(admin.ModelAdmin):
-    list_display = ("id", "battery_type", "name", "owner", "share_token", "created_at")
+    list_display = (
+        "id",
+        "battery_type",
+        "name",
+        "owner_id",
+        "share_token",
+        "created_at",
+    )
     list_filter = ("created_at",)
-    search_fields = ("battery_type__title", "name", "owner__email")
+    search_fields = ("battery_type__title", "name", "owner_id")
     readonly_fields = ("id", "share_token", "created_at", "updated_at")
-    list_select_related = ("battery_type", "owner")
+    list_select_related = ("battery_type",)
 
 
 @admin.register(Questionnaire)
@@ -37,11 +44,11 @@ class QuestionnaireAdmin(admin.ModelAdmin):
         "id",
         "questionnaire_type",
         "name",
-        "owner",
+        "owner_id",
         "submitted_at",
         "created_at",
     )
     list_filter = ("submitted_at",)
-    search_fields = ("questionnaire_type__title", "name", "owner__email")
+    search_fields = ("questionnaire_type__title", "name", "owner_id")
     readonly_fields = ("id", "share_token", "submitted_at", "created_at", "updated_at")
-    list_select_related = ("questionnaire_type", "owner")
+    list_select_related = ("questionnaire_type",)

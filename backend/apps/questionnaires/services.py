@@ -21,11 +21,11 @@ def create_battery(battery_type: BatteryTypeRef, name: str = "") -> Battery:
     refs.ensure_questionnaire_types([slot.questionnaire_type_id for slot in slots])
     with transaction.atomic():
         battery = Battery.objects.create(
-            owner=battery_type.owner, battery_type=battery_type, name=name
+            owner_id=battery_type.owner_id, battery_type=battery_type, name=name
         )
         Questionnaire.objects.bulk_create(
             Questionnaire(
-                owner=battery_type.owner,
+                owner_id=battery_type.owner_id,
                 questionnaire_type_id=slot.questionnaire_type_id,
                 battery=battery,
                 battery_order=slot.order,

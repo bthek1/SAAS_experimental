@@ -214,6 +214,11 @@ own copy of each type (#13):
   waits in the outbox and `manage.py relay_outbox` retries it. Until then a share link shows the
   older definition, and the response's snapshot records that same version, so a response always
   matches what the respondent saw.
+- Access tokens are signed with RS256, and `instances` holds only the public key. **Moving to RS256
+  logged everyone out once.** Set `JWT_SIGNING_KEY` and `JWT_VERIFYING_KEY` for `prod` and `loadtest`
+  (see `.env.example`); `dev` needs nothing.
+- Deactivating or deleting a user reaches `instances` as an event, so a token keeps working there
+  until it arrives. That is normally immediate. Deleting a user also removes their rows there.
 - `manage.py reconcile_refs [--dry-run]` compares every copy with `catalog` and repairs differences.
   It lists any copy whose type is gone but which instances still use, and leaves those in place.
 

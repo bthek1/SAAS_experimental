@@ -1,6 +1,13 @@
 from .base import *
+from .dev_keys import DEV_SIGNING_KEY, DEV_VERIFYING_KEY
 
 DEBUG = False
+
+SIMPLE_JWT = {
+    **SIMPLE_JWT,
+    "SIGNING_KEY": DEV_SIGNING_KEY,
+    "VERIFYING_KEY": DEV_VERIFYING_KEY,
+}
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
 DATABASES = {

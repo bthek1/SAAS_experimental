@@ -30,7 +30,7 @@ def test_counts_match_the_options():
     assert Questionnaire.objects.count() == result.questionnaires == 100
     assert Battery.objects.count() == result.batteries == 2 * 5
     owner = get_user_model().objects.get(email=owner_email(0))
-    assert owner.questionnaires.count() == 50
+    assert Questionnaire.objects.filter(owner_id=owner.pk).count() == 50
     assert owner.check_password("pw-12345")
 
 
@@ -52,7 +52,7 @@ def test_more_owners_adds_only_the_new_ones():
     assert set(before) <= set(Questionnaire.objects.values_list("id", flat=True))
 
 
-def test_deterministic():
+def test_deterministic(django_capture_on_commit_callbacks):
     def snapshot():
         return list(
             Questionnaire.objects.order_by("name").values_list(
@@ -62,7 +62,8 @@ def test_deterministic():
 
     seed(owners=1)
     first = snapshot()
-    get_user_model().objects.all().delete()
+    with django_capture_on_commit_callbacks(execute=True):
+        get_user_model().objects.all().delete()
 
     seed(owners=1)
     assert snapshot() == first

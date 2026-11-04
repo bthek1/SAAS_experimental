@@ -33,10 +33,10 @@ def test_list_requires_auth(api_client, url):
     assert api_client.get(url).status_code == 401
 
 
-def test_user_only_sees_own_instances(auth_client, other_client, qtype):
+def test_user_only_sees_own_instances(auth_client, other_client, user, qtype):
     q = QuestionnaireFactory(questionnaire_type=qtype)
     battery = services.create_battery(
-        BatteryTypeFactory(owner=qtype.owner, questionnaire_types=[qtype])
+        BatteryTypeFactory(owner=user, questionnaire_types=[qtype])
     )
     assert other_client.get(QUESTIONNAIRES_URL).data["results"] == []
     assert other_client.get(BATTERIES_URL).data["results"] == []
@@ -63,7 +63,7 @@ def test_create_questionnaire(auth_client, user, qtype):
     )
     assert response.status_code == 201
     q = Questionnaire.objects.get(id=response.data["id"])
-    assert q.owner == user
+    assert q.owner_id == user.pk
     assert response.data["shareToken"] == str(q.share_token)
     assert response.data["submittedAt"] is None
     assert response.data["questionnaireType"]["id"] == str(qtype.id)
@@ -135,7 +135,7 @@ def test_create_battery_creates_ordered_questionnaires(auth_client, user):
     slots = response.data["questionnaires"]
     assert [s["order"] for s in slots] == [0, 1]
     assert [s["questionnaireTypeName"] for s in slots] == ["B", "A"]
-    assert Battery.objects.get(id=response.data["id"]).owner == user
+    assert Battery.objects.get(id=response.data["id"]).owner_id == user.pk
 
 
 def test_create_battery_rejects_foreign_battery_type(auth_client, other_user):
@@ -281,7 +281,8 @@ def test_page_size_is_capped_at_100(auth_client, user):
 def test_pages_never_repeat_or_skip_rows_with_equal_timestamps(auth_client, qtype):
     # bulk_create stamps every row with the same created_at.
     Questionnaire.objects.bulk_create(
-        Questionnaire(owner=qtype.owner, questionnaire_type=qtype) for _ in range(7)
+        Questionnaire(owner_id=qtype.owner_id, questionnaire_type=qtype)
+        for _ in range(7)
     )
     seen = []
     for page in (1, 2, 3):
