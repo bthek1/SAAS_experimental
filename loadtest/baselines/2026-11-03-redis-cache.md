@@ -1,5 +1,12 @@
 # Load-test baseline: 2026-11-03, Redis cache
 
+> **Correction (2026-11-04, #20).** Every `k6 p95 worst group` and per-endpoint k6 p95 figure here was
+> calculated since the start of the run, not for that minute, so it lags and stays raised after a
+> stall. Tables are left as recorded. Django p95, CPU, drops and overall run totals were correct.
+> `just k6-report <testid>` now adds each minute's true mean for these runs. In particular: under "Unexplained stalls", the
+> `read` off stall was one minute (mean 536 ms), and "p95 stays raised for ~6 minutes" is an artefact of this
+> figure. Mean drift over the hold was 4.2 → 4.8 ms, not 11 → 29 ms.
+
 Plan: #11.
 
 **Summary.** With the dashboards, type lists and PDFs cached, the deploy holds about **28 % more

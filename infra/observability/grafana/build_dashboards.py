@@ -5,9 +5,11 @@
 Edit this file, not the JSON: backend/tests/test_observability.py fails when the
 committed JSON differs from what this writes.
 
-k6 writes by remote write with K6_PROMETHEUS_RW_TREND_STATS, so a trend such
-as http_req_duration arrives as k6_http_req_duration_{p50,p95,p99,avg,max} in
-seconds, one series per `name` tag (endpoint group) and status.
+k6 writes by remote write with K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM, so a
+trend such as http_req_duration arrives as a native histogram,
+k6_http_req_duration_seconds, one series per `name` tag (endpoint group) and
+status. Runs before #20 have k6_http_req_duration_{p50,p95,p99} instead, calculated
+since the run began, so latency panels fall back to those for old runs.
 """
 
 import json
@@ -114,6 +116,15 @@ REQS = "k6_http_reqs_total"
 DROPPED = "k6_dropped_iterations_total"
 
 
+def k6_latency(q: str) -> str:
+    quantile = int(q[1:]) / 100
+    histogram = f"rate(k6_http_req_duration_seconds{{{K6}}}[1m])"
+    return (
+        f"histogram_quantile({quantile}, sum by (name) ({histogram}))"
+        f" or max by (name) (k6_http_req_duration_{q}{{{K6}}})"
+    )
+
+
 def k6_dashboard():
     return dashboard(
         "k6",
@@ -149,7 +160,7 @@ def k6_dashboard():
             *(
                 panel(
                     f"Latency {q} by endpoint group",
-                    [(f"max by (name) (k6_http_req_duration_{q}{{{K6}}})", "{{name}}")],
+                    [(k6_latency(q), "{{name}}")],
                     unit="s",
                     width=8,
                 )

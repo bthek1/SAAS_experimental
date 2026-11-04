@@ -128,7 +128,8 @@ services:
       BASE_URL: http://api.loadtest.internal:8000
       LOADTEST_OWNER_PASSWORD: ${LOADTEST_OWNER_PASSWORD:-loadtest-local-only}
       K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
-      K6_PROMETHEUS_RW_TREND_STATS: p(50),p(95),p(99),avg,max
+      # Native histograms give true per-minute latency. Trend stats are calculated since the run began.
+      K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM: "true"
       K6_PROMETHEUS_RW_PUSH_INTERVAL: 5s
     depends_on:
       backend:

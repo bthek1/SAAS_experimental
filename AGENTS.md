@@ -390,6 +390,14 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 - Run one scenario at a time. `run.sh` stops a k6 left behind by an interrupted run.
 - `load`, `stress` and `soak` take `MIX=mixed` (default, 47 % writes) or `MIX=read` (mostly reads).
   A cache's value depends heavily on the mix, so compare both.
+- k6 sends trends as native histograms (`K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM`, #20), so
+  `k6_http_req_duration_seconds` gives true per-minute latency through `rate()`. Runs before that have
+  only `k6_http_req_duration_{p95,avg,…}`, calculated since the run began, so they lag and stay raised after a
+  stall. Never read those as one minute's latency, and don't compare them with new p95. `just k6-report`
+  labels them "since start", and recovers an old run's per-minute mean from `avg × count`, per series,
+  since k6 stops sending a series with no new samples and it goes stale after 5 minutes. Its
+  `dropped/min` misses a counter's first jump, usually a soak's startup drops, so take totals from the
+  run's summary JSON.
 - Prometheus and Grafana config lives in `infra/observability/`. Dashboards are generated:
   edit `grafana/build_dashboards.py`, then run `python3 infra/observability/grafana/build_dashboards.py`.
   `backend/tests/test_observability.py` fails if the committed JSON is stale, and also runs
