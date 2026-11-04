@@ -284,6 +284,50 @@ Run through the API against the LXC deploy, as two newly registered owners. All 
 `pdftotext` is not installed here, so the walkthrough saw the renamed PDF's bytes change but did not
 read the name out of it. `test_pdf.py` covers that key.
 
+## Data growth at a constant rate
+
+`soak-20261103T133342Z`: `just k6 soak TARGET=lxc RATE=220 DURATION=3h`, cache on, from reset data, so
+~350 req/s of `mixed`, about 73 % of the knee. Row counts come from a per-minute sample of
+`pg_stat_user_tables`. It was stopped after 5 minutes in a row over 1 % dropped, so exit 105 is that
+stop. 734,394 requests, 0 failed, 7,511 iterations dropped.
+
+| Minute | Questionnaires | req/s | Dropped/min | Worst-group p95 | Django p95 | saas-app / saas-db CPU |
+|---|---|---|---|---|---|---|
+| 6 | 52 K | 349 | 0 | 41 ms | 23 ms | 56 % / 13 % |
+| 16 | 132 K | 352 | 0 | 82 ms | 25 ms | 60 % / 19 % |
+| 26 | 212 K | 354 | 0 | 121 ms | 37 ms | 63 % / 22 % |
+| 28 | 228 K | 353 | 0 | 130 ms | 42 ms | 66 % / 23 % |
+| 29 | 236 K | 341 | 357 | 144 ms | 110 ms | 83 % / 27 % |
+| 31 | 251 K | 338 | 448 | 167 ms | 124 ms | 85 % / 27 % |
+| 35 | 280 K | 290 | 2,260 | 422 ms | 228 ms | 93 % / 30 % |
+
+- **Gradual, then a cliff.** Worst-group p95 rose steadily, about 0.5 ms per 1,000 questionnaires, and
+  the rate held. At ~236 K rows (~12 K per owner, half of them submitted) drops began, and from ~251 K
+  the deploy could no longer hold the rate. No request failed: it slows down and sheds iterations.
+- **Hit ratios held** at ~90 % and ~75 %, and Redis had no evictions or errors, so the cache did not
+  stop working. Postgres rows read rose from 0.17 M/s at minute 3 to 0.73 M/s at minute 15.
+- **saas-app gave out, not Postgres:** 93 % against 30 %. Every endpoint slowed together, uncached ones
+  included (`questionnaire-detail` p95 8 → 174 ms from minute 3 to 35), which is what CPU queueing
+  looks like.
+
+One owner's reads at the end, with no other traffic (15,346 questionnaires, 7,709 submitted):
+
+| Read | Miss | Hit | Body |
+|---|---|---|---|
+| `dashboard/?days=30` | 275 ms | 4 ms | 5 KB |
+| `dashboard/` | 239 ms | 4 ms | 7 KB |
+| `dashboard/scores/` | 97 ms | 39 ms | **1.06 MB** |
+
+**Likely cause.** The evidence points at the dashboard work done in Python, though no CPU profile was
+taken: a dashboard miss loads every submitted row in the cohort for a median, and `dashboard/scores/`
+returns every submitted row with no limit. A scores hit still costs 39 ms, since the 1 MB value is
+unpickled and rendered as JSON each time, so **the cache does not bound that cost as data grows.**
+
+**How to read it.** This is one run at one rate. Rows arrived about 130 per second, all dated today, so
+each one falls inside every `days` window, which is the worst case for those windows. Read the result
+as data size per owner rather than time. A lower rate should last longer on the same data, but that
+was not measured.
+
 ## Quicker measuring
 
 Long ramps cost ~30 minutes per run, most of it at rates that show nothing, so there are two shorter
