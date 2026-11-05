@@ -1,6 +1,6 @@
 name: saas-loadtest
 description: >
-  Proxmox LXC containers for the SAAS_experimental load-test deploy: saas-app,
+  Proxmox LXC containers for the SAAS_experimental load-test deploy: saas-catalog,
   saas-db, saas-monitor, saas-loadgen (bthek1/SAAS_experimental#9, Phase 3).
 runtime:
   name: python

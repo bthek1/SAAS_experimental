@@ -1,0 +1,26 @@
+[project]
+name = "common"
+version = "0.1.0"
+description = "Infrastructure shared by the services: no domain models, no serializers"
+requires-python = ">=3.14"
+dependencies = [
+  "django ~=6.0",
+  "djangorestframework ~=3.18",
+  "djangorestframework-simplejwt ~=5.5",
+  "cryptography>=45",
+  "django-cors-headers ~=4.9",
+  "django-environ ~=0.14",
+  "django-prometheus ~=2.5",
+  "gunicorn ~=26.2",
+  "httpx ~=0.28",
+  "psycopg[binary] ~=3.3",
+  "redis~=6.4",
+  "tzdata>=2025.1",
+]
+
+[build-system]
+requires = ["setuptools>=80.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["common", "common.settings"]

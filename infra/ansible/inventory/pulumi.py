@@ -25,7 +25,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 STATE = Path.home() / ".pulumi-state"
 SECRETS = (
+    "catalog_to_instances_token",
     "db_password",
+    "instances_db_password",
+    "instances_to_catalog_token",
+    "jwt_signing_key",
+    "jwt_verifying_key",
     "django_secret_key",
     "grafana_admin_password",
     "loadtest_owner_password",

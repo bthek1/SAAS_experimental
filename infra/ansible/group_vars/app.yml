@@ -1,16 +1,20 @@
-# gunicorn: k6 (saas-loadgen), the scraper (saas-monitor), and you.
+# The catalog service (#13). Its address: the gateway, instances (/internal/), and the scraper.
 nft_rules:
   - port: "{{ ports.gunicorn }}"
-    from: "{{ [guest_ips.loadgen, guest_ips.monitor] + admin_hosts }}"
+    from: "{{ [guest_ips.gateway, guest_ips.instances, guest_ips.monitor] }}"
 
+app_service: catalog
+app_unit: saas-app
 # Tuning (#9, Phase 6), changed one at a time and re-measured:
 # gunicorn processes; threads per process; seconds Django keeps each DB connection
 # (0 = per request). Each thread holds its own connection: workers x threads in Postgres.
-gunicorn_workers: 5
+# Owners editing types is the quiet side of the split, so it gets fewer workers.
+gunicorn_workers: 3
 gunicorn_threads: 4
 conn_max_age: 60
-# Measure with the cache off on the same deploy: just converge --tags app -e cache_enabled=false (#11).
+# Measure with the cache off on the same deploy: just converge --tags app,instances -e cache_enabled=false (#11).
 cache_enabled: true
 # Seed size for the baseline; record it with every run (Phase 5).
 loadtest_owners: 20
-loadtest_questionnaires_per_owner: 200
+# -e app_reset_db=true (just loadtest-reset) wipes the database before seeding.
+app_reset_db: false

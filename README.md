@@ -20,7 +20,8 @@ cp .env.example .env
 just up
 
 # 4. Run migrations (first time), in a second terminal
-just compose exec backend python manage.py migrate
+just compose exec catalog python manage.py migrate
+just compose exec instances python manage.py migrate
 ```
 
 `just compose <args>` runs any `docker compose` command against `infra/docker/docker-compose.yml`
@@ -31,10 +32,10 @@ compose file's folder, and create a separate set of containers and volumes.
 | Service | URL |
 |---------|-----|
 | Frontend | http://localhost:5174 |
-| Backend API | http://localhost:8005/api/ |
-| Django admin | http://localhost:8005/admin/ |
+| API (gateway) | http://localhost:8005/api/ |
+| Django admin | http://localhost:8005/admin/ (`catalog`), http://localhost:8005/instances-admin/ (`instances`, its own staff accounts) |
 | Health check | http://localhost:8005/api/health/ |
-| Flower (Celery UI) | http://localhost:5555 (`cd backend && uv run celery -A core flower --port=5555`) |
+| Flower (Celery UI) | http://localhost:5555 (`cd backend/catalog && uv run celery -A core flower --port=5555`) |
 
 ---
 
@@ -43,10 +44,10 @@ compose file's folder, and create a separate set of containers and volumes.
 ```bash
 cp .env.example .env
 just install            # uv sync + npm install
-just dev                # db + redis + celery in Docker, backend and frontend locally
+just dev                # dbs + redis + celery in Docker, services and frontend locally
 ```
 
-The backend runs on `:8005` and the frontend on `:5174`. Run `just --list` for every command.
+The API is on `:8005` through the gateway's dev router (`catalog` `:8006`, `instances` `:8007`), and the frontend on `:5174`. Run `just --list` for every command.
 
 PDF export (WeasyPrint) needs Pango and a font on the host. The Docker images already include
 them. On Debian/Ubuntu run `sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
@@ -56,14 +57,14 @@ fonts-dejavu-core`; on macOS run `brew install pango`. Without them, everything 
 ### Tests
 
 ```bash
-just be-test            # backend (pytest)
+just be-test            # backend: pytest for each service, then the repo-level checks
 just fe-test            # frontend unit and route tests (Vitest)
 
 cd frontend
 npx playwright install chromium   # first time only: downloads the browser
 npm run e2e             # end-to-end tests (Playwright); starts Vite itself, API is mocked
 npm run e2e:ui          # same, in Playwright's UI mode
-npm run e2e:integration # end-to-end against a real Django backend (fresh SQLite, ports 8015 / 5184)
+npm run e2e:integration # end-to-end against both real services behind the router (fresh SQLite, ports 8015-8017 / 5184)
 ```
 
 The integration suite (`frontend/e2e/integration/questionnaires.spec.ts`) walks the questionnaire
@@ -72,11 +73,12 @@ battery, and check that one user cannot see another's data.
 
 ### Load tests (k6 + Prometheus + Grafana)
 
-A separate Docker stack runs the prod backend image (gunicorn, `core.settings.loadtest`) with its
-own Postgres, Prometheus and Grafana. It never touches the dev stack. k6 runs in a container.
+A separate Docker stack runs both prod service images (gunicorn, `core.settings.loadtest`) behind the
+gateway, with their own Postgres databases, Prometheus and Grafana. It needs `JWT_SIGNING_KEY` and
+`JWT_VERIFYING_KEY` in `.env` (see `.env.example`). It never touches the dev stack. k6 runs in a container.
 
 ```bash
-just loadtest-up                       # backend :8095, Prometheus :9095, Grafana :3005 (all 127.0.0.1)
+just loadtest-up                       # gateway :8095, Prometheus :9095, Grafana :3005 (all 127.0.0.1)
 just loadtest-seed --owners 5 --questionnaires-per-owner 200
 just k6 smoke                          # 1 VU, 1 minute, every endpoint group
 just k6 load RATE=20 HOLD=10m          # mixed traffic held at RATE iterations/s
@@ -85,13 +87,14 @@ just loadtest-down                     # stop (volumes kept)
 ```
 
 Each run prints a `testid` and a Grafana link to the **k6** dashboard for that run (login `admin`,
-password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`, `respondent` and
-`pdf`. Plan and baselines: issue #9.
+password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`, `respondent`,
+`pdf` and `outage`. Plan and baselines: issue #9.
 
 ### Load-test deploy (Proxmox LXC containers)
 
-The baseline runs on four LXC containers on the Proxmox host (`saas-app` .241, `saas-db` .242,
-`saas-monitor` .243, `saas-loadgen` .244 on `192.168.2.0/24`). Pulumi creates them and Ansible
+The baseline runs on seven LXC containers on the Proxmox host (`saas-catalog` .241,
+`saas-db` .242, `saas-monitor` .243, `saas-loadgen` .244, `saas-cache` .245, `saas-instances` .246,
+`saas-gateway` .247, on `192.168.2.0/24`). Pulumi creates them and Ansible
 configures them. One-time setup (state, passphrase, API token): `infra/pulumi/Pulumi.loadtest.yaml.example`.
 
 ```bash
@@ -99,11 +102,11 @@ just infra-test                 # Pulumi + Ansible helper tests (no Proxmox need
 just infra-preview              # review: what would change on the host
 just infra-up                   # apply exactly that plan
 just converge                   # Ansible: install and configure everything (idempotent)
-just k6 smoke TARGET=lxc        # k6 on saas-loadgen against saas-app
+just k6 smoke TARGET=lxc        # k6 on saas-loadgen, through saas-gateway
 ```
 
 Grafana: `http://192.168.2.243:3000` (password: `just infra stack output grafana_admin_password
---show-secrets`), with dashboards k6, Django, Containers and Postgres.
+--show-secrets`), with dashboards k6, Django, Gateway, Containers, Postgres and Redis cache.
 
 ---
 
@@ -202,18 +205,76 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 
 ---
 
+### How type changes reach instances
+
+Types are owned by `catalog`, and questionnaires and batteries by `instances`, which reads from its
+own copy of each type (#13):
+
+- `DELETE` on a questionnaire type or battery type can return `503 {detail}` if `instances` cannot
+  be asked whether the type is in use. Nothing is deleted. `POST`/`PATCH` on instances that name a
+  type whose copy has not arrived fetch it once, and return `503` if `catalog` cannot be reached.
+- While `catalog` is down, an owner whose access token expires can't refresh it, so their requests fail
+  until it returns, but they stay logged in. `src/api/client.ts` clears the tokens only when the refresh
+  is refused (`400` or `401`). Respondents have no token, so they are not affected.
+- An edited type normally reaches `instances` right after the write. If `instances` is down, it
+  waits in the outbox and `manage.py relay_outbox` retries it. Until then a share link shows the
+  older definition, and the response's snapshot records that same version, so a response always
+  matches what the respondent saw.
+- Access tokens are signed with RS256, and `instances` holds only the public key. **Moving to RS256
+  logged everyone out once.** Set `JWT_SIGNING_KEY` and `JWT_VERIFYING_KEY` for `prod` and `loadtest`
+  (see `.env.example`); `dev` needs nothing.
+- Deactivating or deleting a user reaches `instances` as an event, so a token keeps working there
+  until it arrives. That is normally immediate. Deleting a user also removes their rows there.
+- `manage.py reconcile_refs [--dry-run]` compares every copy with `catalog` and repairs differences.
+  It lists any copy whose type is gone but which instances still use, and leaves those in place.
+
+### A stuck outbox
+
+`OutboxStuck` fires when an event has waited over a minute (`app_outbox_oldest_pending_seconds`). Respondents are
+not affected, but `instances` serves older definitions and deactivated users keep access there.
+
+```bash
+just compose logs -f relay_outbox                      # or: journalctl -u saas-relay on saas-catalog
+cd backend && uv run python catalog/manage.py relay_outbox --once   # delivered: N, pending: M
+```
+
+- **`delivered: 0` and all events pending:** `instances` is unreachable, or the tokens differ. `OutboxEvent.last_error`
+  in catalog's admin says which. They drain by themselves once it is back.
+- **One event keeps failing while others deliver:** `instances` refuses it (`400`). The event's `last_error` has the
+  reason. Fix the cause, or repair the copies with `reconcile_refs`.
+- After any long outage, `uv run python instances/manage.py reconcile_refs --dry-run` shows whether copies differ.
+
+### Moving a pre-split database
+
+A database from before #13 holds everything. It stays `catalog`'s, and instance rows are copied out:
+
+```bash
+cd backend
+uv run python catalog/manage.py adopt_monolith_db   # adds the new columns, safe to repeat
+uv run python catalog/manage.py migrate
+uv run python instances/manage.py migrate
+uv run python instances/manage.py import_from_monolith --source "$OLD_DATABASE_URL"
+uv run python instances/manage.py reconcile_refs --dry-run    # expect no differences, with both services up
+```
+
+`import_from_monolith` only reads the source, refuses a destination that already has rows, and fails if a
+row count differs. Afterwards the old `questionnaires_questionnaire` and `questionnaires_battery` tables are
+unused in `catalog`'s database. Dropping them is a separate, deliberate step: check the service first.
+`questionnaires_questionnairetype`, `questionnaires_batterytype` and `questionnaires_batterytypeitem` keep
+their names and belong to `catalog`, so never drop those.
+
 ## Project Structure
 
 ```
 /
-├── backend/          Django REST API
-│   ├── core/         Settings, URLs, WSGI
-│   ├── apps/         Domain applications
-│   │   ├── accounts/ User model (email-based), registration, JWT auth
-│   │   ├── questionnaires/ Questionnaire/battery types and instances, share-link completion
-│   │   └── utils/    Health check, Celery task demo endpoints
-│   ├── tests/        Repo-level tests (infra layout, k6 targets, observability config)
-│   └── manage.py
+├── backend/          uv workspace: one lock, a package per service
+│   ├── common/       Shared infrastructure: settings, cache, metrics, peer calls. No models.
+│   ├── catalog/      Service: manage.py, core/, apps/
+│   │   └── apps/     accounts (users, JWT), catalog (types, outbox), utils (health, Celery demo)
+│   ├── instances/    Service: manage.py, core/, apps/
+│   │   └── apps/     questionnaires (instances, share links, dashboards, PDFs, type copies)
+│   ├── contracts/    JSON shapes of /internal/ calls, tested by both services
+│   └── tests/        Repo-level tests (service boundary, gateway, infra layout, k6 targets)
 ├── frontend/         React SPA
 │   ├── e2e/          Playwright end-to-end specs
 │   └── src/
@@ -225,7 +286,8 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 │       ├── schemas/  Zod validation schemas
 │       ├── store/    Zustand global state slices
 │       └── types/    TypeScript types from API contracts
-├── infra/docker/     Dockerfiles + compose files (dev stack, prod backend, load-test stack)
+├── infra/docker/     Dockerfiles + compose files (dev stack, prod services, load-test stack)
+├── infra/gateway/    routes.json, the only route table; generated nginx.conf; dev router
 ├── infra/observability/  Prometheus config + rules, Grafana provisioning and generated dashboards
 ├── infra/pulumi/     Pulumi program: the load-test LXC containers on Proxmox (#9)
 ├── infra/ansible/    Ansible: configures those containers (just converge)
@@ -244,7 +306,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 | Auth | JWT (`djangorestframework-simplejwt`) |
 | Database | PostgreSQL 16 |
 | Async tasks | Celery + Redis (`django-celery-results`, `django-celery-beat`) |
-| Cache | Redis, through Django's cache framework and `apps/utils/cache.py` |
+| Cache | Redis, through Django's cache framework and `common/cache.py` |
 | Dependency manager | [uv](https://github.com/astral-sh/uv) |
 | Frontend language | TypeScript |
 | Frontend bundler | Vite |

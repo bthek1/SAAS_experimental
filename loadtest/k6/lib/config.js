@@ -6,7 +6,7 @@
 // private name aborts the run. backend/tests/test_k6_targets.py also scans
 // these files for public hosts.
 
-// The local stack's backend (infra/docker/docker-compose.loadtest.yml).
+// The local stack's gateway (infra/docker/docker-compose.loadtest.yml).
 const DEFAULT_BASE_URL = 'http://api.loadtest.internal:8000';
 
 export function isPrivateHost(host) {

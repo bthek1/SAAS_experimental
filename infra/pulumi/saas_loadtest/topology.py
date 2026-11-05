@@ -1,7 +1,7 @@
 """The load-test containers, their ids, addresses and sizes (#9, Phase 3).
 
 Proxmox guest ids 241-249 belong to this repo, and a container's address is
-its id as the last octet (saas-app 241 → x.y.z.241), so the id in the Proxmox
+its id as the last octet (saas-catalog 241 → x.y.z.241), so the id in the Proxmox
 UI is also where to SSH. VMs and containers share one id space on the host:
 220-240 belong to ~/kubernates_project and are refused here.
 
@@ -15,12 +15,25 @@ from __future__ import annotations
 import ipaddress
 from dataclasses import dataclass
 
-GUEST_IDS = {"app": 241, "db": 242, "monitor": 243, "loadgen": 244, "cache": 245}
+# `app` is the catalog service (#13). It keeps its role and id, so Pulumi never replaces it.
+# The container is called saas-catalog (#21). PREVIOUS_NAMES keeps its Pulumi resource:
+# without the alias, a new name would destroy and recreate it, data included.
+NAMES = {"app": "saas-catalog"}
+PREVIOUS_NAMES = {"app": "saas-app"}
+GUEST_IDS = {
+    "app": 241,
+    "db": 242,
+    "monitor": 243,
+    "loadgen": 244,
+    "cache": 245,
+    "instances": 246,
+    "gateway": 247,
+}
 ROLES = tuple(GUEST_IDS)
 ID_RANGE = range(241, 250)
 RESERVED = range(220, 241)  # ~/kubernates_project's VMs
 
-# The host had ~24 GB available on 2026-11-02 (63 GB total). About 5.5 GB here.
+# The host had ~24 GB available on 2026-11-02 (63 GB total). About 8 GB here.
 DEFAULT_SIZES = {
     "app": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
     "db": {"cores": 2, "memoryMb": 1024, "diskGb": 10},
@@ -29,6 +42,9 @@ DEFAULT_SIZES = {
     "loadgen": {"cores": 2, "memoryMb": 1024, "diskGb": 4},
     # Redis holds up to 256 MB (maxmemory) and writes nothing to disk (#11).
     "cache": {"cores": 1, "memoryMb": 512, "diskGb": 4},
+    "instances": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
+    # nginx only.
+    "gateway": {"cores": 1, "memoryMb": 512, "diskGb": 4},
 }
 
 
@@ -57,7 +73,7 @@ class Guest:
 
     @property
     def name(self) -> str:
-        return f"saas-{self.role}"
+        return NAMES.get(self.role, f"saas-{self.role}")
 
     @property
     def address(self) -> str:

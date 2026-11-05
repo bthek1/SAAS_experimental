@@ -1,0 +1,31 @@
+[project]
+name = "instances"
+version = "0.1.0"
+description = "Owns questionnaires and batteries made from the types, dashboards and PDFs"
+requires-python = ">=3.14"
+dependencies = [
+  "common",
+  "weasyprint>=70.0",
+]
+
+# Not installed as a package: `core` and `apps` exist in both services, and resolve
+# from the working directory (manage.py, gunicorn) or `pythonpath` below (pytest).
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+common = { workspace = true }
+
+[tool.pytest.ini_options]
+addopts = "--tb=short --show-capture=no -ra --ds=core.settings.test"
+pythonpath = ["."]
+python_files = ["test_*.py", "tests.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["apps"]
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "integration: marks tests as integration tests requiring external APIs",
+  "development: marks tests that only run with development settings",
+]

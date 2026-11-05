@@ -10,11 +10,13 @@ Rules for AI coding agents working in this repository. This is the only agent in
 **SAAS_experimental**, a Django + DRF + React project created from the `django_react_template` starter,
 as a decoupled monorepo:
 
-- **`backend/`**: Django REST Framework API (Python 3.14, PostgreSQL, Celery + Redis)
+- **`backend/`**: two Django REST Framework services, `catalog` and `instances`, each with its own
+  PostgreSQL database, plus a shared `common` package (Python 3.14, Celery + Redis, a uv workspace)
+- **`infra/gateway/`**: nginx route table that gives both services one public origin
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router + Query)
 - **`infra/docker/`**: Dockerfiles and compose files for both halves
 
-The backend exposes only `/api/` endpoints. The frontend consumes them over HTTP. The two halves
+The services expose only `/api/` endpoints publicly, and `/internal/` to each other. The frontend consumes them over HTTP. The two halves
 share no code. The API contract is the only interface between them.
 
 Prefer documented conventions over one-off solutions.
@@ -28,8 +30,8 @@ Prefer documented conventions over one-off solutions.
 | Setup, endpoints and request/response shapes | [`README.md`](README.md) (Quick Start, API) |
 | Env vars | [`.env.example`](.env.example) |
 | Day-to-day commands | [`justfile`](justfile) (`just`) and the Commands section below |
-| JWT handling | `frontend/src/api/client.ts`, `SIMPLE_JWT` in `backend/core/settings/base.py` |
-| Celery wiring | `backend/core/celery.py`, `backend/apps/utils/tasks.py`, `frontend/src/hooks/useTaskPoller.ts` |
+| JWT handling | `frontend/src/api/client.ts`, `jwt_settings` in `backend/common/common/settings/base.py` |
+| Celery wiring | `backend/catalog/core/celery.py`, `backend/catalog/apps/utils/tasks.py`, `frontend/src/hooks/useTaskPoller.ts` |
 | Active / finished plans | GitHub issues labelled `plan` (`gh issue list --label plan [--state closed]`) |
 
 ---
@@ -64,7 +66,7 @@ just db-reset       # DESTRUCTIVE: drops the Postgres volume, then re-migrates
 
 just loadtest-up    # load-test stack: prod backend + Postgres + Prometheus + Grafana (#9)
 just loadtest-seed --owners 5 --questionnaires-per-owner 200
-just k6 <scenario> [KEY=VALUE…]  # smoke load stress soak respondent pdf
+just k6 <scenario> [KEY=VALUE…]  # smoke load stress soak respondent pdf outage
 just loadtest-down  # keeps its volumes
 
 just infra-test     # Pulumi program tests (mocks, no Proxmox)
@@ -72,24 +74,27 @@ just infra-preview  # preview the LXC containers, save the plan
 just infra-up       # apply exactly the saved plan
 just infra <args>   # any pulumi command on the loadtest stack
 just converge [--tags app] [--check --diff]  # Ansible: configure the containers
-just k6 <scenario> TARGET=lxc  # run from saas-loadgen against saas-app
+just k6 <scenario> TARGET=lxc  # run from saas-loadgen through saas-gateway
 ```
 
 Rarer tasks have no recipe. Run them directly:
 
 | Task | Command |
 |---|---|
-| Backend dev server only | `just be-dev` (private helper, :8005) |
+| Backend dev servers only | `just be-dev` (private helper: gateway router :8005, catalog :8006, instances :8007) |
 | Frontend dev server only | `just fe-dev` (private helper, :5174) |
-| Backend coverage | `cd backend && uv run pytest --cov=apps --cov-report=term-missing` |
+| Backend coverage | `cd backend && uv run pytest catalog --cov=apps --cov-report=term-missing` (same for `instances`) |
 | Type check backend | `cd backend && uv run mypy .` |
-| New Django app | `mkdir backend/apps/<name> && cd backend && uv run python manage.py startapp <name> apps/<name>` |
-| Celery worker outside Docker | `cd backend && uv run celery -A core worker --loglevel=info` |
-| Flower UI on :5555 | `cd backend && uv run celery -A core flower --port=5555` |
+| New Django app | `cd backend/<service> && mkdir apps/<name> && uv run python manage.py startapp <name> apps/<name>` |
+| Celery worker outside Docker | `cd backend/catalog && uv run celery -A core worker --loglevel=info` |
+| Flower UI on :5555 | `cd backend/catalog && uv run celery -A core flower --port=5555` |
 | Logs | `just compose logs -f <service>` |
 | Rebuild images | `just compose build [service]` |
 | psql shell | `just compose exec db psql -U appuser -d appdb` |
-| Prod backend image | `docker build -f infra/docker/backend.prod.Dockerfile backend` |
+| Prod service image | `docker build -f infra/docker/<catalog\|instances>.prod.Dockerfile backend` |
+| Staff account for `/instances-admin/` | `cd backend && uv run python instances/manage.py createsuperuser` |
+| Regenerate the gateway config | `python3 infra/gateway/build_nginx.py` (after editing `routes.json`) |
+| Move data from a database from before the split | See "Moving a pre-split database" in `README.md` |
 | Vitest UI | `cd frontend && npm run test:ui` |
 | Frontend e2e (Playwright) | `cd frontend && npm run e2e` (first time: `npx playwright install chromium`) |
 | Playwright UI / report | `cd frontend && npm run e2e:ui` / `npx playwright show-report` |
@@ -103,14 +108,18 @@ Host ports are offset so they do not clash with a locally installed Postgres or 
 |---|---|---|
 | `db` | `5435` -> 5432 | Postgres 16 (`appuser` / `apppassword` / `appdb`) |
 | `redis` | `127.0.0.1:6380` -> 6379 | Celery broker (db 0) and cache (db 1). Loopback only: see Cache |
-| `backend` | `8005` | Django dev server |
+| `db` (`instances_db`) | `5437` -> 5432 | The `instances` database (`instancesdb`). `db` above is `catalog`'s |
+| `gateway` | `8005` | One public origin, so `VITE_API_BASE_URL` stays valid |
+| `catalog` | `8006` | Django dev server |
+| `instances` | `8007` | Django dev server |
+| `relay_outbox` | none | Retries undelivered events |
 | `celery_worker`, `celery_beat` | none | beat uses `DatabaseScheduler` |
 | `frontend` | `5174` | Vite dev server |
-| e2e backend, e2e frontend | `8015`, `5184` | Started by `npm run e2e:integration` only (dev + 10) |
-| load-test `backend`, `prometheus`, `grafana` | `8095`, `9095`, `3005` | `just loadtest-up` only; bound to 127.0.0.1 |
+| e2e gateway, catalog, instances, frontend | `8015`, `8016`, `8017`, `5184` | Started by `npm run e2e:integration` only (dev + 10) |
+| load-test `gateway`, `prometheus`, `grafana` | `8095`, `9095`, `3005` | `just loadtest-up` only; bound to 127.0.0.1 |
 
 All Docker files live in `infra/docker/`: `docker-compose.yml` (dev stack),
-`docker-compose.prod.yml` (gunicorn backend + db), `docker-compose.loadtest.yml` (load tests, its
+`docker-compose.prod.yml` (gunicorn services + gateway + dbs), `docker-compose.loadtest.yml` (load tests, its
 own project `<repo folder name>-loadtest`, see below), `<service>[.prod].Dockerfile`, and a
 `<name>.Dockerfile.dockerignore` next to each Dockerfile (BuildKit reads it in place of the build
 context's `.dockerignore`). Paths in the compose files are relative to `infra/docker/`. The justfile
@@ -120,8 +129,8 @@ through `just compose <args>` rather than bare `docker compose`. Without `-p` th
 `infra/docker/` as `<service>[.<variant>].Dockerfile` with a matching `.dockerignore`.
 `backend/tests/test_infra_docker.py` enforces this layout.
 
-Inside Compose, the `environment:` blocks set `DATABASE_URL`, `CELERY_BROKER_URL` and
-`CACHE_REDIS_URL` to the in-network hosts (`db:5432`, `redis:6379`). These override the `localhost`
+Inside Compose, the `environment:` blocks set `DATABASE_URL`, `INSTANCES_DATABASE_URL`, `CELERY_BROKER_URL`
+and `CACHE_REDIS_URL` to the in-network hosts (`db:5432`, `instances_db:5432`, `redis:6379`). These override the `localhost`
 values in the root `.env`.
 
 ---
@@ -133,19 +142,35 @@ values in the root `.env`.
 pytest-django, factory-boy, faker, freezegun, pytest-mock.
 
 Django is held at 6.0.x because `django-celery-beat` 2.9.0 requires `django<6.1`. Upgrade with
-`uv lock --upgrade` from `backend/`; it moves to 6.1 once celery-beat allows it.
+`uv lock --upgrade` from `backend/` (the workspace root, one lock for all services); it moves to 6.1 once celery-beat allows it.
 
-WeasyPrint (questionnaire PDF export) needs Pango, HarfBuzz and a font at runtime. Both backend
-Dockerfiles install them, and `tests/test_infra_docker.py` checks that they still do. Hosts need
+WeasyPrint (questionnaire PDF export) needs Pango, HarfBuzz and a font at runtime. Both `instances`
+Dockerfiles install them (`catalog`'s do not), and `tests/test_infra_docker.py` checks that they still do. Hosts need
 them too (see README). `apps/questionnaires/pdf.py` imports `weasyprint` inside the function, so
 the rest of the backend runs without those libraries. File downloads return `HttpResponse`, not
 DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOSE_HEADERS` in
 `base.py`.
 
 **Layout:** project package `core/` (settings, `celery.py`, `urls.py`), one app per domain under
-`apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`), `questionnaires`
-(user-owned questionnaire/battery types and instances, public share-link completion) and `utils`
-(health check and Celery task demo endpoints).
+`apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`), `catalog` (user-owned
+questionnaire and battery types), `questionnaires` (instances made from them, public share-link
+completion, dashboards, PDFs) and `utils` (health check, Celery task demo endpoints). `catalog` holds
+`accounts`, `catalog` and `utils`; `instances` holds `questionnaires`. Shared infrastructure, such as the
+cache and owner-scoping helpers, is in `common/`.
+
+The services never import each other, including in tests, and `common` holds infrastructure only, with
+no models (#13, `tests/test_service_boundary.py`). Both have packages named `core` and `apps`, so they
+cannot share a process. Run commands by path from `backend/`: `uv run python catalog/manage.py <cmd>`,
+`uv run pytest catalog`, `uv run pytest instances`, `uv run pytest tests`.
+
+**Service boundary (#13).** `questionnaires` reads only its own copies of types (`QuestionnaireTypeRef`,
+`BatteryTypeRef`), written only by `apps/questionnaires/refs.py`. Every write to a type must call
+`catalog.events.record_change()` in the same transaction, including admin and seeding, and a delete
+goes through `catalog.services.delete_type()`. Peers are reached only through the clients in
+`common/peers.py`, whose real classes are HTTP (`instances_client.py`, `catalog_client.py`) and whose
+test classes are in each app's `testing.py`. `/internal/` is never routed by the gateway. Its shapes are
+`backend/contracts/`, tested by both services: change those files together with both sides. The subtle rules (versions, tombstones, why read-through is authoritative) are
+at the top of `refs.py`. `questionnaires` factories create only copies, since `catalog` is another process.
 
 **Views and URLs**
 - All endpoints are under `/api/`.
@@ -155,7 +180,7 @@ DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOS
   serializers.
 - Use `get_object_or_404` and DRF exception handling, not try/except for HTTP errors.
 - **Every list endpoint is paginated** (#10): `DEFAULT_PAGINATION_CLASS` is
-  `core.pagination.StandardPagination` (`?page=`, `?page_size=` default 25, max 100;
+  `common.pagination.StandardPagination` (`?page=`, `?page_size=` default 25, max 100;
   `{count, next, previous, results}`). Give list querysets a total order (`-created_at`, `-id`),
   or pages repeat and skip rows. Filters that a page needs go on the server (query serializer in
   `get_queryset`, as `QuestionnaireViewSet` does), never in the browser.
@@ -175,7 +200,11 @@ DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOS
   `django.utils.timezone.now()`, or `datetime.now(UTC)` outside the ORM. Never naive
   `datetime.now()` or `datetime.utcnow()`. Freeze time in tests with `freezegun`.
 
-**Settings:** split into `core/settings/{base,dev,prod,test,e2e,loadtest}.py`. `manage.py` defaults
+**Settings:** shared ones are in `common/common/settings/`. Each service adds `core/settings/service.py`,
+and `core/settings/{dev,prod,test,e2e,loadtest}.py` that import both. Anything a profile changes, such as
+`CACHES`, must be set after `from .service import *`, or `service.py` overwrites it: that once pointed tests
+at the dev Redis. `instances` reads `INSTANCES_DATABASE_URL`, never `DATABASE_URL`, which `.env` sets for
+`catalog`. `manage.py` defaults
 `DJANGO_SETTINGS_MODULE` to `core.settings`, whose `__init__.py` picks `dev`, `test`, `prod` or
 `loadtest` from the `SETTINGS` env var (default `dev`). `loadtest` (#9) is `prod` over plain HTTP
 for k6 on a private network: it refuses to load if any `ALLOWED_HOSTS` entry is public. If DRF
@@ -185,18 +214,26 @@ throttles are ever added, raise them there for k6 (every VU shares one IP), neve
 `test` with its own `e2e.sqlite3` and CORS for :5184; only the Playwright integration config
 selects it (via `DJANGO_SETTINGS_MODULE`). All config comes from env vars via `django-environ`, loaded from the
 repo-root `.env` (`base.py` reads `BASE_DIR.parent / ".env"`). Never hardcode secrets or
-credentials. `DATABASE_URL` configures the database.
+credentials. `DATABASE_URL` configures `catalog`'s database.
 
-**Auth:** JWT via simplejwt. `POST /api/token/` and `POST /api/token/refresh/`.
+**Auth:** JWT via simplejwt, RS256 (#13). `POST /api/token/` and `POST /api/token/refresh/`. `dev`,
+`test` and `e2e` fall back to the published pair in `common/dev_keys.py`; `prod` and `loadtest`
+need `JWT_SIGNING_KEY` and `JWT_VERIFYING_KEY`, and refuse the dev key. Instance views authenticate with
+`apps/questionnaires/auth.py`: no user table, so `request.user` there has only `pk`, and rows hold a plain
+`owner_id`. Deactivation and deletion arrive as events (`apps/catalog/user_events.py`) into `BlockedOwner`.
+Change settings dicts by building a new one: `core/settings/__init__.py` imports `dev` first, so
+mutating `base`'s in place would leak into `prod`.
 
 **Metrics and load tests (#9)** (the k6 side is under "Load tests" below)
 - `django-prometheus` records request, view and DB metrics. `/metrics` is served by
-  `apps/utils/metrics.py`, the first middleware, so Prometheus can scrape by IP over plain HTTP.
+  `common/metrics.py`, the first middleware, so Prometheus can scrape by IP over plain HTTP.
   It is deliberately not under `/api/`. It answers only peers in `METRICS_ALLOWED_CIDRS`, and
   returns 404 to any request carrying a forwarding header, so a proxy can never make it public.
 - Under gunicorn with several workers, set `PROMETHEUS_MULTIPROC_DIR`, or each scrape sees one
-  worker. `backend/gunicorn.conf.py` empties it on start and marks dead workers.
-- `manage.py seed_loadtest` (logic in `apps/questionnaires/seeding.py`) creates deterministic
+  worker. `common/gunicorn_conf.py` empties it on start and marks dead workers.
+- `seed_loadtest` exists in both services, and `just loadtest-seed` runs them in order: `catalog`'s creates
+  owners and types, then `instances`' creates rows from the copies, using ids derived from the email so
+  repeated runs match. It creates deterministic
   `loadtest-<n>@example.com` owners with data spread over 90 days. It runs only under `DEBUG` or
   `loadtest`. `apps/questionnaires/test_query_counts.py` fails if a hot path's query count grows
   with rows; add new k6-loaded endpoints to it.
@@ -226,7 +263,7 @@ credentials. `DATABASE_URL` configures the database.
   instant, so don't compare those rows by order.
 
 **Celery**
-- App in `core/celery.py`. Tasks in `apps/<app>/tasks.py`, auto-discovered, defined with
+- `catalog` only. App in `core/celery.py`. Tasks in `apps/<app>/tasks.py`, auto-discovered, defined with
   `@shared_task`.
 - Broker is Redis. Results are stored in Postgres (`CELERY_RESULT_BACKEND = "django-db"`).
   Periodic schedules are managed in Django admin.
@@ -234,9 +271,9 @@ credentials. `DATABASE_URL` configures the database.
 
 **Cache (#11)**
 - Redis through Django's native backend. Every cached read goes through `cached()` in
-  `apps/utils/cache.py`; never call `cache.get` or `cache.set` from a view. It requires `owner_id`,
+  `common/cache.py`; never call `cache.get` or `cache.set` from a view. It requires `owner_id`,
   so a key cannot be built without a tenant. `params` come from validated data, never a raw query
-  string. `group` is one of the fixed `GROUPS`: it is a Prometheus label, like k6's `name` tag.
+  string. `group` is one of the service's fixed `CACHE_GROUPS`: it is a Prometheus label, like k6's `name` tag.
 - It fails open. A Redis error is logged and counted (`app_cache_requests_total`), then the value
   is computed. `CACHE_ENABLED=false` bypasses the cache without a code change.
 - Run auth and validation before reading the cache, so a deactivated user or a foreign id is
@@ -258,13 +295,15 @@ credentials. `DATABASE_URL` configures the database.
   cache Redis gains Celery, its broker gets a second instance. Only the dev stack shares one, with
   no `maxmemory`.
 
-**Testing:** `core.settings.test` uses SQLite and a fast password hasher. It also sets
+**Testing:** `core.settings.test` in each service uses SQLite and a fast password hasher. It also sets
 `CACHE_ENABLED = False` (`e2e` inherits this), so tests see fresh data. Cache tests opt in with the
 `cache_on` fixture, and need `django_capture_on_commit_callbacks(execute=True)` for a bump to run. Fixtures go in
-`conftest.py` (app-level or `backend/conftest.py`). App tests live in `apps/<name>/`.
-Repo-level checks that are not tied to an app live in `backend/tests/` (both are in pytest's
-`testpaths`). `tests/test_infra_docker.py` checks the `infra/docker/` layout. Its
-`docker compose config` tests skip when Docker is not installed. Markers: `slow`, `integration`, `development`.
+`conftest.py` (app-level or `backend/<service>/conftest.py`). App tests live in `apps/<name>/`.
+Repo-level checks that are not tied to an app live in `backend/tests/`, run with
+`uv run pytest tests`, since each service only collects its own `apps/`. `tests/test_infra_docker.py` checks the `infra/docker/` layout. Its
+`docker compose config` tests skip when Docker is not installed. `tests/test_import_from_monolith.py` runs the
+data move in a throwaway Postgres container (COPY needs Postgres), and skips the same way. Its source schema is
+frozen on purpose: it is what `main` left before the split. Markers: `slow`, `integration`, `development`.
 
 **API docs:** no OpenAPI generator is installed. The API table in `README.md` is the
 hand-written contract.
@@ -362,8 +401,8 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   can test belongs in Vitest, not Playwright.
 - Full-stack specs live in `frontend/e2e/integration/` and run only with `npm run e2e:integration`
   (`playwright.integration.config.ts`; the mocked config ignores that folder). That config starts
-  its own Django on :8015 (`core.settings.e2e`, database deleted and re-migrated every run) and
-  Vite on :5184 pointed at it, and never reuses running servers. It never touches the dev stack.
+  its own gateway router on :8015, `catalog` on :8016 and `instances` on :8017 (`core.settings.e2e`,
+  databases deleted and re-migrated every run) and Vite on :5184 pointed at the router, and never reuses running servers. It never touches the dev stack.
   Each test registers its own user with a unique email, so tests do not share state. Use them for
   the API contract (auth, real responses); keep UI-only checks in the mocked suite.
   `e2e/integration/helpers.ts` has `registerUser` / `loginAs` (log in by storing the JWT, skipping
@@ -376,7 +415,8 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 
 k6 scripts live in `loadtest/k6/` (`lib/config.js`, `lib/api.js`, `scenarios/*.js`).
 `loadtest/run.sh` (`just k6`) runs one scenario in the `grafana/k6` container against the local
-load-test stack. Results go to Prometheus by remote write, tagged `testid=<scenario>-<UTC time>`.
+load-test stack's gateway. `outage` proves the respondent flow survives `catalog` being stopped: stop it
+yourself once the run starts (see the scenario's header). Results go to Prometheus by remote write, tagged `testid=<scenario>-<UTC time>`.
 The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 
 - ⚠️ **k6 only ever targets a private address.** `lib/config.js` refuses any other `BASE_URL`
@@ -390,11 +430,19 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 - Run one scenario at a time. `run.sh` stops a k6 left behind by an interrupted run.
 - `load`, `stress` and `soak` take `MIX=mixed` (default, 47 % writes) or `MIX=read` (mostly reads).
   A cache's value depends heavily on the mix, so compare both.
+- k6 sends trends as native histograms (`K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM`, #20), so
+  `k6_http_req_duration_seconds` gives true per-minute latency through `rate()`. Runs before that have
+  only `k6_http_req_duration_{p95,avg,…}`, calculated since the run began, so they lag and stay raised after a
+  stall. Never read those as one minute's latency, and don't compare them with new p95. `just k6-report`
+  labels them "since start", and recovers an old run's per-minute mean from `avg × count`, per series,
+  since k6 stops sending a series with no new samples and it goes stale after 5 minutes. Its
+  `dropped/min` misses a counter's first jump, usually a soak's startup drops, so take totals from the
+  run's summary JSON.
 - Prometheus and Grafana config lives in `infra/observability/`. Dashboards are generated:
   edit `grafana/build_dashboards.py`, then run `python3 infra/observability/grafana/build_dashboards.py`.
   `backend/tests/test_observability.py` fails if the committed JSON is stale, and also runs
   promtool on the config and rules (needs Docker).
-- On the load-test stack, `/metrics` admits only Prometheus's fixed address (`10.95.0.10/32`).
+- Prometheus scrapes each service directly, with a `service` label. On the load-test stack, `/metrics` admits only Prometheus's fixed address (`10.95.0.10/32`).
   A subnet-wide rule would also admit the host, because published ports arrive from the
   subnet's gateway.
 
@@ -402,13 +450,15 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 
 ## Infra: Proxmox LXC containers (`infra/pulumi/`)
 
-The load-test deploy (#9, Phases 3–5) runs in five unprivileged LXC containers on the Proxmox
-host `192.168.2.70` (node `bthek1`): `saas-app` 241, `saas-db` 242, `saas-monitor` 243,
-`saas-loadgen` 244, `saas-cache` 245. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
+The load-test deploy (#9, Phases 3–5, #13) runs in seven unprivileged LXC containers on the Proxmox
+host `192.168.2.70` (node `bthek1`): `saas-catalog` 241 (the `catalog` service; it kept its `app` role and id so
+Pulumi never replaces it), `saas-db` 242, `saas-monitor` 243, `saas-loadgen` 244, `saas-cache` 245,
+`saas-instances` 246, `saas-gateway` 247. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
 creates bare containers. Ansible (Phase 4) configures them.
 
 - ⚠️ **Guest ids 241–249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
-  positional: renumbering makes Pulumi *replace* a guest and its data. 220–240 belong to
+  positional: renumbering makes Pulumi *replace* a guest and its data. So does a new name, unless the old one
+  stays in `PREVIOUS_NAMES` as an alias. A new hostname reboots the container. 220–240 belong to
   `~/kubernates_project` and are refused. The host's other guests (100–209) are unrelated.
 - **State is local and per repo**: `~/.pulumi-state/saas-experimental`, passphrase in
   `~/.pulumi-state/saas-experimental.passphrase`. The justfile sets `PULUMI_BACKEND_URL` and
@@ -436,16 +486,22 @@ baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the 
 it to `frontend/public/loadtest-results.html` (the "Load tests" sidebar link), whose figures are
 copied by hand. Files in `public/` have no login, so keep LAN addresses and secrets out of it.
 Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_enabled` in
-`infra/ansible/group_vars/app.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
+`infra/ansible/group_vars/{app,instances}.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
+`just loadtest-reset` rsyncs the working tree, so it deploys whatever is checked out.
 
 **Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
-(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-app), `monitor` (saas-monitor) and
+(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-catalog and saas-instances, told apart by
+`app_service` and `app_unit` in `group_vars`), `gateway` (saas-gateway), `monitor` (saas-monitor) and
 `loadgen` (saas-loadgen). The inventory (`inventory/pulumi.py`) reads the Pulumi stack outputs, secrets
 included, and refuses any non-private address. Nothing secret is stored in the repo.
 
 - Everything is installed natively, with no Docker:
-  - the backend is the working tree rsynced to `/srv/app/backend`, `uv sync` (Python 3.14),
-    gunicorn under systemd (`saas-app.service`, env in `/etc/saas-app/app.env`);
+  - each service is the working tree rsynced to `/srv/app/backend`, `uv sync --package <service>` (Python
+    3.14), gunicorn under systemd (`saas-app.service` for catalog, `saas-instances.service`, env in
+    `/etc/<unit>/app.env`), and `saas-relay.service` on saas-catalog retries events;
+  - nginx from apt on saas-gateway, its config from `infra/gateway/build_nginx.py --address ...`;
+  - saas-db holds `catalogdb` and `instancesdb` with separate login roles. The monolith's `appdb` is still
+    there, unused, as a way back;
   - Postgres 16 and Redis from apt (Redis: no RDB or AOF, `maxmemory` + `allkeys-lru`);
   - Prometheus, Grafana, node_exporter, postgres_exporter, redis_exporter, k6 and uv as release binaries
     pinned by version **and sha256** in `group_vars/all.yml`. Bump both together.
@@ -453,7 +509,8 @@ included, and refuses any non-private address. Nothing secret is stored in the r
   always reports changed hides real changes: fix it rather than ignore it. `ansible-lint`
   (production profile) passes: `uvx --from 'ansible-lint==25.*' ansible-lint site.yml`.
 - **Firewall:** nftables, input default-deny, per group in `group_vars/<group>.yml`. SSH only from
-  `admin_hosts`. Never enable the Proxmox datacenter firewall for this (it covers the whole host).
+  `admin_hosts`. A service's port admits only the gateway, its peer service and the scraper, so
+  `/internal/` is unreachable from anywhere else, and k6 and you go through the gateway. Never enable the Proxmox datacenter firewall for this (it covers the whole host).
 - **CPU and memory per container come from its cgroup**, not node_exporter. Inside an LXC,
   `/proc/stat` counts the host's work on the container's cores (an idle container read 16 %
   busy). `roles/common/files/container-metrics.sh` writes `container_*` metrics to node_exporter's
@@ -462,7 +519,7 @@ included, and refuses any non-private address. Nothing secret is stored in the r
 - The Grafana datasource URL is `${PROMETHEUS_URL}` (compose: `http://prometheus:9090`,
   saas-monitor: `http://localhost:9090`). Rules, provisioning and dashboards are the same files
   as the local stack's.
-- `TARGET=lxc` runs k6 on saas-loadgen. `/root/k6.env` (written by `roles/loadgen`) holds
+- `TARGET=lxc` runs k6 on saas-loadgen, through saas-gateway. `/root/k6.env` (written by `roles/loadgen`) holds
   `BASE_URL`, `OWNERS`, the owner password and the remote-write settings, so `run.sh` passes no
   secret on a command line. Grafana is `http://192.168.2.243:3000` (user `admin`, password:
   `just infra stack output grafana_admin_password --show-secrets`).
@@ -546,12 +603,12 @@ Other agents may edit this working tree at the same time.
 
   ```bash
   cd backend && uv run ruff check <paths> && uv run ruff format <paths>
-  cd backend && uv run pytest <path>[::<test>]
+  cd backend && uv run pytest <service>/<path>[::<test>]
   cd frontend && npx eslint <paths> && npx vitest run <paths>
   ```
 
 - Always pass an app to `just be-makemigrations <app>`. Do not run `just dev` or `just be-dev`:
-  they run a bare `makemigrations` and start shared dev servers.
+  they start shared dev servers.
 - At the end, list every file you changed so the user can commit them separately.
 
 ## Never do without explicit confirmation

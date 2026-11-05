@@ -1,6 +1,6 @@
-- name: WeasyPrint's system libraries (PDF export) and a font
+- name: Packages (instances also needs WeasyPrint's libraries, for PDF export, and a font)
   ansible.builtin.apt:
-    name: [libpango-1.0-0, libpangoft2-1.0-0, libharfbuzz0b, fonts-dejavu-core, acl]
+    name: "{{ ['acl'] + (['libpango-1.0-0', 'libpangoft2-1.0-0', 'libharfbuzz0b', 'fonts-dejavu-core'] if app_service == 'instances' else []) }}"
 
 - name: Create the app user
   ansible.builtin.user:
@@ -21,7 +21,7 @@
 
 - name: Backend directory
   ansible.builtin.file:
-    path: "{{ app_dir }}"
+    path: "{{ app_backend_dir }}"
     state: directory
     owner: app
     group: app
@@ -32,14 +32,17 @@
 - name: Sync the backend source
   ansible.posix.synchronize:
     src: "{{ repo_root }}/backend/"
-    dest: "{{ app_dir }}/"
+    dest: "{{ app_backend_dir }}/"
     delete: true
     rsync_opts:
       - --chown=app:app
       # The checkout is 0775/0664; on the container nothing but app may write.
       - --chmod=Dgo-w,Fgo-w
       - --exclude=.venv
-      - --exclude=__pycache__
+      # Perishable: never stops rsync deleting a directory that is otherwise gone.
+      - --filter=-p___pycache__  # "-p", "_" for the space, then the name
+      # uv builds common's on the container, and --delete would remove it each run.
+      - --exclude=*.egg-info
       - --exclude=.pytest_cache
       - --exclude=.ruff_cache
       - --exclude=.mypy_cache
@@ -49,18 +52,18 @@
       - --exclude=staticfiles
       - --exclude=media
       - --exclude=.env
-  notify: Restart saas-app
+  notify: Restart the service
 
 - name: Install the backend's dependencies (Python 3.14 managed by uv)
-  ansible.builtin.command: uv sync --frozen --no-dev --python 3.14
+  ansible.builtin.command: "uv sync --frozen --no-dev --package {{ app_service }} --python 3.14"
   args:
-    chdir: "{{ app_dir }}"
+    chdir: "{{ app_backend_dir }}"
   environment: "{{ app_uv_env }}"
   become: true
   become_user: app
   register: app_uv_sync
   changed_when: "'Installed' in app_uv_sync.stderr or 'Uninstalled' in app_uv_sync.stderr"
-  notify: Restart saas-app
+  notify: Restart the service
 
 - name: Environment file directory
   ansible.builtin.file:
@@ -79,15 +82,15 @@
     mode: "0640"
   diff: false
   no_log: true
-  notify: Restart saas-app
+  notify: Restart the service
 
 # migrate and seed run outside gunicorn, so their metrics go to a scratch
 # directory, never the one gunicorn's on_starting hook owns.
 - name: Migrate
-  ansible.builtin.command: "{{ app_dir }}/.venv/bin/python manage.py migrate --noinput"
+  ansible.builtin.command: "{{ app_python }} manage.py migrate --noinput"
   args:
     chdir: "{{ app_dir }}"
-  environment: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/saas-app-manage'}) }}"
+  environment: "{{ app_manage_env }}"
   become: true
   become_user: app
   register: app_migrate
@@ -97,10 +100,10 @@
 # respondent flow creates questionnaires), and the unpaginated list got slower
 # as they grew, so two runs were not comparable (#9, Phase 5).
 - name: Wipe the load-test database (only with -e app_reset_db=true)
-  ansible.builtin.command: "{{ app_dir }}/.venv/bin/python manage.py flush --noinput"
+  ansible.builtin.command: "{{ app_python }} manage.py flush --noinput"
   args:
     chdir: "{{ app_dir }}"
-  environment: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/saas-app-manage'}) }}"
+  environment: "{{ app_manage_env }}"
   become: true
   become_user: app
   when: app_reset_db | bool
@@ -110,41 +113,29 @@
 - name: Empty the cache (only with -e app_reset_db=true)
   ansible.builtin.command:
     argv:
-      - "{{ app_dir }}/.venv/bin/python"
+      - "{{ app_python }}"
       - manage.py
       - shell
       - -c
       - from django.core.cache import cache; cache.clear()
   args:
     chdir: "{{ app_dir }}"
-  environment: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/saas-app-manage'}) }}"
+  environment: "{{ app_manage_env }}"
   become: true
   become_user: app
   when: app_reset_db | bool
   changed_when: true
 
-- name: Seed the load-test owners
-  ansible.builtin.command: >-
-    {{ app_dir }}/.venv/bin/python manage.py seed_loadtest
-    --owners {{ loadtest_owners }} --questionnaires-per-owner {{ loadtest_questionnaires_per_owner }}
-  args:
-    chdir: "{{ app_dir }}"
-  environment: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/saas-app-manage'}) }}"
-  become: true
-  become_user: app
-  register: app_seed
-  changed_when: "'owners: 0 created' not in app_seed.stdout"
-
-- name: Write the saas-app unit (gunicorn)
+- name: Write the service's unit (gunicorn)
   ansible.builtin.template:
     src: saas-app.service.j2
-    dest: /etc/systemd/system/saas-app.service
+    dest: "/etc/systemd/system/{{ app_unit }}.service"
     mode: "0644"
-  notify: Restart saas-app
+  notify: Restart the service
 
-- name: Start saas-app
+- name: Start the service
   ansible.builtin.systemd_service:
-    name: saas-app
+    name: "{{ app_unit }}"
     enabled: true
     state: started
     daemon_reload: true
@@ -154,9 +145,14 @@
 
 - name: Health check
   ansible.builtin.uri:
-    url: "http://localhost:{{ ports.gunicorn }}/api/health/"
+    url: "http://localhost:{{ ports.gunicorn }}/internal/health/"
   register: app_health
   check_mode: false  # read-only; also proves the service in --check runs
   until: app_health.status == 200
   retries: 20
   delay: 2
+
+# After the health check: delivery needs both services up.
+- name: Seed and relay (catalog only)
+  ansible.builtin.include_tasks: catalog.yml
+  when: app_service == 'catalog'

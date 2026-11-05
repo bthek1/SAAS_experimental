@@ -36,6 +36,38 @@ describe("/questionnaire-types", () => {
     await user.click(within(dialog).getByRole("button", { name: "Delete" }))
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/used by existing/)
   })
+
+  it("shows the API message when instances can't confirm a delete (503)", async () => {
+    server.use(
+      http.delete(`${API}/api/questionnaire-types/:id/`, () =>
+        HttpResponse.json({ detail: "Temporarily unavailable. Try again shortly." }, { status: 503 }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderRoute("/questionnaire-types")
+    await user.click(await screen.findByRole("button", { name: "Delete" }))
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }))
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/temporarily unavailable/i)
+    expect(screen.getByRole("cell", { name: "Wellbeing", hidden: true })).toBeInTheDocument()
+  })
+
+  it("falls back to its own message on the gateway's HTML error page", async () => {
+    server.use(
+      http.delete(`${API}/api/questionnaire-types/:id/`, () =>
+        HttpResponse.text("<html><h1>502 Bad Gateway</h1></html>", {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderRoute("/questionnaire-types")
+    await user.click(await screen.findByRole("button", { name: "Delete" }))
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }))
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Could not delete. Please try again.")
+  })
 })
 
 describe("/questionnaire-types/new", () => {

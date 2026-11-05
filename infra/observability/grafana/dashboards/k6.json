@@ -273,7 +273,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (name) (k6_http_req_duration_p50{testid=~\"$testid\", name=~\"$name\"})",
+          "expr": "histogram_quantile(0.5, sum by (name) (rate(k6_http_req_duration_seconds{testid=~\"$testid\", name=~\"$name\"}[1m]))) or max by (name) (k6_http_req_duration_p50{testid=~\"$testid\", name=~\"$name\"})",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -311,7 +311,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (name) (k6_http_req_duration_p95{testid=~\"$testid\", name=~\"$name\"})",
+          "expr": "histogram_quantile(0.95, sum by (name) (rate(k6_http_req_duration_seconds{testid=~\"$testid\", name=~\"$name\"}[1m]))) or max by (name) (k6_http_req_duration_p95{testid=~\"$testid\", name=~\"$name\"})",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -349,7 +349,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (name) (k6_http_req_duration_p99{testid=~\"$testid\", name=~\"$name\"})",
+          "expr": "histogram_quantile(0.99, sum by (name) (rate(k6_http_req_duration_seconds{testid=~\"$testid\", name=~\"$name\"}[1m]))) or max by (name) (k6_http_req_duration_p99{testid=~\"$testid\", name=~\"$name\"})",
           "legendFormat": "{{name}}",
           "refId": "A"
         }

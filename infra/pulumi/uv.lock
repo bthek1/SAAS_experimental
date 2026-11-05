@@ -310,6 +310,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pulumi-tls"
+version = "5.6.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pulumi" },
+    { name = "semver" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/07/79/09f3af1d53aea0df2d5a97fc159c09752e60b80d70ffc1603a32d47af373/pulumi_tls-5.6.3.tar.gz", hash = "sha256:b5337917ff27496366baaf26fff7c2e224d2e67a32da0b0062b4826cb69f003d", size = 33205, upload-time = "2026-11-02T12:15:59.246Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6f/4e/e8851ef673a1c2ed8b86e57eebf2a22c824a6d85821e1a95f6f236ee8588/pulumi_tls-5.6.3-py3-none-any.whl", hash = "sha256:b0fd8c89e5839a6e98af251ac03bb457336954634b0256f52ff0429cfeb77e26", size = 40674, upload-time = "2026-11-02T12:15:58.332Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -370,6 +384,7 @@ dependencies = [
     { name = "pulumi" },
     { name = "pulumi-proxmoxve" },
     { name = "pulumi-random" },
+    { name = "pulumi-tls" },
 ]
 
 [package.dev-dependencies]
@@ -382,6 +397,7 @@ requires-dist = [
     { name = "pulumi", specifier = ">=3.200,<4" },
     { name = "pulumi-proxmoxve", specifier = ">=7.13,<8" },
     { name = "pulumi-random", specifier = ">=4.16,<5" },
+    { name = "pulumi-tls", specifier = ">=5,<6" },
 ]
 
 [package.metadata.requires-dev]

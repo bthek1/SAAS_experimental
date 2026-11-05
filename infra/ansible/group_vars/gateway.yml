@@ -1,0 +1,4 @@
+# The only public way in: k6 (saas-loadgen), and you. It never routes /internal/ or /metrics.
+nft_rules:
+  - port: "{{ ports.gunicorn }}"
+    from: "{{ [guest_ips.loadgen] + admin_hosts }}"

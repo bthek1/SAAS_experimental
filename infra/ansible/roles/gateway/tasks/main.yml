@@ -1,0 +1,41 @@
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+
+# From infra/gateway/routes.json, the only route table, with this deploy's addresses.
+- name: Write the gateway config
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.pipe', gateway_build_command) }}\n"
+    dest: /etc/nginx/nginx.conf
+    mode: "0644"
+    validate: nginx -t -c %s
+  vars:
+    gateway_build_command: >-
+      python3 {{ repo_root }}/infra/gateway/build_nginx.py
+      --address catalog={{ guest_ips.app }}:{{ ports.gunicorn }}
+      --address instances={{ guest_ips.instances }}:{{ ports.gunicorn }}
+  notify: Reload nginx
+
+- name: Remove the packaged default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Start nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Apply changes before the health check
+  ansible.builtin.meta: flush_handlers
+
+- name: Health check through the gateway
+  ansible.builtin.uri:
+    url: "http://localhost:{{ ports.gunicorn }}/api/health/"
+  register: gateway_health
+  check_mode: false  # read-only; also proves the service in --check runs
+  until: gateway_health.status == 200
+  retries: 20
+  delay: 2

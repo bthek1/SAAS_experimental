@@ -3,11 +3,11 @@
   "configurations": [
     // ── Backend: run Django dev server ───────────────────────────────────────
     {
-      "name": "Django: dev server",
+      "name": "Django: catalog dev server",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/backend/manage.py",
-      "args": ["runserver", "0.0.0.0:8005"],
+      "program": "${workspaceFolder}/backend/catalog/manage.py",
+      "args": ["runserver", "0.0.0.0:8006"],
       "django": true,
       "cwd": "${workspaceFolder}/backend",
       "envFile": "${workspaceFolder}/.env",
@@ -16,11 +16,11 @@
     },
     // ── Backend: pytest (all tests) ──────────────────────────────────────────
     {
-      "name": "pytest: all",
+      "name": "pytest: catalog",
       "type": "debugpy",
       "request": "launch",
       "module": "pytest",
-      "args": ["--tb=short", "-ra"],
+      "args": ["catalog", "--tb=short", "-ra"],
       "cwd": "${workspaceFolder}/backend",
       "envFile": "${workspaceFolder}/.env",
       "python": "${workspaceFolder}/backend/.venv/bin/python3",

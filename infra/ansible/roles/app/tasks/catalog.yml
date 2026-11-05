@@ -1,0 +1,35 @@
+- name: Seed the load-test owners and their types
+  ansible.builtin.command: >-
+    {{ app_python }} manage.py seed_loadtest --owners {{ loadtest_owners }}
+  args:
+    chdir: "{{ app_dir }}"
+  environment: "{{ app_manage_env }}"
+  become: true
+  become_user: app
+  register: app_seed
+  changed_when: "'owners: 0 created' not in app_seed.stdout"
+
+- name: Write the saas-relay unit (retries undelivered events)
+  ansible.builtin.template:
+    src: saas-relay.service.j2
+    dest: /etc/systemd/system/saas-relay.service
+    mode: "0644"
+  notify: Restart saas-relay
+
+- name: Start saas-relay
+  ansible.builtin.systemd_service:
+    name: saas-relay
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Deliver anything the immediate push missed, before instances seeds from it
+  ansible.builtin.command: "{{ app_python }} manage.py relay_outbox --once"
+  args:
+    chdir: "{{ app_dir }}"
+  environment: "{{ app_manage_env }}"
+  become: true
+  become_user: app
+  register: app_relay
+  changed_when: "'delivered: 0,' not in app_relay.stdout"
+  failed_when: "app_relay.rc != 0 or 'pending: 0' not in app_relay.stdout"

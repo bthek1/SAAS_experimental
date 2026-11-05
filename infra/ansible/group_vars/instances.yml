@@ -1,0 +1,14 @@
+# The instances service (#13). Its address: the gateway, catalog (/internal/), and the scraper.
+nft_rules:
+  - port: "{{ ports.gunicorn }}"
+    from: "{{ [guest_ips.gateway, guest_ips.app, guest_ips.monitor] }}"
+
+app_service: instances
+app_unit: saas-instances
+# The same as the monolith had, on the same core count: this side takes the hot path.
+gunicorn_workers: 5
+gunicorn_threads: 4
+conn_max_age: 60
+cache_enabled: true
+loadtest_questionnaires_per_owner: 200
+app_reset_db: false

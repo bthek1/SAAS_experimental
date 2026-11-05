@@ -27,7 +27,7 @@ default:
 dev: db-up celery-up
     #!/usr/bin/env bash
     echo "Starting backend and frontend dev servers..."
-    echo "  Backend : http://localhost:8005"
+    echo "  Gateway : http://localhost:8005 (catalog :8006, instances :8007)"
     echo "  Frontend: http://localhost:5174"
     _pids=()
     _cleanup() {
@@ -40,6 +40,8 @@ dev: db-up celery-up
         overmind start
     else
         just be-dev &
+        _pids+=($!)
+        just be-relay &
         _pids+=($!)
         just fe-dev &
         _pids+=($!)
@@ -74,25 +76,36 @@ compose *args:
 
 # --- Backend ---
 
-# Apply database migrations
+# Apply database migrations on both services
 [group('backend')]
 be-migrate:
-    cd backend && uv run python manage.py migrate
+    cd backend && uv run python catalog/manage.py adopt_monolith_db
+    cd backend && uv run python catalog/manage.py migrate
+    cd backend && uv run python instances/manage.py migrate
 
 # Create new migrations after model changes: just be-makemigrations <app>
 [group('backend')]
-be-makemigrations app="":
-    cd backend && uv run python manage.py makemigrations {{ app }}
+be-makemigrations app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd backend
+    case "{{ app }}" in
+        questionnaires) service=instances ;;
+        *) service=catalog ;;
+    esac
+    uv run python "$service/manage.py" makemigrations {{ app }}
 
 # Create a Django superuser from DJANGO_SUPERUSER_* in .env
 [group('backend')]
 be-superuser:
-    cd backend && uv run python manage.py createsuperuser --noinput
+    cd backend && uv run python catalog/manage.py createsuperuser --noinput
 
-# Run backend test suite
+# Run the backend test suites: each service, then the repo-level checks
 [group('backend')]
 be-test:
-    cd backend && uv run pytest
+    cd backend && uv run pytest catalog
+    cd backend && uv run pytest instances
+    cd backend && uv run pytest tests
 
 # Lint backend code (ruff check)
 [group('backend')]
@@ -128,23 +141,35 @@ fe-build:
 k6-report testid:
     python3 loadtest/report.py {{ testid }}
 
-# Start the load-test stack (prod backend image + Postgres + Prometheus :9095 + Grafana :3005)
+# Start the load-test stack (prod images behind the gateway :8095 + Prometheus :9095 + Grafana :3005)
 [group('loadtest')]
 loadtest-up:
-    {{ loadtest_compose }} up -d --build --wait backend prometheus grafana
+    {{ loadtest_compose }} up -d --build --wait gateway relay_outbox prometheus grafana
 
 # Stop the load-test stack (keeps its volumes: Prometheus history, seeded DB)
 [group('loadtest')]
 loadtest-down:
     {{ loadtest_compose }} down
 
-# Seed the load-test backend: just loadtest-seed --owners 5 --questionnaires-per-owner 200
+# Seed both load-test services: just loadtest-seed --owners 5 --questionnaires-per-owner 200
 [group('loadtest')]
 [positional-arguments]
 loadtest-seed *args:
-    {{ loadtest_compose }} exec backend python manage.py seed_loadtest "$@"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    owners=5; per_owner=200
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --owners) owners="$2"; shift 2 ;;
+            --questionnaires-per-owner) per_owner="$2"; shift 2 ;;
+            *) echo "unknown option $1" >&2; exit 1 ;;
+        esac
+    done
+    {{ loadtest_compose }} exec catalog python manage.py seed_loadtest --owners "$owners"
+    {{ loadtest_compose }} exec catalog python manage.py relay_outbox --once
+    {{ loadtest_compose }} exec instances python manage.py seed_loadtest --questionnaires-per-owner "$per_owner"
 
-# Run a k6 scenario, results to Prometheus/Grafana: smoke load stress soak respondent pdf [KEY=VALUE…]
+# Run a k6 scenario, results to Prometheus/Grafana: smoke load stress soak respondent pdf outage [KEY=VALUE…]
 [group('loadtest')]
 [positional-arguments]
 k6 scenario *options:
@@ -181,7 +206,7 @@ infra-test *args:
 # Reset the LXC deploy's database to the fixed seed (run before every measured k6 run)
 [group('infra')]
 loadtest-reset:
-    cd infra/ansible && ansible-playbook site.yml --tags app --limit app -e app_reset_db=true
+    cd infra/ansible && ansible-playbook site.yml --tags app --limit app,instances -e app_reset_db=true
 
 # Configure the containers with Ansible (infra/ansible/site.yml): just converge --tags app --check --diff
 [group('infra')]
@@ -201,10 +226,21 @@ db-reset:
 
 # --- Helpers used by `dev` (hidden from the list, still runnable by name) ---
 
-# Run the Django dev server on :8005 (runs makemigrations + migrate first)
+# Run both Django dev servers and the gateway's dev router on :8005 (migrates first)
 [private]
-be-dev: be-makemigrations be-migrate
-    cd backend && uv run python manage.py runserver 0.0.0.0:8005
+be-dev: be-migrate
+    #!/usr/bin/env bash
+    trap 'kill 0' EXIT
+    (cd backend && uv run python catalog/manage.py runserver 0.0.0.0:8006) &
+    (cd backend && uv run python instances/manage.py runserver 0.0.0.0:8007) &
+    python3 infra/gateway/dev_router.py --port 8005 \
+        --service catalog=http://localhost:8006 --service instances=http://localhost:8007 &
+    wait
+
+# Retry events the immediate push could not deliver
+[private]
+be-relay:
+    cd backend && uv run python catalog/manage.py relay_outbox
 
 # Run the Vite dev server on :5174
 [private]
@@ -214,9 +250,9 @@ fe-dev:
 # Start the db container if not already running
 [private]
 db-up:
-    @{{ compose }} ps --status running db | grep -q db \
-        && echo "DB already running." \
-        || (echo "Starting DB..." && {{ compose }} up -d db && echo "Waiting for DB to be ready..." && sleep 3)
+    @{{ compose }} ps --status running instances_db | grep -q instances_db \
+        && echo "DBs already running." \
+        || (echo "Starting DBs..." && {{ compose }} up -d db instances_db && echo "Waiting for DBs to be ready..." && sleep 3)
 
 # Start the Redis + Celery worker + beat containers if not already running
 [private]

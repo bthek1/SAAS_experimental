@@ -1,6 +1,13 @@
-import axios from "axios";
+import axios, { isAxiosError } from "axios";
 
 const BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
+
+// The token itself was refused. Anything else, such as a 502 or a network error while
+// `catalog` is down, says nothing about the session, so the user stays logged in.
+function refreshWasRejected(error: unknown): boolean {
+  const status = isAxiosError(error) ? error.response?.status : undefined;
+  return status === 400 || status === 401;
+}
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -34,9 +41,11 @@ apiClient.interceptors.response.use(
           localStorage.setItem("access_token", data.access);
           originalRequest.headers.Authorization = `Bearer ${data.access}`;
           return apiClient(originalRequest);
-        } catch {
-          localStorage.removeItem("access_token");
-          localStorage.removeItem("refresh_token");
+        } catch (refreshError) {
+          if (refreshWasRejected(refreshError)) {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+          }
         }
       }
     }

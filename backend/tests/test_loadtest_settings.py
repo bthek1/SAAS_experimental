@@ -11,9 +11,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from common.dev_keys import DEV_SIGNING_KEY
 
 BACKEND = Path(__file__).resolve().parent.parent
-SETTINGS_DIR = BACKEND / "core" / "settings"
 
 PROBE = """
 import json, django
@@ -28,14 +28,17 @@ print(json.dumps({
     "conn_max_age": s.DATABASES["default"]["CONN_MAX_AGE"],
     "conn_health_checks": s.DATABASES["default"]["CONN_HEALTH_CHECKS"],
     "loadtest": getattr(s, "LOADTEST", False),
+    "signing_key": s.SIMPLE_JWT["SIGNING_KEY"],
 }))
 """
 
 
-def load(allowed_hosts: str, **env: str) -> subprocess.CompletedProcess:
+def load(
+    allowed_hosts: str, service: str = "catalog", **env: str
+) -> subprocess.CompletedProcess:
     return subprocess.run(  # noqa: S603 - fixed argv, our own interpreter
         [sys.executable, "-c", PROBE],
-        cwd=BACKEND,
+        cwd=BACKEND / service,
         capture_output=True,
         text=True,
         check=False,
@@ -43,7 +46,12 @@ def load(allowed_hosts: str, **env: str) -> subprocess.CompletedProcess:
             **os.environ,
             "DJANGO_SETTINGS_MODULE": "core.settings.loadtest",
             "SECRET_KEY": "x" * 50,
+            "JWT_SIGNING_KEY": "not-the-dev-key",
+            "JWT_VERIFYING_KEY": "public",
             "DATABASE_URL": "postgres://u:p@127.0.0.1:5432/db",
+            "INSTANCES_DATABASE_URL": "postgres://u:p@127.0.0.1:5433/db",
+            "CATALOG_TO_INSTANCES_TOKEN": "a",
+            "INSTANCES_TO_CATALOG_TOKEN": "b",
             "CACHE_REDIS_URL": "redis://127.0.0.1:6379/1",
             "ALLOWED_HOSTS": allowed_hosts,
             **env,
@@ -63,6 +71,7 @@ def test_loads_with_private_hosts(hosts):
     proc = load(hosts)
     assert proc.returncode == 0, proc.stderr
     loaded = json.loads(proc.stdout)
+    assert loaded.pop("signing_key") == "not-the-dev-key"
     assert loaded == {
         "ssl_redirect": False,
         "hsts": 0,
@@ -92,9 +101,23 @@ def test_selected_by_settings_env_var():
     assert json.loads(proc.stdout)["loadtest"] is True
 
 
-@pytest.mark.parametrize("name", ["base.py", "dev.py", "prod.py", "test.py"])
-def test_no_other_settings_module_imports_it(name):
-    assert "loadtest" not in (SETTINGS_DIR / name).read_text()
+@pytest.mark.parametrize(
+    "path",
+    [
+        "common/common/settings/base.py",
+        "common/common/settings/dev.py",
+        "common/common/settings/prod.py",
+        "common/common/settings/test.py",
+        "catalog/core/settings/dev.py",
+        "catalog/core/settings/prod.py",
+        "catalog/core/settings/test.py",
+        "instances/core/settings/dev.py",
+        "instances/core/settings/prod.py",
+        "instances/core/settings/test.py",
+    ],
+)
+def test_no_other_settings_module_imports_it(path):
+    assert "loadtest" not in (BACKEND / path).read_text()
 
 
 def test_conn_max_age_comes_from_the_environment():
@@ -102,3 +125,34 @@ def test_conn_max_age_comes_from_the_environment():
     proc = load("localhost", CONN_MAX_AGE="0")
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["conn_max_age"] == 0
+
+
+def test_refuses_a_missing_jwt_key():
+    result = load("localhost", JWT_SIGNING_KEY="")
+    assert result.returncode != 0
+    assert "Set JWT_SIGNING_KEY" in result.stderr
+
+
+def test_refuses_the_published_dev_key():
+    result = load("localhost", JWT_SIGNING_KEY=DEV_SIGNING_KEY)
+    assert result.returncode != 0
+    assert "published dev key" in result.stderr
+
+
+def test_instances_never_load_the_signing_key():
+    proc = load("localhost", service="instances")
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout)["signing_key"] == ""
+
+
+def test_instances_refuse_a_missing_verifying_key():
+    result = load("localhost", service="instances", JWT_VERIFYING_KEY="")
+    assert result.returncode != 0
+    assert "JWT_VERIFYING_KEY" in result.stderr
+
+
+@pytest.mark.parametrize("service", ["catalog", "instances"])
+def test_refuses_missing_peer_tokens(service):
+    result = load("localhost", service=service, CATALOG_TO_INSTANCES_TOKEN="")
+    assert result.returncode != 0
+    assert "CATALOG_TO_INSTANCES_TOKEN" in result.stderr

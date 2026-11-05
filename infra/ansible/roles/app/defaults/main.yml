@@ -1,22 +1,38 @@
-# -e app_reset_db=true (just loadtest-reset) wipes the database before seeding.
-app_reset_db: false
 app_root: /srv/app
-app_dir: "{{ app_root }}/backend"
-app_env_file: /etc/saas-app/app.env
-# The backend's environment (core.settings.loadtest). Also passed to migrate and
-# seed_loadtest, so they see exactly what gunicorn sees.
-app_env:
+app_backend_dir: "{{ app_root }}/backend"
+# Where manage.py and gunicorn run. `core` and `apps` resolve from here.
+app_dir: "{{ app_backend_dir }}/{{ app_service }}"
+app_env_file: "/etc/{{ app_unit }}/app.env"
+app_python: "{{ app_backend_dir }}/.venv/bin/python"
+# PEM files on one line: core settings read JWT keys with `\\n` for newlines (`multiline`).
+app_jwt_verifying_key: "{{ jwt_verifying_key | trim | replace('\n', '\\n') }}"
+app_env_shared:
   DJANGO_SETTINGS_MODULE: core.settings.loadtest
   SECRET_KEY: "{{ django_secret_key }}"
-  DATABASE_URL: "postgres://{{ db_user }}:{{ db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ db_name }}"
-  ALLOWED_HOSTS: "{{ guest_ip }},localhost,127.0.0.1"
+  ALLOWED_HOSTS: "{{ guest_ips.gateway }},{{ guest_ip }},localhost,127.0.0.1"
   # Prometheus alone may read /metrics.
   METRICS_ALLOWED_CIDRS: "{{ guest_ips.monitor }}/32"
-  PROMETHEUS_MULTIPROC_DIR: /run/saas-app/prometheus
+  PROMETHEUS_MULTIPROC_DIR: "/run/{{ app_unit }}/prometheus"
   CONN_MAX_AGE: "{{ conn_max_age }}"
   CACHE_REDIS_URL: "redis://:{{ redis_password }}@{{ guest_ips.cache }}:{{ ports.redis }}/1"
   CACHE_ENABLED: "{{ cache_enabled }}"
   LOADTEST_OWNER_PASSWORD: "{{ loadtest_owner_password }}"
+  JWT_VERIFYING_KEY: "{{ app_jwt_verifying_key }}"
+  CATALOG_INTERNAL_URL: "http://{{ guest_ips.app }}:{{ ports.gunicorn }}"
+  INSTANCES_INTERNAL_URL: "http://{{ guest_ips.instances }}:{{ ports.gunicorn }}"
+  CATALOG_TO_INSTANCES_TOKEN: "{{ catalog_to_instances_token }}"
+  INSTANCES_TO_CATALOG_TOKEN: "{{ instances_to_catalog_token }}"
+app_env_service:
+  catalog:
+    DATABASE_URL: "postgres://{{ db_user }}:{{ db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ db_name }}"
+    JWT_SIGNING_KEY: "{{ jwt_signing_key | trim | replace('\n', '\\n') }}"
+  # Never the signing key: this service verifies tokens and cannot mint them.
+  instances:
+    INSTANCES_DATABASE_URL: "postgres://{{ instances_db_user }}:{{ instances_db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ instances_db_name }}"
+# The service's environment. Also passed to migrate and seed_loadtest, so they see
+# exactly what gunicorn sees.
+app_env: "{{ app_env_shared | combine(app_env_service[app_service]) }}"
+app_manage_env: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/' + app_unit + '-manage'}) }}"
 app_uv_env:
   UV_PYTHON_INSTALL_DIR: "{{ app_root }}/.python"
   UV_CACHE_DIR: "{{ app_root }}/.cache/uv"

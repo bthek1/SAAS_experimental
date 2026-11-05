@@ -24,6 +24,8 @@ def outputs(**overrides):
             "monitor": 243,
             "loadgen": 244,
             "cache": 245,
+            "instances": 246,
+            "gateway": 247,
         }.items()
     }
     return {
@@ -38,7 +40,7 @@ def outputs(**overrides):
 
 def test_one_group_per_role_one_host_each():
     built = inventory.build(outputs())
-    for role in ("app", "db", "monitor", "loadgen", "cache"):
+    for role in ("app", "db", "monitor", "loadgen", "cache", "instances", "gateway"):
         assert built[role] == {"hosts": [f"saas-{role}"]}
     hostvars = built["_meta"]["hostvars"]
     assert hostvars["saas-app"] == {

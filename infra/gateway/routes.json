@@ -1,0 +1,21 @@
+{
+  "services": {
+    "catalog": { "upstream": "catalog:8000" },
+    "instances": { "upstream": "instances:8000" }
+  },
+  "routes": [
+    { "prefix": "/api/token/", "service": "catalog" },
+    { "prefix": "/api/accounts/", "service": "catalog" },
+    { "prefix": "/api/health/", "service": "catalog" },
+    { "prefix": "/api/tasks/", "service": "catalog" },
+    { "prefix": "/api/questionnaire-types/", "service": "catalog" },
+    { "prefix": "/api/battery-types/", "service": "catalog" },
+    { "prefix": "/admin/", "service": "catalog" },
+    { "prefix": "/static/", "service": "catalog" },
+    { "prefix": "/api/questionnaires/", "service": "instances" },
+    { "prefix": "/api/batteries/", "service": "instances" },
+    { "prefix": "/api/dashboard/", "service": "instances" },
+    { "prefix": "/instances-admin/", "service": "instances" },
+    { "prefix": "/instances-static/", "service": "instances" }
+  ]
+}
