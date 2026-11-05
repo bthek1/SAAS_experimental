@@ -100,6 +100,30 @@ def test_p95_column_reads_histograms_and_old_one_is_labelled(report):
     assert "k6_http_req_duration_p95" in columns["k6 p95 since start, worst group ms"]
 
 
+def test_catalog_cpu_reads_the_container_under_both_names(report):
+    # Guest 241 was renamed in #21: new runs have one label, older runs the other.
+    expr = {header: expr for header, expr, _ in report.columns("run-1")}[
+        "catalog cpu %"
+    ]
+
+    assert 'instance=~"saas-catalog|saas-app"' in expr
+
+
+def test_other_containers_read_only_their_own_name(report):
+    assert 'instance=~"saas-instances"' in report.cpu_share("instances")
+    assert "saas-app" not in report.cpu_share("instances")
+
+
+def test_window_covers_only_full_minutes(report):
+    # 00:00:30 to 00:05:30: the first full minute after the start ends at 00:02:00.
+    assert report.report_window(30_000, 330_000) == (120, 300)
+
+
+def test_run_too_short_for_a_full_minute_still_gets_one_row(report):
+    # 00:00:30 to 00:01:30, as a smoke run can be. Prometheus refuses end < start.
+    assert report.report_window(30_000, 90_000) == (60, 60)
+
+
 @pytest.mark.parametrize(
     "path",
     [

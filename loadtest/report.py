@@ -36,11 +36,16 @@ CACHE_REQUESTS = "app_cache_requests_total"
 CACHE_GROUPS = ("dashboard", "dashboard-scores", "pdf", "type-list")
 
 
-ROLES = ("gateway", "app", "instances", "db", "cache", "loadgen", "monitor")
+ROLES = ("gateway", "catalog", "instances", "db", "cache", "loadgen", "monitor")
+# Guest 241 was saas-app until #21, and older runs' samples keep that label.
+PREVIOUS_INSTANCES = {"catalog": "saas-app"}
 
 
 def cpu_share(role: str) -> str:
-    instance = f'instance="saas-{role}"'
+    names = [f"saas-{role}"]
+    if role in PREVIOUS_INSTANCES:
+        names.append(PREVIOUS_INSTANCES[role])
+    instance = f'instance=~"{"|".join(names)}"'
     return (
         f"100 * sum(rate(container_cpu_usage_seconds_total{{{instance}}}[1m]))"
         f" / max(container_cpu_limit_cores{{{instance}}})"
@@ -102,6 +107,16 @@ def per_minute_means(
     return means
 
 
+def report_window(start_ms: float, end_ms: float) -> tuple[int, int]:
+    """The first full minute after the start, to the last one before the end.
+
+    A run too short to hold one (smoke) gets a single row at the minute it ended.
+    """
+    start = math.ceil(start_ms / 1000 / STEP) * STEP + STEP
+    end = math.floor(end_ms / 1000 / STEP) * STEP
+    return min(start, end), end
+
+
 def columns(testid: str) -> list[tuple[str, str, str]]:
     """(header, PromQL, format). Instant values at the end of each minute."""
     k6 = f'testid="{testid}"'
@@ -124,10 +139,7 @@ def columns(testid: str) -> list[tuple[str, str, str]]:
         ),
         ("django p95 ms", django_quantile(0.95), "{:.0f}"),
         ("django p99 ms", django_quantile(0.99), "{:.0f}"),
-        *(
-            (f"{role} cpu %", cpu_share(role), "{:.0f}")
-            for role in ROLES
-        ),
+        *((f"{role} cpu %", cpu_share(role), "{:.0f}") for role in ROLES),
         *(
             (f"{group} hit %", cache_hit_ratio(group), "{:.0f}")
             for group in CACHE_GROUPS
@@ -202,9 +214,7 @@ def main() -> None:
     if not meta_path.exists():
         sys.exit(f"no {meta_path}: run.sh writes it at the end of each run")
     meta = json.loads(meta_path.read_text())
-    # The first full minute after the start, to the last one before the end.
-    start = math.ceil(meta["start_ms"] / 1000 / STEP) * STEP + STEP
-    end = math.floor(meta["end_ms"] / 1000 / STEP) * STEP
+    start, end = report_window(meta["start_ms"], meta["end_ms"])
     cols = columns(args.testid)
     series = [query_range(meta["prometheus"], expr, start, end) for _, expr, _ in cols]
     mean = next(i for i, (header, _, _) in enumerate(cols) if header == "k6 mean ms")
