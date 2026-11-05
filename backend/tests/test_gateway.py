@@ -75,6 +75,17 @@ def test_a_stopped_service_fails_fast_and_a_restart_is_found():
     assert "server catalog:8000 resolve;" in conf
 
 
+@pytest.mark.parametrize("addresses", [None, {"catalog": "a:1", "instances": "b:1"}])
+def test_every_upstream_states_its_idle_timeout(addresses):
+    # The Docker and LXC configs alike: gunicorn's keepalive is checked against it (#24).
+    build = load("build_nginx")
+    conf = build.render(TABLE, addresses)
+
+    assert conf.count("upstream ") == conf.count(
+        f"keepalive_timeout {build.KEEPALIVE_TIMEOUT}s;"
+    )
+
+
 def test_fixed_addresses_need_no_docker_dns():
     addresses = {"catalog": "192.168.2.241:8000", "instances": "192.168.2.246:8000"}
     conf = load("build_nginx").render(TABLE, addresses)

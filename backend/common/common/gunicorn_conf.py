@@ -6,11 +6,18 @@ With PROMETHEUS_MULTIPROC_DIR set, every worker writes its metrics to files in
 that directory and /metrics adds them up. Without it, each scrape sees only
 the one worker that answered it. The directory must start empty, and a dead
 worker's files must be marked, or its gauges linger.
+
+`keepalive` outlasts the gateway's upstream `keepalive_timeout` (60 s, in
+infra/gateway/build_nginx.py). With gunicorn's default of 2 s, it could close a
+connection just as nginx reused it, and nginx answers a reset POST or PATCH with
+a 502: 306 of 19,120 requests in loadtest/keepalive_repro.py (#24).
 """
 
 import os
 import shutil
 from pathlib import Path
+
+keepalive = 75
 
 
 def on_starting(server):  # noqa: ARG001

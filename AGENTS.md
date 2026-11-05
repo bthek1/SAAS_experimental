@@ -231,6 +231,10 @@ mutating `base`'s in place would leak into `prod`.
   returns 404 to any request carrying a forwarding header, so a proxy can never make it public.
 - Under gunicorn with several workers, set `PROMETHEUS_MULTIPROC_DIR`, or each scrape sees one
   worker. `common/gunicorn_conf.py` empties it on start and marks dead workers.
+- gunicorn's `keepalive` must outlast the gateway's upstream `keepalive_timeout`
+  (`common/gunicorn_conf.py`, `infra/gateway/build_nginx.py`; `tests/test_gunicorn_conf.py` checks
+  it). Otherwise gunicorn can close a connection as nginx reuses it, and a POST or PATCH gets a 502 (#24).
+  `loadtest/keepalive_repro.py` reproduces this.
 - `seed_loadtest` exists in both services, and `just loadtest-seed` runs them in order: `catalog`'s creates
   owners and types, then `instances`' creates rows from the copies, using ids derived from the email so
   repeated runs match. It creates deterministic

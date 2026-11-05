@@ -1,5 +1,6 @@
 """gunicorn's multiprocess metrics setup (#9), shared by both services (#13)."""
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,15 @@ def test_each_service_uses_the_shared_config(service: str) -> None:
     """gunicorn reads this file from the working directory, so it has to exist."""
     config = (BACKEND / service / "gunicorn.conf.py").read_text()
     assert "from common.gunicorn_conf import *" in config
+
+
+def test_keepalive_outlasts_the_gateways() -> None:
+    """Otherwise gunicorn can close a connection as nginx reuses it: a 502 (#24)."""
+    nginx = (BACKEND.parent / "infra" / "gateway" / "nginx.conf").read_text()
+    timeouts = re.findall(r"keepalive_timeout (\d+)s;", nginx)
+
+    assert timeouts
+    assert all(gunicorn_conf.keepalive > int(timeout) for timeout in timeouts)
 
 
 def test_on_starting_empties_the_metrics_directory(tmp_path, monkeypatch) -> None:
