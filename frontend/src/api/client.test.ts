@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosError, type AxiosResponse } from 'axios'
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 
 // Make the instance both callable (for retried requests) and have interceptors
@@ -71,21 +71,38 @@ describe('apiClient interceptors', () => {
     expect(responseFulfilled(response)).toBe(response)
   })
 
-  it('response interceptor clears tokens and rejects on refresh failure', async () => {
+  const refreshFailsWith = (reason: unknown) => {
     localStorage.setItem('access_token', 'old-acc')
     localStorage.setItem('refresh_token', 'old-ref')
-
     const axiosMod = axios as unknown as { post: ReturnType<typeof vi.fn> }
-    axiosMod.post = vi.fn().mockRejectedValue(new Error('network'))
-
-    const error = {
+    axiosMod.post = vi.fn().mockRejectedValue(reason)
+    return {
       response: { status: 401 },
       config: { _retry: false, headers: {} as Record<string, string> },
     }
+  }
+  const refreshStatus = (status: number) =>
+    new AxiosError('refresh failed', undefined, undefined, undefined, { status } as AxiosResponse)
 
-    await expect(responseRejected(error)).rejects.toThrow()
+  it.each([400, 401])('clears tokens and rejects when the refresh is refused (%i)', async (status) => {
+    const error = refreshFailsWith(refreshStatus(status))
+
+    await expect(responseRejected(error)).rejects.toEqual(error)
     expect(localStorage.getItem('access_token')).toBeNull()
     expect(localStorage.getItem('refresh_token')).toBeNull()
+  })
+
+  it.each([
+    ['a 502 from the gateway', refreshStatus(502)],
+    ['a 503', refreshStatus(503)],
+    ['a 504', refreshStatus(504)],
+    ['a network error', new AxiosError('Network Error')],
+  ])('keeps the session and rejects when catalog is unavailable: %s', async (_name, reason) => {
+    const error = refreshFailsWith(reason)
+
+    await expect(responseRejected(error)).rejects.toEqual(error)
+    expect(localStorage.getItem('access_token')).toBe('old-acc')
+    expect(localStorage.getItem('refresh_token')).toBe('old-ref')
   })
 
   it('response interceptor stores new access token after successful refresh', async () => {

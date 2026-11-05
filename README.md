@@ -92,7 +92,7 @@ password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`,
 
 ### Load-test deploy (Proxmox LXC containers)
 
-The baseline runs on seven LXC containers on the Proxmox host (`saas-app` .241, which is `catalog`,
+The baseline runs on seven LXC containers on the Proxmox host (`saas-catalog` .241,
 `saas-db` .242, `saas-monitor` .243, `saas-loadgen` .244, `saas-cache` .245, `saas-instances` .246,
 `saas-gateway` .247, on `192.168.2.0/24`). Pulumi creates them and Ansible
 configures them. One-time setup (state, passphrase, API token): `infra/pulumi/Pulumi.loadtest.yaml.example`.
@@ -106,7 +106,7 @@ just k6 smoke TARGET=lxc        # k6 on saas-loadgen, through saas-gateway
 ```
 
 Grafana: `http://192.168.2.243:3000` (password: `just infra stack output grafana_admin_password
---show-secrets`), with dashboards k6, Django, Containers and Postgres.
+--show-secrets`), with dashboards k6, Django, Gateway, Containers, Postgres and Redis cache.
 
 ---
 
@@ -213,9 +213,9 @@ own copy of each type (#13):
 - `DELETE` on a questionnaire type or battery type can return `503 {detail}` if `instances` cannot
   be asked whether the type is in use. Nothing is deleted. `POST`/`PATCH` on instances that name a
   type whose copy has not arrived fetch it once, and return `503` if `catalog` cannot be reached.
-- While `catalog` is down, the SPA logs out an owner whose access token expires: `src/api/client.ts`
-  clears the tokens on any failed refresh, not only a rejected one. Respondents have no token, so they
-  are not affected.
+- While `catalog` is down, an owner whose access token expires can't refresh it, so their requests fail
+  until it returns, but they stay logged in. `src/api/client.ts` clears the tokens only when the refresh
+  is refused (`400` or `401`). Respondents have no token, so they are not affected.
 - An edited type normally reaches `instances` right after the write. If `instances` is down, it
   waits in the outbox and `manage.py relay_outbox` retries it. Until then a share link shows the
   older definition, and the response's snapshot records that same version, so a response always
@@ -234,7 +234,7 @@ own copy of each type (#13):
 not affected, but `instances` serves older definitions and deactivated users keep access there.
 
 ```bash
-just compose logs -f relay_outbox                      # or: journalctl -u saas-relay on saas-app
+just compose logs -f relay_outbox                      # or: journalctl -u saas-relay on saas-catalog
 cd backend && uv run python catalog/manage.py relay_outbox --once   # delivered: N, pending: M
 ```
 
