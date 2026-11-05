@@ -19,7 +19,9 @@ OUT = Path(__file__).resolve().parent / "dashboards"
 DATASOURCE = {"type": "prometheus", "uid": "prometheus"}
 
 K6 = 'testid=~"$testid", name=~"$name"'
-DJANGO_VIEW = 'view=~"$view"'
+SERVICE = 'service=~"$service"'
+SERVICE_VIEW = f'{SERVICE}, view=~"$view"'
+BY_SERVICE = "{{service}}"
 
 
 def target(expr: str, legend: str, ref: str = "A") -> dict:
@@ -215,23 +217,41 @@ def quantile(q: float, bucket: str, by: str = "", selector: str = "") -> str:
 
 
 def django_dashboard():
-    db_queries = f"sum({rate('django_db_execute_total')})"
-    requests = f"sum({rate('django_http_requests_before_middlewares_total')})"
+    db_queries = f"sum by (service) ({rate('django_db_execute_total', SERVICE)})"
+    requests = (
+        "sum by (service) "
+        f"({rate('django_http_requests_before_middlewares_total', SERVICE)})"
+    )
     return dashboard(
         "django",
         "Django",
         [
             panel(
+                "Requests by service",
+                [(f"sum by (service) ({rate(REQUESTS, SERVICE)})", BY_SERVICE)],
+                unit="reqps",
+            ),
+            panel(
+                "Latency p95 by service",
+                [(quantile(0.95, LATENCY, ", service", SERVICE), BY_SERVICE)],
+                unit="s",
+            ),
+            panel(
                 "Requests by view",
-                [(f"sum by (view) ({rate(REQUESTS, DJANGO_VIEW)})", "{{view}}")],
+                [
+                    (
+                        f"sum by (service, view) ({rate(REQUESTS, SERVICE_VIEW)})",
+                        "{{service}} {{view}}",
+                    )
+                ],
                 unit="reqps",
             ),
             panel(
                 "Responses by status",
                 [
                     (
-                        f"sum by (status) ({rate(STATUSES)})",
-                        "{{status}}",
+                        f"sum by (service, status) ({rate(STATUSES, SERVICE)})",
+                        "{{service}} {{status}}",
                     )
                 ],
                 unit="reqps",
@@ -239,7 +259,12 @@ def django_dashboard():
             *(
                 panel(
                     f"Latency p{round(q * 100)} by view",
-                    [(quantile(q, LATENCY, ", view", DJANGO_VIEW), "{{view}}")],
+                    [
+                        (
+                            quantile(q, LATENCY, ", service, view", SERVICE_VIEW),
+                            "{{service}} {{view}}",
+                        )
+                    ],
                     unit="s",
                     width=8,
                 )
@@ -247,10 +272,10 @@ def django_dashboard():
             ),
             panel(
                 "DB queries per request",
-                [(f"{db_queries} / {requests}", "queries/request")],
+                [(f"{db_queries} / {requests}", BY_SERVICE)],
                 width=8,
             ),
-            panel("DB query rate", [(db_queries, "queries/s")], width=8),
+            panel("DB query rate", [(db_queries, BY_SERVICE)], width=8),
             panel(
                 "Outbox: events waiting for instances",
                 [("max(app_outbox_pending_events)", "pending")],
@@ -280,15 +305,111 @@ def django_dashboard():
             panel(
                 "DB query latency",
                 [
-                    (quantile(0.95, DB_LATENCY), "p95"),
-                    (quantile(0.5, DB_LATENCY), "p50"),
+                    (
+                        quantile(0.95, DB_LATENCY, ", service", SERVICE),
+                        "{{service}} p95",
+                    ),
+                    (
+                        quantile(0.5, DB_LATENCY, ", service", SERVICE),
+                        "{{service}} p50",
+                    ),
                 ],
                 unit="s",
                 width=8,
             ),
         ],
-        [query_var("view", f"label_values({REQUESTS}, view)", multi=True)],
-        "django-prometheus on the backend (/metrics, scraped by Prometheus).",
+        [
+            query_var("service", f"label_values({REQUESTS}, service)", multi=True),
+            query_var(
+                "view",
+                f"label_values({REQUESTS}{{{SERVICE}}}, view)",
+                multi=True,
+            ),
+        ],
+        "django-prometheus on catalog and instances (/metrics, scraped directly).",
+    )
+
+
+GATEWAY = 'instance="saas-gateway"'
+GATEWAY_ETH0 = f'{GATEWAY}, device="eth0"'
+NET_RX_BYTES = "node_network_receive_bytes_total"
+NET_TX_BYTES = "node_network_transmit_bytes_total"
+# /internal/ goes straight from service to service, never through the gateway.
+THROUGH_GATEWAY = 'view!~".*internal_views.*"'
+
+
+def gateway_dashboard():
+    """saas-gateway, from what surrounds it: nginx has no metrics or access log.
+
+    So there is no per-route status or upstream latency here. k6's numbers exist only
+    during a run, and the gap between sent and arrived includes traffic not from k6.
+    """
+    return dashboard(
+        "gateway",
+        "Gateway",
+        [
+            panel(
+                "k6 sent, and what arrived at each service",
+                [
+                    (f"sum({rate(REQS)})", "k6 sent"),
+                    (
+                        f"sum by (service) ({rate(REQUESTS, THROUGH_GATEWAY)})",
+                        "{{service}} arrived",
+                    ),
+                ],
+                unit="reqps",
+            ),
+            panel(
+                "502 and 504 seen by k6 (service down or too slow)",
+                [
+                    (
+                        f"""sum({rate(REQS, f'status="{status}"')}) or vector(0)""",
+                        status,
+                    )
+                    for status in ("502", "504")
+                ],
+                unit="reqps",
+            ),
+            panel(
+                "CPU used (cores)",
+                [
+                    (
+                        f"sum({rate('container_cpu_usage_seconds_total', GATEWAY)})",
+                        "used",
+                    ),
+                    (f"max(container_cpu_limit_cores{{{GATEWAY}}})", "limit"),
+                ],
+                width=8,
+            ),
+            panel(
+                "Memory working set",
+                [
+                    (f"max(container_memory_working_set_bytes{{{GATEWAY}}})", "used"),
+                    (f"max(container_memory_limit_bytes{{{GATEWAY}}})", "limit"),
+                ],
+                unit="bytes",
+                width=8,
+            ),
+            panel(
+                "TCP connections",
+                [
+                    (f"max(node_netstat_Tcp_CurrEstab{{{GATEWAY}}})", "established"),
+                    (f"max(node_sockstat_TCP_tw{{{GATEWAY}}})", "time_wait"),
+                ],
+                width=8,
+            ),
+            panel(
+                "Network",
+                [
+                    (f"sum({rate(NET_RX_BYTES, GATEWAY_ETH0)})", "received"),
+                    (f"sum({rate(NET_TX_BYTES, GATEWAY_ETH0)})", "sent"),
+                ],
+                unit="Bps",
+                width=24,
+            ),
+        ],
+        [],
+        "nginx in front of both services, on saas-gateway (the LXC deploy only).",
     )
 
 
@@ -414,7 +535,11 @@ def redis_dashboard():
         "redis",
         "Redis cache",
         [
-            panel("Hit ratio by group", [(f"{hits} / {reads}", "{{group}}")], unit="percentunit"),
+            panel(
+                "Hit ratio by group",
+                [(f"{hits} / {reads}", "{{group}}")],
+                unit="percentunit",
+            ),
             panel(
                 "Cached reads and errors",
                 [
@@ -453,6 +578,7 @@ def redis_dashboard():
 DASHBOARDS = {
     "k6.json": k6_dashboard,
     "django.json": django_dashboard,
+    "gateway.json": gateway_dashboard,
     "containers.json": containers_dashboard,
     "postgres.json": postgres_dashboard,
     "redis.json": redis_dashboard,

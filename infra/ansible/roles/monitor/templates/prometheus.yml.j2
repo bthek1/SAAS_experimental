@@ -1,6 +1,6 @@
 # {{ ansible_managed }} (infra/ansible/roles/monitor). #9, Phase 4.
 # The LXC deploy's scrape config. k6 results arrive by remote write.
-# `instance` is the container's name, so dashboards read saas-app, not an IP.
+# `instance` is the container's name, so dashboards read saas-catalog, not an IP.
 global:
   scrape_interval: 5s
   evaluation_interval: 15s
@@ -19,7 +19,7 @@ scrape_configs:
   - job_name: django
     static_configs:
       - targets: ["{{ guest_ips.app }}:{{ ports.gunicorn }}"]
-        labels: {instance: saas-app, service: catalog}
+        labels: {instance: {{ groups.app[0] }}, service: catalog}
       - targets: ["{{ guest_ips.instances }}:{{ ports.gunicorn }}"]
         labels: {instance: saas-instances, service: instances}
 
@@ -38,5 +38,5 @@ scrape_configs:
     static_configs:
 {% for role, ip in guest_ips.items() %}
       - targets: ["{{ ip }}:{{ ports.node_exporter }}"]
-        labels: {instance: saas-{{ role }}}
+        labels: {instance: {{ groups[role][0] }}}
 {% endfor %}

@@ -1,5 +1,5 @@
 {
-  "description": "django-prometheus on the backend (/metrics, scraped by Prometheus).",
+  "description": "django-prometheus on catalog and instances (/metrics, scraped directly).",
   "editable": false,
   "panels": [
     {
@@ -32,12 +32,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (view) (rate(django_http_requests_total_by_view_transport_method_total{view=~\"$view\"}[$__rate_interval]))",
-          "legendFormat": "{{view}}",
+          "expr": "sum by (service) (rate(django_http_requests_total_by_view_transport_method_total{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}",
           "refId": "A"
         }
       ],
-      "title": "Requests by view",
+      "title": "Requests by service",
       "type": "timeseries"
     },
     {
@@ -47,7 +47,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -70,8 +70,84 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (status) (rate(django_http_responses_total_by_status_total[$__rate_interval]))",
-          "legendFormat": "{{status}}",
+          "expr": "histogram_quantile(0.95, sum by (le, service) (rate(django_http_requests_latency_seconds_by_view_method_bucket{service=~\"$service\"}[$__rate_interval])))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Latency p95 by service",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (service, view) (rate(django_http_requests_total_by_view_transport_method_total{service=~\"$service\", view=~\"$view\"}[$__rate_interval]))",
+          "legendFormat": "{{service}} {{view}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Requests by view",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (service, status) (rate(django_http_responses_total_by_status_total{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service}} {{status}}",
           "refId": "A"
         }
       ],
@@ -93,9 +169,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 8
+        "y": 16
       },
-      "id": 3,
+      "id": 5,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -108,8 +184,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket{view=~\"$view\"}[$__rate_interval])))",
-          "legendFormat": "{{view}}",
+          "expr": "histogram_quantile(0.5, sum by (le, service, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket{service=~\"$service\", view=~\"$view\"}[$__rate_interval])))",
+          "legendFormat": "{{service}} {{view}}",
           "refId": "A"
         }
       ],
@@ -131,9 +207,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 8
+        "y": 16
       },
-      "id": 4,
+      "id": 6,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -146,8 +222,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket{view=~\"$view\"}[$__rate_interval])))",
-          "legendFormat": "{{view}}",
+          "expr": "histogram_quantile(0.95, sum by (le, service, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket{service=~\"$service\", view=~\"$view\"}[$__rate_interval])))",
+          "legendFormat": "{{service}} {{view}}",
           "refId": "A"
         }
       ],
@@ -169,9 +245,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 8
+        "y": 16
       },
-      "id": 5,
+      "id": 7,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -184,8 +260,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket{view=~\"$view\"}[$__rate_interval])))",
-          "legendFormat": "{{view}}",
+          "expr": "histogram_quantile(0.99, sum by (le, service, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket{service=~\"$service\", view=~\"$view\"}[$__rate_interval])))",
+          "legendFormat": "{{service}} {{view}}",
           "refId": "A"
         }
       ],
@@ -207,9 +283,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 16
+        "y": 24
       },
-      "id": 6,
+      "id": 8,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -222,8 +298,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(django_db_execute_total[$__rate_interval])) / sum(rate(django_http_requests_before_middlewares_total[$__rate_interval]))",
-          "legendFormat": "queries/request",
+          "expr": "sum by (service) (rate(django_db_execute_total{service=~\"$service\"}[$__rate_interval])) / sum by (service) (rate(django_http_requests_before_middlewares_total{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}",
           "refId": "A"
         }
       ],
@@ -245,9 +321,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 16
+        "y": 24
       },
-      "id": 7,
+      "id": 9,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -260,8 +336,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(django_db_execute_total[$__rate_interval]))",
-          "legendFormat": "queries/s",
+          "expr": "sum by (service) (rate(django_db_execute_total{service=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}",
           "refId": "A"
         }
       ],
@@ -283,9 +359,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 16
+        "y": 24
       },
-      "id": 8,
+      "id": 10,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -321,9 +397,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 24
+        "y": 32
       },
-      "id": 9,
+      "id": 11,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -359,9 +435,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 24
+        "y": 32
       },
-      "id": 10,
+      "id": 12,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -406,9 +482,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 24
+        "y": 32
       },
-      "id": 11,
+      "id": 13,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -421,8 +497,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(django_db_query_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le, service) (rate(django_db_query_duration_seconds_bucket{service=~\"$service\"}[$__rate_interval])))",
+          "legendFormat": "{{service}} p95",
           "refId": "A"
         },
         {
@@ -430,8 +506,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(django_db_query_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.5, sum by (le, service) (rate(django_db_query_duration_seconds_bucket{service=~\"$service\"}[$__rate_interval])))",
+          "legendFormat": "{{service}} p50",
           "refId": "B"
         }
       ],
@@ -453,13 +529,33 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(django_http_requests_total_by_view_transport_method_total, view)",
+        "definition": "label_values(django_http_requests_total_by_view_transport_method_total, service)",
+        "includeAll": true,
+        "label": "service",
+        "multi": true,
+        "name": "service",
+        "query": {
+          "query": "label_values(django_http_requests_total_by_view_transport_method_total, service)",
+          "refId": "service"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(django_http_requests_total_by_view_transport_method_total{service=~\"$service\"}, view)",
         "includeAll": true,
         "label": "view",
         "multi": true,
         "name": "view",
         "query": {
-          "query": "label_values(django_http_requests_total_by_view_transport_method_total, view)",
+          "query": "label_values(django_http_requests_total_by_view_transport_method_total{service=~\"$service\"}, view)",
           "refId": "view"
         },
         "refresh": 2,

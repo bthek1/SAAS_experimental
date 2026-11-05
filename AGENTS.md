@@ -451,13 +451,14 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 ## Infra: Proxmox LXC containers (`infra/pulumi/`)
 
 The load-test deploy (#9, Phases 3–5, #13) runs in seven unprivileged LXC containers on the Proxmox
-host `192.168.2.70` (node `bthek1`): `saas-app` 241 (the `catalog` service; it kept its role and id so
+host `192.168.2.70` (node `bthek1`): `saas-catalog` 241 (the `catalog` service; it kept its `app` role and id so
 Pulumi never replaces it), `saas-db` 242, `saas-monitor` 243, `saas-loadgen` 244, `saas-cache` 245,
 `saas-instances` 246, `saas-gateway` 247. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
 creates bare containers. Ansible (Phase 4) configures them.
 
 - ⚠️ **Guest ids 241–249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
-  positional: renumbering makes Pulumi *replace* a guest and its data. 220–240 belong to
+  positional: renumbering makes Pulumi *replace* a guest and its data. So does a new name, unless the old one
+  stays in `PREVIOUS_NAMES` as an alias. A new hostname reboots the container. 220–240 belong to
   `~/kubernates_project` and are refused. The host's other guests (100–209) are unrelated.
 - **State is local and per repo**: `~/.pulumi-state/saas-experimental`, passphrase in
   `~/.pulumi-state/saas-experimental.passphrase`. The justfile sets `PULUMI_BACKEND_URL` and
@@ -489,7 +490,7 @@ Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_
 `just loadtest-reset` rsyncs the working tree, so it deploys whatever is checked out.
 
 **Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
-(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-app and saas-instances, told apart by
+(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-catalog and saas-instances, told apart by
 `app_service` and `app_unit` in `group_vars`), `gateway` (saas-gateway), `monitor` (saas-monitor) and
 `loadgen` (saas-loadgen). The inventory (`inventory/pulumi.py`) reads the Pulumi stack outputs, secrets
 included, and refuses any non-private address. Nothing secret is stored in the repo.
@@ -497,7 +498,7 @@ included, and refuses any non-private address. Nothing secret is stored in the r
 - Everything is installed natively, with no Docker:
   - each service is the working tree rsynced to `/srv/app/backend`, `uv sync --package <service>` (Python
     3.14), gunicorn under systemd (`saas-app.service` for catalog, `saas-instances.service`, env in
-    `/etc/<unit>/app.env`), and `saas-relay.service` on saas-app retries events;
+    `/etc/<unit>/app.env`), and `saas-relay.service` on saas-catalog retries events;
   - nginx from apt on saas-gateway, its config from `infra/gateway/build_nginx.py --address ...`;
   - saas-db holds `catalogdb` and `instancesdb` with separate login roles. The monolith's `appdb` is still
     there, unused, as a way back;

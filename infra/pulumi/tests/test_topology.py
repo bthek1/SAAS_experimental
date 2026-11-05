@@ -19,7 +19,7 @@ def test_guests_have_fixed_ids():
         "gateway": 247,
     }
     assert [g.name for g in guests.values()] == [
-        "saas-app",
+        "saas-catalog",
         "saas-db",
         "saas-monitor",
         "saas-loadgen",

@@ -86,8 +86,8 @@ def _after_all(check):
 def test_the_containers_and_nothing_else_on_proxmox():
     def check():
         assert sorted(MOCKS.containers()) == [
-            "saas-app",
             "saas-cache",
+            "saas-catalog",
             "saas-db",
             "saas-gateway",
             "saas-instances",

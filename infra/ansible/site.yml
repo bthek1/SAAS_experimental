@@ -22,7 +22,7 @@
   roles:
     - {role: app, tags: [app, instances]}
 
-- name: Catalog service (saas-app)
+- name: Catalog service (saas-catalog)
   hosts: app
   roles:
     - {role: app, tags: [app, catalog]}

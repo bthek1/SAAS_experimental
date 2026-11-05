@@ -19,7 +19,7 @@ import pulumi_proxmoxve as proxmox
 import pulumi_random as random
 import pulumi_tls as tls
 
-from .topology import Guest, Network, build
+from .topology import PREVIOUS_NAMES, Guest, Network, build
 
 TAGS = ["saas-experimental", "loadtest", "pulumi"]
 
@@ -104,6 +104,11 @@ def container(
         },
         start_on_boot=True,
         started=True,
+        opts=pulumi.ResourceOptions(
+            aliases=[pulumi.Alias(name=PREVIOUS_NAMES[guest.role])]
+            if guest.role in PREVIOUS_NAMES
+            else []
+        ),
     )
 
 

@@ -1,7 +1,7 @@
 """The load-test containers, their ids, addresses and sizes (#9, Phase 3).
 
 Proxmox guest ids 241-249 belong to this repo, and a container's address is
-its id as the last octet (saas-app 241 → x.y.z.241), so the id in the Proxmox
+its id as the last octet (saas-catalog 241 → x.y.z.241), so the id in the Proxmox
 UI is also where to SSH. VMs and containers share one id space on the host:
 220-240 belong to ~/kubernates_project and are refused here.
 
@@ -16,6 +16,10 @@ import ipaddress
 from dataclasses import dataclass
 
 # `app` is the catalog service (#13). It keeps its role and id, so Pulumi never replaces it.
+# The container is called saas-catalog (#21). PREVIOUS_NAMES keeps its Pulumi resource:
+# without the alias, a new name would destroy and recreate it, data included.
+NAMES = {"app": "saas-catalog"}
+PREVIOUS_NAMES = {"app": "saas-app"}
 GUEST_IDS = {
     "app": 241,
     "db": 242,
@@ -69,7 +73,7 @@ class Guest:
 
     @property
     def name(self) -> str:
-        return f"saas-{self.role}"
+        return NAMES.get(self.role, f"saas-{self.role}")
 
     @property
     def address(self) -> str:
