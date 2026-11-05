@@ -14,6 +14,8 @@ import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AuthedDashboardRouteImport } from './routes/_authed/dashboard'
+import { Route as AuthedLoadTestsRouteImport } from './routes/_authed/load-tests'
+import { Route as AuthedServiceInterfaceRouteImport } from './routes/_authed/service-interface'
 import { Route as TakeBatteryShareTokenRouteImport } from './routes/take-battery/$shareToken'
 import { Route as TakeShareTokenRouteImport } from './routes/take/$shareToken'
 import { Route as AuthedBatteriesIndexRouteImport } from './routes/_authed/batteries/index'
@@ -53,6 +55,16 @@ const SignupRoute = SignupRouteImport.update({
 const AuthedDashboardRoute = AuthedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedLoadTestsRoute = AuthedLoadTestsRouteImport.update({
+  id: '/load-tests',
+  path: '/load-tests',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedServiceInterfaceRoute = AuthedServiceInterfaceRouteImport.update({
+  id: '/service-interface',
+  path: '/service-interface',
   getParentRoute: () => AuthedRoute,
 } as any)
 const TakeBatteryShareTokenRoute = TakeBatteryShareTokenRouteImport.update({
@@ -148,6 +160,8 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/dashboard': typeof AuthedDashboardRoute
+  '/load-tests': typeof AuthedLoadTestsRoute
+  '/service-interface': typeof AuthedServiceInterfaceRoute
   '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
   '/take/$shareToken': typeof TakeShareTokenRoute
   '/batteries/$id': typeof AuthedBatteriesIdRoute
@@ -170,6 +184,8 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/dashboard': typeof AuthedDashboardRoute
+  '/load-tests': typeof AuthedLoadTestsRoute
+  '/service-interface': typeof AuthedServiceInterfaceRoute
   '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
   '/take/$shareToken': typeof TakeShareTokenRoute
   '/batteries/$id': typeof AuthedBatteriesIdRoute
@@ -194,6 +210,8 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authed/dashboard': typeof AuthedDashboardRoute
+  '/_authed/load-tests': typeof AuthedLoadTestsRoute
+  '/_authed/service-interface': typeof AuthedServiceInterfaceRoute
   '/take-battery/$shareToken': typeof TakeBatteryShareTokenRoute
   '/take/$shareToken': typeof TakeShareTokenRoute
   '/_authed/batteries/$id': typeof AuthedBatteriesIdRoute
@@ -218,6 +236,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/dashboard'
+    | '/load-tests'
+    | '/service-interface'
     | '/take-battery/$shareToken'
     | '/take/$shareToken'
     | '/batteries/$id'
@@ -240,6 +260,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/dashboard'
+    | '/load-tests'
+    | '/service-interface'
     | '/take-battery/$shareToken'
     | '/take/$shareToken'
     | '/batteries/$id'
@@ -263,6 +285,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/_authed/dashboard'
+    | '/_authed/load-tests'
+    | '/_authed/service-interface'
     | '/take-battery/$shareToken'
     | '/take/$shareToken'
     | '/_authed/batteries/$id'
@@ -325,6 +349,20 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthedDashboardRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/load-tests': {
+      id: '/_authed/load-tests'
+      path: '/load-tests'
+      fullPath: '/load-tests'
+      preLoaderRoute: typeof AuthedLoadTestsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/service-interface': {
+      id: '/_authed/service-interface'
+      path: '/service-interface'
+      fullPath: '/service-interface'
+      preLoaderRoute: typeof AuthedServiceInterfaceRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/take-battery/$shareToken': {
@@ -444,6 +482,8 @@ declare module '@tanstack/react-router' {
 
 interface AuthedRouteChildren {
   AuthedDashboardRoute: typeof AuthedDashboardRoute
+  AuthedLoadTestsRoute: typeof AuthedLoadTestsRoute
+  AuthedServiceInterfaceRoute: typeof AuthedServiceInterfaceRoute
   AuthedBatteriesIdRoute: typeof AuthedBatteriesIdRoute
   AuthedBatteriesNewRoute: typeof AuthedBatteriesNewRoute
   AuthedBatteryTypesIdRoute: typeof AuthedBatteryTypesIdRoute
@@ -462,6 +502,8 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedDashboardRoute: AuthedDashboardRoute,
+  AuthedLoadTestsRoute: AuthedLoadTestsRoute,
+  AuthedServiceInterfaceRoute: AuthedServiceInterfaceRoute,
   AuthedBatteriesIdRoute: AuthedBatteriesIdRoute,
   AuthedBatteriesNewRoute: AuthedBatteriesNewRoute,
   AuthedBatteryTypesIdRoute: AuthedBatteryTypesIdRoute,
