@@ -43,10 +43,16 @@ describe("SidebarNav", () => {
     expect(link).toBeInTheDocument();
   });
 
-  it("links to the static load test page with a plain href", () => {
+  it("links to the load test page", () => {
     render(<SidebarNav />);
     const link = screen.getByText("Load tests").closest("a");
-    expect(link).toHaveAttribute("href", "/loadtest-results.html");
+    expect(link).toHaveAttribute("href", "/load-tests");
+  });
+
+  it("links to the service interface page", () => {
+    render(<SidebarNav />);
+    const link = screen.getByText("Service interface").closest("a");
+    expect(link).toHaveAttribute("href", "/service-interface");
   });
 });
 

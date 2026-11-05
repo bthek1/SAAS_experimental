@@ -18,6 +18,15 @@ export const themeTokens = {
   chart3: "--chart-3",
   chart4: "--chart-4",
   chart5: "--chart-5",
+  card: "--card",
+  series1: "--series-1",
+  series2: "--series-2",
+  series3: "--series-3",
+  series4: "--series-4",
+  series5: "--series-5",
+  series6: "--series-6",
+  series7: "--series-7",
+  seriesOff: "--series-off",
 } as const;
 
 export type ThemeToken = keyof typeof themeTokens;

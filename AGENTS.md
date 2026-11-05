@@ -171,6 +171,8 @@ goes through `catalog.services.delete_type()`. Peers are reached only through th
 test classes are in each app's `testing.py`. `/internal/` is never routed by the gateway. Its shapes are
 `backend/contracts/`, tested by both services: change those files together with both sides. The subtle rules (versions, tombstones, why read-through is authoritative) are
 at the top of `refs.py`. `questionnaires` factories create only copies, since `catalog` is another process.
+`frontend/src/routes/_authed/service-interface.tsx` explains all this in the app and is hand-written, so a change
+to `/internal/`, an event or an outage behaviour updates it too (#27).
 
 **Views and URLs**
 - All endpoints are under `/api/`.
@@ -375,8 +377,7 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 **Utilities**
 - Dates: always through the `src/lib/date.ts` wrappers, never `date-fns` directly in components.
 - Charts: ECharts only, through the lazy-loaded `src/components/charts/EChart.tsx` wrapper (keep
-  it code-split). Do not add another chart library. The one exception is
-  `public/loadtest-results.html`, a static file outside the bundle that draws plain inline SVG.
+  it code-split). Do not add another chart library.
 - Markdown / LLM output: render with `src/components/Markdown.tsx`.
 - Surveys: render with `src/components/survey/SurveyRenderer.tsx`. It maps SurveyJS's CSS
   variables onto the shadcn tokens. Read a submitted response against its
@@ -487,8 +488,8 @@ configs, `just k6 load TARGET=lxc RATE=<fixed> HOLD=5m` on each, back to back, i
 affected by run-to-run variation than comparing knees. Only compare runs with the same settings. Stop a soak
 after 5 minutes in a row over 1 % dropped iterations: it won't stop itself. Record each
 baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables), then add
-it to `frontend/public/loadtest-results.html` (the "Load tests" sidebar link), whose figures are
-copied by hand. Files in `public/` have no login, so keep LAN addresses and secrets out of it.
+it to the `/load-tests` page (`frontend/src/lib/loadtestResults.ts` for figures, `components/loadtest/LoadTestTabs.tsx`
+for text), which is copied by hand. The page needs a login but its JS chunk does not, so keep LAN addresses and secrets out of it.
 Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_enabled` in
 `infra/ansible/group_vars/{app,instances}.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
 `just loadtest-reset` rsyncs the working tree, so it deploys whatever is checked out.
