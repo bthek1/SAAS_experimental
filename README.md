@@ -64,7 +64,7 @@ cd frontend
 npx playwright install chromium   # first time only: downloads the browser
 npm run e2e             # end-to-end tests (Playwright); starts Vite itself, API is mocked
 npm run e2e:ui          # same, in Playwright's UI mode
-npm run e2e:integration # end-to-end against a real Django backend (fresh SQLite, ports 8015 / 5184)
+npm run e2e:integration # end-to-end against both real services behind the router (fresh SQLite, ports 8015-8017 / 5184)
 ```
 
 The integration suite (`frontend/e2e/integration/questionnaires.spec.ts`) walks the questionnaire
@@ -213,6 +213,9 @@ own copy of each type (#13):
 - `DELETE` on a questionnaire type or battery type can return `503 {detail}` if `instances` cannot
   be asked whether the type is in use. Nothing is deleted. `POST`/`PATCH` on instances that name a
   type whose copy has not arrived fetch it once, and return `503` if `catalog` cannot be reached.
+- While `catalog` is down, the SPA logs out an owner whose access token expires: `src/api/client.ts`
+  clears the tokens on any failed refresh, not only a rejected one. Respondents have no token, so they
+  are not affected.
 - An edited type normally reaches `instances` right after the write. If `instances` is down, it
   waits in the outbox and `manage.py relay_outbox` retries it. Until then a share link shows the
   older definition, and the response's snapshot records that same version, so a response always

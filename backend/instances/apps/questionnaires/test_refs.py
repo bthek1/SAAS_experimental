@@ -160,6 +160,20 @@ def test_deleted_event_keeps_a_copy_with_instances(user):
     assert QuestionnaireTypeRef.objects.filter(pk=qtype.pk).exists()
 
 
+def test_late_deleted_event_does_not_remove_a_newer_copy(user):
+    ref_id = uuid.uuid4()
+    refs.apply_event(qtype_event(user, ref_id, version=5))
+    late = {
+        "type": "questionnaire_type.deleted",
+        "aggregateId": str(ref_id),
+        "version": 4,
+        "data": {"ownerId": str(user.pk)},
+    }
+    assert refs.apply_event(late) == refs.IGNORED
+    assert QuestionnaireTypeRef.objects.filter(pk=ref_id).exists()
+    assert not RetiredRef.objects.filter(ref_id=ref_id).exists()
+
+
 def test_unknown_event_type_is_refused(user):
     with pytest.raises(ValueError, match="unknown event type"):
         refs.apply_event({**qtype_event(user), "type": "questionnaire.exploded"})

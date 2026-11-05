@@ -2,6 +2,7 @@
 
 import pytest
 from common.peers import PeerUnavailable, RefInUse
+from django.db.models import RestrictedError
 from rest_framework.test import APIClient
 
 from .factories import BatteryTypeFactory, QuestionnaireTypeFactory
@@ -83,6 +84,23 @@ def test_delete_fails_closed_with_503(auth_client, user, instances):
     assert response.status_code == 503
     assert response.data["detail"].code == "service_unavailable"
     assert QuestionnaireType.objects.filter(pk=qtype.pk).exists()
+
+
+def test_a_battery_type_that_picks_the_type_up_mid_delete_returns_409(
+    auth_client, user, mocker
+):
+    """After `instances` agreed, but before the row went."""
+    qtype = QuestionnaireTypeFactory(owner=user)
+    mocker.patch.object(
+        QuestionnaireType, "delete", side_effect=RestrictedError("in use", set())
+    )
+
+    response = auth_client.delete(f"{TYPES}{qtype.pk}/")
+
+    assert response.status_code == 409
+    assert not OutboxEvent.objects.filter(
+        event_type="questionnaire_type.deleted"
+    ).exists()
 
 
 def test_type_survives_a_crash_after_the_retire(user, mocker, instances):

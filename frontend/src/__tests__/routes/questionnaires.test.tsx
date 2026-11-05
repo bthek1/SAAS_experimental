@@ -67,6 +67,20 @@ describe("/questionnaires/new", () => {
     await user.click(await screen.findByRole("button", { name: "Create share link" }))
     expect(await screen.findByText("Pick a questionnaire type")).toBeInTheDocument()
   })
+
+  it("keeps the form and offers a retry when catalog can't be reached (503)", async () => {
+    server.use(
+      http.post(`${API}/api/questionnaires/`, () =>
+        HttpResponse.json({ detail: "Temporarily unavailable." }, { status: 503 }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderRoute("/questionnaires/new")
+    await user.selectOptions(await screen.findByLabelText("Questionnaire type"), "qt-1")
+    await user.click(screen.getByRole("button", { name: "Create share link" }))
+    expect(await screen.findByText("Could not create. Please try again.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create share link" })).toBeEnabled()
+  })
 })
 
 describe("/batteries", () => {

@@ -120,6 +120,14 @@ def test_catalog_down_returns_503_not_400(auth_client, catalog_down):  # noqa: A
     assert response.status_code == 503
 
 
+def test_malformed_type_id_is_400_without_asking_catalog(auth_client, catalog_down):  # noqa: ARG001
+    """`catalog_down` would turn any question to `catalog` into a 503."""
+    response = auth_client.post(
+        "/api/questionnaires/", {"questionnaireType": "not-a-uuid"}, format="json"
+    )
+    assert response.status_code == 400
+
+
 def test_unknown_type_is_still_400(auth_client):
     response = auth_client.post(
         QUESTIONNAIRES, {"questionnaireTypeId": str(uuid.uuid4())}, format="json"

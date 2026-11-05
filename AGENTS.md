@@ -154,8 +154,9 @@ DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOS
 **Layout:** project package `core/` (settings, `celery.py`, `urls.py`), one app per domain under
 `apps/<name>/`. Current apps: `accounts` (CustomUser, registration, `/me`), `catalog` (user-owned
 questionnaire and battery types), `questionnaires` (instances made from them, public share-link
-completion, dashboards, PDFs) and `utils` (health check, Celery task demo endpoints, shared cache
-and owner-scoping helpers).
+completion, dashboards, PDFs) and `utils` (health check, Celery task demo endpoints). `catalog` holds
+`accounts`, `catalog` and `utils`; `instances` holds `questionnaires`. Shared infrastructure, such as the
+cache and owner-scoping helpers, is in `common/`.
 
 The services never import each other, including in tests, and `common` holds infrastructure only, with
 no models (#13, `tests/test_service_boundary.py`). Both have packages named `core` and `apps`, so they
@@ -179,7 +180,7 @@ at the top of `refs.py`. `questionnaires` factories create only copies, since `c
   serializers.
 - Use `get_object_or_404` and DRF exception handling, not try/except for HTTP errors.
 - **Every list endpoint is paginated** (#10): `DEFAULT_PAGINATION_CLASS` is
-  `core.pagination.StandardPagination` (`?page=`, `?page_size=` default 25, max 100;
+  `common.pagination.StandardPagination` (`?page=`, `?page_size=` default 25, max 100;
   `{count, next, previous, results}`). Give list querysets a total order (`-created_at`, `-id`),
   or pages repeat and skip rows. Filters that a page needs go on the server (query serializer in
   `get_queryset`, as `QuestionnaireViewSet` does), never in the browser.
@@ -219,7 +220,7 @@ credentials. `DATABASE_URL` configures `catalog`'s database.
 `test` and `e2e` fall back to the published pair in `common/dev_keys.py`; `prod` and `loadtest`
 need `JWT_SIGNING_KEY` and `JWT_VERIFYING_KEY`, and refuse the dev key. Instance views authenticate with
 `apps/questionnaires/auth.py`: no user table, so `request.user` there has only `pk`, and rows hold a plain
-`owner_id`. Deactivation and deletion arrive as events (`catalog/user_events.py`) into `BlockedOwner`.
+`owner_id`. Deactivation and deletion arrive as events (`apps/catalog/user_events.py`) into `BlockedOwner`.
 Change settings dicts by building a new one: `core/settings/__init__.py` imports `dev` first, so
 mutating `base`'s in place would leak into `prod`.
 
@@ -229,7 +230,7 @@ mutating `base`'s in place would leak into `prod`.
   It is deliberately not under `/api/`. It answers only peers in `METRICS_ALLOWED_CIDRS`, and
   returns 404 to any request carrying a forwarding header, so a proxy can never make it public.
 - Under gunicorn with several workers, set `PROMETHEUS_MULTIPROC_DIR`, or each scrape sees one
-  worker. `backend/gunicorn.conf.py` empties it on start and marks dead workers.
+  worker. `common/gunicorn_conf.py` empties it on start and marks dead workers.
 - `seed_loadtest` exists in both services, and `just loadtest-seed` runs them in order: `catalog`'s creates
   owners and types, then `instances`' creates rows from the copies, using ids derived from the email so
   repeated runs match. It creates deterministic
@@ -298,9 +299,11 @@ mutating `base`'s in place would leak into `prod`.
 `CACHE_ENABLED = False` (`e2e` inherits this), so tests see fresh data. Cache tests opt in with the
 `cache_on` fixture, and need `django_capture_on_commit_callbacks(execute=True)` for a bump to run. Fixtures go in
 `conftest.py` (app-level or `backend/<service>/conftest.py`). App tests live in `apps/<name>/`.
-Repo-level checks that are not tied to an app live in `backend/tests/` (both are in pytest's
-`testpaths`). `tests/test_infra_docker.py` checks the `infra/docker/` layout. Its
-`docker compose config` tests skip when Docker is not installed. Markers: `slow`, `integration`, `development`.
+Repo-level checks that are not tied to an app live in `backend/tests/`, run with
+`uv run pytest tests`, since each service only collects its own `apps/`. `tests/test_infra_docker.py` checks the `infra/docker/` layout. Its
+`docker compose config` tests skip when Docker is not installed. `tests/test_import_from_monolith.py` runs the
+data move in a throwaway Postgres container (COPY needs Postgres), and skips the same way. Its source schema is
+frozen on purpose: it is what `main` left before the split. Markers: `slow`, `integration`, `development`.
 
 **API docs:** no OpenAPI generator is installed. The API table in `README.md` is the
 hand-written contract.
@@ -398,8 +401,8 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   can test belongs in Vitest, not Playwright.
 - Full-stack specs live in `frontend/e2e/integration/` and run only with `npm run e2e:integration`
   (`playwright.integration.config.ts`; the mocked config ignores that folder). That config starts
-  its own Django on :8015 (`core.settings.e2e`, database deleted and re-migrated every run) and
-  Vite on :5184 pointed at it, and never reuses running servers. It never touches the dev stack.
+  its own gateway router on :8015, `catalog` on :8016 and `instances` on :8017 (`core.settings.e2e`,
+  databases deleted and re-migrated every run) and Vite on :5184 pointed at the router, and never reuses running servers. It never touches the dev stack.
   Each test registers its own user with a unique email, so tests do not share state. Use them for
   the API contract (auth, real responses); keep UI-only checks in the mocked suite.
   `e2e/integration/helpers.ts` has `registerUser` / `loginAs` (log in by storing the JWT, skipping

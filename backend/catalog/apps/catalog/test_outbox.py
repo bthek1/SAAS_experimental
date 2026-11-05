@@ -124,6 +124,37 @@ def test_relay_command(auth_client, recorder, capsys):  # noqa: ARG001
     assert "delivered: 1, pending: 0" in capsys.readouterr().out
 
 
+def test_relay_keeps_going_until_stopped(auth_client, recorder, capsys, mocker):
+    recorder.down = True
+    auth_client.post(TYPES, {"title": "New"}, format="json")
+    # The first pass fails and the second delivers. The third sleep ends the test.
+    sleep = mocker.patch(
+        "apps.catalog.management.commands.relay_outbox.time.sleep",
+        side_effect=[None, KeyboardInterrupt],
+    )
+    mocker.patch.object(
+        events,
+        "prune_delivered",
+        side_effect=lambda: setattr(recorder, "down", False),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        call_command("relay_outbox", "--interval", "9")
+
+    assert sleep.call_args.args == (9.0,)
+    output = capsys.readouterr().out
+    assert "delivered: 0, pending: 1" in output
+    assert "delivered: 1, pending: 0" in output
+
+
+def test_deliver_skips_an_event_already_delivered(auth_client, recorder):
+    auth_client.post(TYPES, {"title": "New"}, format="json")
+    event = OutboxEvent.objects.get()
+    events.deliver_pending()
+    assert events.deliver(event.pk) is False
+    assert len(recorder.sent) == 1
+
+
 def test_every_write_raises_the_version(auth_client, recorder):  # noqa: ARG001
     created = auth_client.post(TYPES, {"title": "A"}, format="json").data
     auth_client.patch(f"{TYPES}{created['id']}/", {"title": "B"}, format="json")
