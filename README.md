@@ -2,8 +2,8 @@
 
 A decoupled web application, created from the `django_react_template` starter:
 
-- **`backend/`** — Django REST Framework API (Python 3.14, PostgreSQL, Celery)
-- **`frontend/`** — React 19 SPA (TypeScript, Vite, TanStack Router, TanStack Query)
+- **`backend/`**: two Django REST Framework services, `catalog` and `instances`, behind one gateway, each with its own database (Python 3.14, PostgreSQL, Celery)
+- **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router, TanStack Query)
 
 ---
 
