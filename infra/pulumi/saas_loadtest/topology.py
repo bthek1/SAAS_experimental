@@ -35,6 +35,9 @@ RESERVED = range(220, 241)  # ~/kubernates_project's VMs
 
 # The host had ~24 GB available on 2026-11-02 (63 GB total). About 8 GB here.
 DEFAULT_SIZES = {
+    # catalog keeps 2 cores although it is mostly idle: logins hash passwords, and on
+    # 1 core they were ~10x slower under load (1.4 s -> 14 s), for a hot-path gain on
+    # instances (1 + 3) that was within run-to-run variation (#24, Phase 3).
     "app": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
     "db": {"cores": 2, "memoryMb": 1024, "diskGb": 10},
     "monitor": {"cores": 1, "memoryMb": 1024, "diskGb": 10},

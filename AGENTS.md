@@ -33,6 +33,7 @@ Prefer documented conventions over one-off solutions.
 | JWT handling | `frontend/src/api/client.ts`, `jwt_settings` in `backend/common/common/settings/base.py` |
 | Celery wiring | `backend/catalog/core/celery.py`, `backend/catalog/apps/utils/tasks.py`, `frontend/src/hooks/useTaskPoller.ts` |
 | Load test results page | `frontend/src/routes/_authed/load-tests.tsx`, `frontend/src/lib/loadtestResults.ts` (figures), `frontend/src/lib/loadtestCharts.ts` (charts) |
+| How the services talk, in the app | `frontend/src/routes/_authed/service-interface.tsx` (`/service-interface`, hand-written, #27) |
 | Active / finished plans | GitHub issues labelled `plan` (`gh issue list --label plan [--state closed]`) |
 
 ---
@@ -495,7 +496,9 @@ creates bare containers. Ansible (Phase 4) configures them.
 since runs add data and change the numbers (it also empties the cache). Change one thing at a time and re-stress. Quicker runs:
 `just k6 stress TARGET=lxc STEP=10 MAX_RATE=500 START_RATE=150` skips the low rates, and to compare two
 configs, `just k6 load TARGET=lxc RATE=<fixed> HOLD=5m` on each, back to back, is quicker and less
-affected by run-to-run variation than comparing knees. Only compare runs with the same settings. Stop a soak
+affected by run-to-run variation than comparing knees. Only compare runs with the same settings. A full
+baseline takes two stress runs per mix, for a range, and a 1-hour soak (`DURATION=1h`), which covers the
+45-minute monolith reference `soak-20261104T055745Z`. Soak for 3 hours only to find where a soak gives out. Stop a soak
 after 5 minutes in a row over 1 % dropped iterations: it won't stop itself. Record each
 baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables), then add
 it to the `/load-tests` page, which is copied by hand: figures in `frontend/src/lib/loadtestResults.ts`, charts in
@@ -640,12 +643,15 @@ Other agents may edit this working tree at the same time.
   waits, so set a tool timeout long enough to cover the wait:
 
   ```bash
-  cd backend && flock -o /tmp/agent-tests.lock uv run pytest <service>/<path>[::<test>]
-  cd frontend && flock -o /tmp/agent-tests.lock npx vitest run <paths>
+  cd backend && flock -o /tmp/agent-tests.lock uv run pytest -q -x <service>/<path>[::<test>]
+  cd frontend && flock -o /tmp/agent-tests.lock npx vitest run --reporter=dot <paths>
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e -- --workers=1
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e:integration -- --workers=1
   flock -o /tmp/agent-tests.lock just be-test   # same for fe-test and infra-test
   ```
+
+  The quiet flags keep output short; failures still print in full. Filter long logs with `tail` or
+  `grep`, never in a way that hides a failure.
 
 - Wrap a recipe in the lock from outside. Never put `flock` inside a recipe: an agent's outer lock
   would then block the recipe's inner lock, and the command would wait forever.
