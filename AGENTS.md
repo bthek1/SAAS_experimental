@@ -78,6 +78,9 @@ just converge [--tags app] [--check --diff]  # Ansible: configure the containers
 just k6 <scenario> TARGET=lxc  # run from saas-loadgen through saas-gateway
 ```
 
+Agents run every test command, recipes included, under the machine-wide test lock. See
+"Working alongside other agents".
+
 Rarer tasks have no recipe. Run them directly:
 
 | Task | Command |
@@ -414,7 +417,7 @@ for shadcn, `charts/`, `layout/`, one folder per feature), `hooks/`, `lib/`, `ro
 - Full-stack specs live in `frontend/e2e/integration/` and run only with `npm run e2e:integration`
   (`playwright.integration.config.ts`; the mocked config ignores that folder). That config starts
   its own gateway router on :8015, `catalog` on :8016 and `instances` on :8017 (`core.settings.e2e`,
-  databases deleted and re-migrated every run) and Vite on :5184 pointed at the router, and never reuses running servers. It never touches the dev stack.
+  databases deleted and re-migrated every run) and Vite on :5184 pointed at the router, and never reuses running servers, because a reused backend would carry data over from an earlier run. It stops them when the run ends, and never touches the dev stack.
   Each test registers its own user with a unique email, so tests do not share state. Use them for
   the API contract (auth, real responses); keep UI-only checks in the mocked suite.
   `e2e/integration/helpers.ts` has `registerUser` / `loginAs` (log in by storing the JWT, skipping
@@ -462,16 +465,16 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 
 ## Infra: Proxmox LXC containers (`infra/pulumi/`)
 
-The load-test deploy (#9, Phases 3–5, #13) runs in seven unprivileged LXC containers on the Proxmox
+The load-test deploy (#9, Phases 3 to 5, #13) runs in seven unprivileged LXC containers on the Proxmox
 host `192.168.2.70` (node `bthek1`): `saas-catalog` 241 (the `catalog` service; it kept its `app` role and id so
 Pulumi never replaces it), `saas-db` 242, `saas-monitor` 243, `saas-loadgen` 244, `saas-cache` 245,
 `saas-instances` 246, `saas-gateway` 247. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
 creates bare containers. Ansible (Phase 4) configures them.
 
-- ⚠️ **Guest ids 241–249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
+- ⚠️ **Guest ids 241 to 249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
   positional: renumbering makes Pulumi *replace* a guest and its data. So does a new name, unless the old one
-  stays in `PREVIOUS_NAMES` as an alias. A new hostname reboots the container. 220–240 belong to
-  `~/kubernates_project` and are refused. The host's other guests (100–209) are unrelated.
+  stays in `PREVIOUS_NAMES` as an alias. A new hostname reboots the container. 220 to 240 belong to
+  the `kubernates_project` repo and are refused. The host's other guests (100 to 209) are unrelated.
 - **State is local and per repo**: `~/.pulumi-state/saas-experimental`, passphrase in
   `~/.pulumi-state/saas-experimental.passphrase`. The justfile sets `PULUMI_BACKEND_URL` and
   `PULUMI_CONFIG_PASSPHRASE_FILE` per command. Never run `pulumi login`: it is global and would
@@ -551,6 +554,9 @@ the same change:
 | `README.md` | Quick start, local setup, the API table, project structure, tech stack |
 | `AGENTS.md` | Conventions and rules for agents (this file) |
 
+Two folders also hold their own records: `backend/contracts/README.md` explains the contract files
+beside it, and `loadtest/baselines/` holds measured results.
+
 - A new or changed endpoint updates the API table in `README.md`: method, path, auth (public or
   JWT), request body, response shape with status code. Note non-obvious error behaviour below
   the table.
@@ -588,7 +594,8 @@ Any change touching more than one file needs a plan issue before implementation.
 - Reference the issue (`#<n>`) in related commits and PRs. Never delete plan issues.
 - Run a phase's **Validation** and confirm it passes before starting the next phase. Say what
   you ran and the result.
-- Larger plans get a milestone, with a sub-issue for each phase.
+- For a larger feature, create a GitHub milestone for the feature. Each plan in it is its own
+  `plan` issue with stable phases, as above, linked to the milestone.
 
 ---
 
@@ -597,7 +604,7 @@ Any change touching more than one file needs a plan issue before implementation.
 - Backend and frontend communicate only through the API contract. Never mix their concerns.
 - Never commit `.env` files. `.env.example` is the source of truth for required vars.
 - There is exactly one env file: `.env` in the repo root, from `.env.example` (`cp .env.example .env`).
-  Django, Vite, docker-compose (`env_file`), direnv (`backend/.envrc`) and VS Code all read it.
+  Django, Vite, docker-compose (`env_file`), direnv (a local, gitignored `.envrc`) and VS Code all read it.
   Do not add per-folder `.env` files. Add new vars to the root `.env.example`, grouped under the
   backend or frontend heading.
 - There is exactly one `.gitignore`, in the repo root. Do not add per-folder `.gitignore` files.
@@ -613,15 +620,42 @@ Other agents may edit this working tree at the same time.
 - Claims live in `.agents/claims.md` (repo root). Before editing a file, check it. If another
   agent claimed the file, stop and tell the user. Otherwise add `<file path> - <task>`, and
   remove your lines when done.
-- Lint, format and test only what you changed. `just be-lint` and `just be-fmt` rewrite the
-  whole backend (`fix = true`), so run them only when asked. Scoped equivalents:
+- Only edit files your task needs. Changes you did not make belong to another agent. Leave them
+  alone.
+- Re-read a file immediately before editing it. If an edit fails because the file changed, re-read
+  and retry. Never overwrite the whole file.
+- Lint, format and test only what you changed. Report failures in code you did not touch, but do
+  not fix them. `just be-lint` and `just be-fmt` rewrite the whole backend (`fix = true`), so run
+  them only when asked. Scoped lint and format:
 
   ```bash
   cd backend && uv run ruff check <paths> && uv run ruff format <paths>
-  cd backend && uv run pytest <service>/<path>[::<test>]
-  cd frontend && npx eslint <paths> && npx vitest run <paths>
+  cd frontend && npx eslint <paths>
   ```
 
+- Run only one type of testing (backend, frontend or Playwright) at a time on a machine, across
+  all agents. Running them together, or running tests from several agents at once, has crashed
+  low-RAM machines.
+- Run every test command under the machine-wide lock. If another agent holds the lock, your command
+  waits, so set a tool timeout long enough to cover the wait:
+
+  ```bash
+  cd backend && flock -o /tmp/agent-tests.lock uv run pytest <service>/<path>[::<test>]
+  cd frontend && flock -o /tmp/agent-tests.lock npx vitest run <paths>
+  cd frontend && flock -o /tmp/agent-tests.lock npm run e2e -- --workers=1
+  cd frontend && flock -o /tmp/agent-tests.lock npm run e2e:integration -- --workers=1
+  flock -o /tmp/agent-tests.lock just be-test   # same for fe-test and infra-test
+  ```
+
+- Wrap a recipe in the lock from outside. Never put `flock` inside a recipe: an agent's outer lock
+  would then block the recipe's inner lock, and the command would wait forever.
+- A local `just k6` run takes the lock too. `TARGET=lxc` runs k6 on saas-loadgen, so it does not.
+- Always pass `--workers=1` to Playwright. Its configs leave the worker count open for people, so
+  the flag is what limits an agent's run.
+- Playwright reuses servers where the suite allows it. The mocked suite needs only Vite: it reuses
+  a server on :5174, or starts one and stops it when the run ends. The integration suite never
+  reuses servers (see "Testing" under Frontend). It starts its own on separate ports, inside the
+  locked command, and stops them when the run ends. Start no other servers for either suite.
 - Always pass an app to `just be-makemigrations <app>`. Do not run `just dev` or `just be-dev`:
   they start shared dev servers.
 - At the end, list every file you changed so the user can commit them separately.

@@ -68,7 +68,7 @@ up:
 down:
     {{ compose }} down
 
-# Any other compose command against the dev stack: just compose logs -f backend
+# Any other compose command against the dev stack: just compose logs -f catalog
 [group('docker')]
 [positional-arguments]
 compose *args:
