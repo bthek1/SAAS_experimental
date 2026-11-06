@@ -1,13 +1,25 @@
 import { describe, expect, it } from "vitest"
+import * as charts from "./loadtestCharts"
 import {
+  barsHeight,
+  barsOption,
   cacheReadOption,
+  cellNumber,
   changesOption,
+  changesTable,
   fixesOption,
+  hitRatioOption,
   lineChartOption,
+  postgresRowsOption,
   rampTable,
+  readsMissOption,
+  soakDroppedOption,
+  splitMemoryOption,
+  splitStressP95Option,
   type SeriesPalette,
 } from "./loadtestCharts"
-import { CACHE_PAIRS, CHANGES, RAMP, RUNS } from "./loadtestResults"
+import * as results from "./loadtestResults"
+import { CACHE_PAIRS, CHANGES, RAMP, RUNS, type ResultTableData } from "./loadtestResults"
 
 const palette: SeriesPalette = {
   series: ["#1", "#2", "#3", "#4", "#5", "#6", "#7"],
@@ -103,7 +115,147 @@ describe("charts", () => {
   })
 })
 
+type OptionBuilder = (palette: SeriesPalette) => { series: { data: unknown[] }[] }
+const allCharts = Object.entries(charts)
+  .filter(([name]) => name.endsWith("Option") && !["lineChartOption", "barsOption"].includes(name))
+  .map(([name, build]) => [name, build as unknown as OptionBuilder] as const)
+
+const valuesOf = (item: unknown): unknown[] => {
+  if (Array.isArray(item)) return [item[1]]
+  if (typeof item === "object" && item !== null) return [(item as { value: unknown }).value]
+  return [item]
+}
+
+describe("every chart", () => {
+  it("is found by this test", () => {
+    expect(allCharts.length).toBeGreaterThanOrEqual(30)
+  })
+
+  it.each(allCharts)("%s has data and no unreadable figure", (_name, build) => {
+    const { series } = build(palette)
+    expect(series.length).toBeGreaterThan(0)
+    for (const s of series) {
+      expect(s.data.length).toBeGreaterThan(0)
+      for (const item of s.data) {
+        for (const value of valuesOf(item)) {
+          if (value !== null) expect(Number.isFinite(value)).toBe(true)
+        }
+      }
+    }
+  })
+
+  it.each(allCharts)("%s describes itself to screen readers", (_name, build) => {
+    const { aria } = build(palette) as unknown as { aria: { label: { description: string } } }
+    expect(aria.label.description.length).toBeGreaterThan(20)
+  })
+})
+
+describe("barsOption", () => {
+  const spec = {
+    label: "Bars",
+    categories: ["a"],
+    format: (value: number) => `${value} ms`,
+    series: [{ name: "One", color: "#1", data: [5] }],
+  }
+
+  it("shows a legend only for more than one series", () => {
+    expect(barsOption(spec, palette).legend).toBeUndefined()
+    const two = { ...spec, series: [...spec.series, { name: "Two", color: "#2", data: [6] }] }
+    expect(barsOption(two, palette).legend).toBeDefined()
+  })
+
+  it("formats both the bar label and the tooltip", () => {
+    const option = barsOption(spec, palette) as unknown as {
+      series: { label: { formatter: (params: { value: number }) => string } }[]
+      tooltip: { valueFormatter: (value: number) => string }
+    }
+    expect(option.series[0].label.formatter({ value: 5 })).toBe("5 ms")
+    expect(option.tooltip.valueFormatter(5)).toBe("5 ms")
+  })
+
+  it("grows with its bars, down to a minimum", () => {
+    expect(barsHeight(1, 1)).toBe(200)
+    expect(barsHeight(7, 2)).toBeGreaterThan(barsHeight(7, 1))
+  })
+})
+
+describe("line chart legend", () => {
+  const manySeries = Array.from({ length: 7 }, (_, i) => ({ ...spec.series[0], name: `Run ${i}` }))
+  const gridTop = (option: object) => (option as { grid: { top: number } }).grid.top
+
+  it("leaves room for a long legend to wrap over the plot", () => {
+    expect(gridTop(lineChartOption({ ...spec, series: manySeries }, palette))).toBeGreaterThan(
+      gridTop(lineChartOption(spec, palette)),
+    )
+  })
+})
+
+describe("charts read from the tables", () => {
+  const dataOf = (option: object, i: number) => seriesOf(option)[i].data
+
+  it("parses a table cell", () => {
+    expect(cellNumber("1,120 MB")).toBe(1120)
+    expect(cellNumber("39 %")).toBe(39)
+    expect(cellNumber("3.1 M")).toBe(3.1)
+    expect(cellNumber(12)).toBe(12)
+  })
+
+  it("Postgres rows read, cache off and on", () => {
+    const option = postgresRowsOption(palette)
+    expect(dataOf(option, 0)).toEqual([3.1, 3.5])
+    expect(dataOf(option, 1)).toEqual([0.45, 0.25])
+  })
+
+  it("hit ratios, split out of one cell per traffic mix", () => {
+    const option = hitRatioOption(palette)
+    expect(dataOf(option, 0)).toEqual([91, 77])
+    expect(dataOf(option, 1)).toEqual([96, 89])
+  })
+
+  it("cache misses, before and after", () => {
+    const option = readsMissOption(palette)
+    expect(dataOf(option, 0)).toEqual([275, 239, 97])
+    expect(dataOf(option, 1)).toEqual([172, 141, 48])
+  })
+
+  it("split memory, for each traffic mix", () => {
+    const option = splitMemoryOption(palette)
+    expect(dataOf(option, 0)).toEqual([605, 619])
+    expect(dataOf(option, 1)).toEqual([1120, 1264])
+  })
+
+  it("split stress, with each deploy on its own rates", () => {
+    const option = splitStressP95Option(palette)
+    expect(dataOf(option, 0)[0]).toEqual([350, 25])
+    expect(dataOf(option, 1)[0]).toEqual([358, 23])
+    expect(dataOf(option, 1)[4]).toEqual([581, 108])
+  })
+
+  it("dropped iterations leave out the first minutes, as the other soak charts do", () => {
+    const [before] = seriesOf(soakDroppedOption(palette))
+    expect(before.data[0]).toEqual([3, 0])
+    expect(before.data[before.data.length - 1]).toEqual([35, 2260])
+  })
+})
+
+describe("changesTable", () => {
+  it("has a row for every change, with its effect", () => {
+    expect(changesTable.rows).toHaveLength(CHANGES.length)
+    expect(changesTable.rows[3][1]).toContain("+121 %")
+  })
+})
+
 describe("results data", () => {
+  const tables = Object.entries(results).filter(
+    (entry): entry is [string, ResultTableData] => entry[0].endsWith("Table"),
+  )
+
+  it.each(tables)("%s has a cell for every column in every row", (_name, table) => {
+    expect(table.rows.length).toBeGreaterThan(0)
+    for (const row of table.rows) expect(row).toHaveLength(table.columns.length)
+  })
+
+
   it("has per-minute figures for every run a chart reads", () => {
     for (const { run } of RAMP) expect(RUNS[run]).toBeDefined()
     for (const { run } of CHANGES) expect(RUNS[run]).toBeDefined()

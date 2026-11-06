@@ -2,8 +2,14 @@ import type { EChartsOption } from "echarts"
 import {
   CACHE_PAIRS,
   CHANGES,
+  matchingTable,
+  profileTable,
   RAMP,
+  readsTable,
   RUNS,
+  splitHoldTable,
+  splitStressTable,
+  trueP95Table,
   type ResultTableData,
 } from "@/lib/loadtestResults"
 
@@ -70,9 +76,11 @@ function axisStyle(palette: SeriesPalette) {
 /** One line per run, with a dot on its last point. A point above `yMax` leaves a gap. */
 export function lineChartOption(spec: LineChartSpec, palette: SeriesPalette): EChartsOption {
   const hasEndLabels = spec.series.some((s) => s.endLabel)
+  // A long legend wraps, to four rows at phone width.
+  const top = spec.series.length > 4 ? 104 : spec.marker ? 60 : 40
   return {
     aria: { enabled: true, label: { description: spec.label } },
-    grid: { top: spec.marker ? 60 : 40, right: hasEndLabels ? 64 : 16, bottom: 48, left: 44 },
+    grid: { top, right: hasEndLabels ? 64 : 16, bottom: 48, left: 44 },
     legend: { top: 0, textStyle: { color: palette.text } },
     tooltip: {
       trigger: "axis",
@@ -142,17 +150,29 @@ export function lineChartOption(spec: LineChartSpec, palette: SeriesPalette): EC
   } as EChartsOption
 }
 
-function rateSeries(name: string, run: string, color: string, endLabel?: string): LineSeries {
-  return { name, color, endLabel, points: RUNS[run].map((r) => ({ x: r[0], y: r[1] })) }
+/** Columns of a `RunMinute`. */
+const LATENCY = 1
+const APP_CPU = 2
+const DB_CPU = 3
+const DROPPED = 4
+type RunColumn = typeof LATENCY | typeof APP_CPU | typeof DB_CPU | typeof DROPPED
+
+function rateSeries(
+  name: string,
+  run: string,
+  color: string,
+  endLabel?: string,
+  column: RunColumn = LATENCY,
+): LineSeries {
+  return { name, color, endLabel, points: RUNS[run].map((r) => ({ x: r[0], y: r[column] })) }
 }
 
-/** `column`: 1 is mean latency, 2 is app CPU. */
 function minuteSeries(
   name: string,
   run: string,
   color: string,
   endLabel: string,
-  column: 1 | 2,
+  column: RunColumn,
   firstMinute = 1,
 ): LineSeries {
   return {
@@ -173,79 +193,143 @@ const minuteChart = {
   tipTitle: minuteTitle,
 }
 
+interface BarSeries {
+  name: string
+  data: (number | { value: number; itemStyle: { color: string } })[]
+  color: string
+}
+
+interface BarChartSpec {
+  label: string
+  categories: string[]
+  series: BarSeries[]
+  format: (value: number) => string
+  tooltip?: EChartsOption["tooltip"]
+  /** Room for the category names. Narrow it for a chart in a small card. */
+  labelWidth?: number
+}
+
+/** Pixel height that fits every bar of every category. */
+export function barsHeight(categories: number, series: number): number {
+  return Math.max(200, 64 + categories * (series * 24 + 12))
+}
+
 /** Horizontal bars with the value at the end of each. */
-function kneeBars(
-  categories: string[],
-  series: { name: string; data: (number | { value: number; itemStyle: { color: string } })[]; color: string }[],
-  label: string,
-  palette: SeriesPalette,
-  tooltip: EChartsOption["tooltip"],
-): EChartsOption {
+export function barsOption(spec: BarChartSpec, palette: SeriesPalette): EChartsOption {
+  const hasLegend = spec.series.length > 1
   return {
-    aria: { enabled: true, label: { description: label } },
-    grid: { top: series.length > 1 ? 32 : 8, right: 48, bottom: 24, left: 8, containLabel: true },
-    legend: series.length > 1 ? { top: 0, textStyle: { color: palette.text } } : undefined,
-    tooltip,
+    aria: { enabled: true, label: { description: spec.label } },
+    grid: { top: hasLegend ? 32 : 8, right: 64, bottom: 24, left: 8, containLabel: true },
+    legend: hasLegend ? { top: 0, textStyle: { color: palette.text } } : undefined,
+    tooltip: spec.tooltip ?? {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      valueFormatter: (value) => spec.format(value as number),
+    },
     xAxis: { type: "value", ...axisStyle(palette) },
     yAxis: {
       type: "category",
-      data: categories,
+      data: spec.categories,
       inverse: true,
       ...axisStyle(palette),
-      axisLabel: { color: palette.text, width: 150, overflow: "break" },
+      axisLabel: { color: palette.text, width: spec.labelWidth ?? 150, overflow: "break" },
     },
-    series: series.map(({ color, ...s }) => ({
+    series: spec.series.map(({ color, ...s }) => ({
       ...s,
       type: "bar",
       barMaxWidth: 24,
       barGap: "10%",
       itemStyle: { color, borderRadius: [0, 4, 4, 0] },
-      label: { show: true, position: "right", formatter: "~{c}", color: palette.text, fontWeight: 600 },
+      label: {
+        show: true,
+        position: "right",
+        formatter: (params) => spec.format(params.value as number),
+        color: palette.text,
+        fontWeight: 600,
+      },
     })),
   }
 }
 
 export function changesOption(palette: SeriesPalette): EChartsOption {
-  return kneeBars(
-    CHANGES.map((c) => c.label),
-    [
-      {
-        name: "Knee",
-        color: palette.series[0],
-        // The grey bar repeated the settings above it: it is not a change.
-        data: CHANGES.map((c) =>
-          c.repeat ? { value: c.knee, itemStyle: { color: palette.off } } : c.knee,
-        ),
-      },
-    ],
-    `Knee per stress run, from about ${CHANGES[0].knee} to about ${CHANGES[CHANGES.length - 1].knee} requests per second. The table below has the same values.`,
-    palette,
+  return barsOption(
     {
-      trigger: "item",
-      formatter: (params) => {
-        const { dataIndex } = params as unknown as { dataIndex: number }
-        const c = CHANGES[dataIndex]
-        return [
-          c.label,
-          `<b>~${c.knee} req/s</b> knee`,
-          `<b>${c.p95} ms</b> slowest group p95, since run start`,
-          `<b>${c.app} % / ${c.db} %</b> saas-app / saas-db CPU`,
-        ].join("<br/>")
+      label: `Knee per stress run, from about ${CHANGES[0].knee} to about ${CHANGES[CHANGES.length - 1].knee} requests per second. The table below has the same values.`,
+      categories: CHANGES.map((c) => c.label),
+      format: (value) => `~${value}`,
+      series: [
+        {
+          name: "Knee",
+          color: palette.series[0],
+          // The grey bar repeated the settings above it: it is not a change.
+          data: CHANGES.map((c) =>
+            c.repeat ? { value: c.knee, itemStyle: { color: palette.off } } : c.knee,
+          ),
+        },
+      ],
+      tooltip: {
+        trigger: "item",
+        formatter: (params) => {
+          const { dataIndex } = params as unknown as { dataIndex: number }
+          const c = CHANGES[dataIndex]
+          return [
+            c.label,
+            `<b>~${c.knee} req/s</b> knee`,
+            `<b>${c.p95} ms</b> slowest group p95, since run start`,
+            `<b>${c.app} % / ${c.db} %</b> saas-app / saas-db CPU`,
+          ].join("<br/>")
+        },
       },
     },
+    palette,
+  )
+}
+
+export function kneeLatencyOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label: "Slowest group and Django p95 at each knee, since run start. The table below has the same values.",
+      categories: CHANGES.map((c) => c.label),
+      format: formatMs,
+      labelWidth: 130,
+      series: [
+        { name: "Slowest group p95", color: palette.series[0], data: CHANGES.map((c) => c.p95) },
+        { name: "Django p95", color: palette.series[1], data: CHANGES.map((c) => c.django) },
+      ],
+    },
+    palette,
+  )
+}
+
+export function kneeCpuOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label: "saas-app and saas-db CPU at each knee. The table below has the same values.",
+      categories: CHANGES.map((c) => c.label),
+      format: formatPct,
+      labelWidth: 130,
+      series: [
+        { name: "saas-app CPU", color: palette.series[0], data: CHANGES.map((c) => c.app) },
+        { name: "saas-db CPU", color: palette.series[1], data: CHANGES.map((c) => c.db) },
+      ],
+    },
+    palette,
   )
 }
 
 export function cacheKneesOption(palette: SeriesPalette): EChartsOption {
-  return kneeBars(
-    CACHE_PAIRS.map((p) => `${p.label} (${p.note})`),
-    [
-      { name: "Cache off", color: palette.off, data: CACHE_PAIRS.map((p) => p.off) },
-      { name: "Cache on", color: palette.series[0], data: CACHE_PAIRS.map((p) => p.on) },
-    ],
-    "Knee with the cache off and on: about 375 and 480 requests per second on mixed traffic, about 360 and 459 on read-mostly traffic.",
+  return barsOption(
+    {
+      label:
+        "Knee with the cache off and on: about 375 and 480 requests per second on mixed traffic, about 360 and 459 on read-mostly traffic.",
+      categories: CACHE_PAIRS.map((p) => `${p.label} (${p.note})`),
+      format: (value) => `~${value}`,
+      series: [
+        { name: "Cache off", color: palette.off, data: CACHE_PAIRS.map((p) => p.off) },
+        { name: "Cache on", color: palette.series[0], data: CACHE_PAIRS.map((p) => p.on) },
+      ],
+    },
     palette,
-    { trigger: "axis", axisPointer: { type: "shadow" } },
   )
 }
 
@@ -260,6 +344,47 @@ export function rampOption(palette: SeriesPalette): EChartsOption {
       xStep: 50,
       yMax: 40,
     },
+    palette,
+  )
+}
+
+function rampCpuOption(
+  column: typeof APP_CPU | typeof DB_CPU,
+  yMax: number,
+  label: string,
+  palette: SeriesPalette,
+): EChartsOption {
+  return lineChartOption(
+    {
+      ...rateChart,
+      label,
+      format: formatPct,
+      series: RAMP.map((s) =>
+        rateSeries(s.name, s.run, palette.series[s.series], undefined, column),
+      ),
+      xMin: 0,
+      xMax: 500,
+      xStep: 100,
+      yMax,
+    },
+    palette,
+  )
+}
+
+export function rampAppCpuOption(palette: SeriesPalette): EChartsOption {
+  return rampCpuOption(
+    APP_CPU,
+    100,
+    "saas-app CPU against request rate for each configuration. The table below has the same values.",
+    palette,
+  )
+}
+
+export function rampDbCpuOption(palette: SeriesPalette): EChartsOption {
+  return rampCpuOption(
+    DB_CPU,
+    60,
+    "saas-db CPU against request rate for each configuration. The table below has the same values.",
     palette,
   )
 }
@@ -328,8 +453,8 @@ export function soakLatencyOption(palette: SeriesPalette): EChartsOption {
       label:
         "Before the fixes, mean latency reaches 33 milliseconds by minute 28 and 327 by minute 35. After them it is 7.5 at minute 28, 11.5 at minute 41 and 33 at minute 45.",
       series: [
-        minuteSeries("Before the fixes", SOAK_BEFORE, palette.off, "327 ms", 1, 3),
-        minuteSeries("After the fixes", SOAK_AFTER, palette.series[0], "33 ms", 1, 3),
+        minuteSeries("Before the fixes", SOAK_BEFORE, palette.off, "327 ms", LATENCY, 3),
+        minuteSeries("After the fixes", SOAK_AFTER, palette.series[0], "33 ms", LATENCY, 3),
       ],
       yMax: 350,
       format: formatMs,
@@ -345,8 +470,8 @@ export function soakCpuOption(palette: SeriesPalette): EChartsOption {
       label:
         "Before the fixes, saas-app CPU reaches 93 percent by minute 35. After them it stays between 48 and 66 percent to minute 41, then reaches 77 percent.",
       series: [
-        minuteSeries("Before the fixes", SOAK_BEFORE, palette.off, "93 %", 2, 3),
-        minuteSeries("After the fixes", SOAK_AFTER, palette.series[0], "67 %", 2, 3),
+        minuteSeries("Before the fixes", SOAK_BEFORE, palette.off, "93 %", APP_CPU, 3),
+        minuteSeries("After the fixes", SOAK_AFTER, palette.series[0], "67 %", APP_CPU, 3),
       ],
       yMax: 100,
       format: formatPct,
@@ -383,8 +508,8 @@ export function nearPeakOption(palette: SeriesPalette): EChartsOption {
       label:
         "Mean latency by minute at about 445 requests per second. Run 1 rises to 129 milliseconds in minute 6, recovers by minute 10 and ends at 24. Run 2 rises steadily from 7 to 16.",
       series: [
-        minuteSeries("Run 1", "soak-20261104T074625Z", palette.series[0], "24 ms", 1),
-        minuteSeries("Run 2", "soak-20261104T083207Z", palette.series[2], "16 ms", 1),
+        minuteSeries("Run 1", "soak-20261104T074625Z", palette.series[0], "24 ms", LATENCY),
+        minuteSeries("Run 2", "soak-20261104T083207Z", palette.series[2], "16 ms", LATENCY),
       ],
       xMin: 1,
       xMax: 14,
@@ -403,8 +528,8 @@ export function holdOption(palette: SeriesPalette): EChartsOption {
       label:
         "Mean latency over a 10-minute hold: it rises from 4 to about 8 milliseconds before the cache, peaking at 10.8, and stays between 4 and 5 milliseconds with it.",
       series: [
-        minuteSeries("Sync workers, no cache", "load-20261102T052551Z", palette.off, "7.9 ms", 1),
-        minuteSeries("Threads and cache", "load-20261103T125112Z", palette.series[0], "4.8 ms", 1),
+        minuteSeries("Sync workers, no cache", "load-20261102T052551Z", palette.off, "7.9 ms", LATENCY),
+        minuteSeries("Threads and cache", "load-20261103T125112Z", palette.series[0], "4.8 ms", LATENCY),
       ],
       xMin: 1,
       xMax: 11,
@@ -414,6 +539,402 @@ export function holdOption(palette: SeriesPalette): EChartsOption {
     },
     palette,
   )
+}
+
+export function soakDbCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...soakChart,
+      label: "saas-db CPU by minute. Before the fixes it reaches 30 percent by minute 35. After them it reaches 31 percent at minute 43.",
+      series: [
+        minuteSeries("Before the fixes", SOAK_BEFORE, palette.off, "30 %", DB_CPU, 3),
+        minuteSeries("After the fixes", SOAK_AFTER, palette.series[0], "29 %", DB_CPU, 3),
+      ],
+      yMax: 40,
+      format: formatPct,
+    },
+    palette,
+  )
+}
+
+export function soakDroppedOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...soakChart,
+      label: "Iterations k6 dropped each minute. Before the fixes drops begin at minute 29 and reach 2,260 a minute by minute 35. After them there are none.",
+      series: [
+        minuteSeries("Before the fixes", SOAK_BEFORE, palette.off, "2,260", DROPPED, 3),
+        minuteSeries("After the fixes", SOAK_AFTER, palette.series[0], "0", DROPPED, 3),
+      ],
+      yMax: 2500,
+      format: (value) => value.toLocaleString("en-US"),
+    },
+    palette,
+  )
+}
+
+export function holdCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...minuteChart,
+      label: "saas-app CPU over the 10-minute hold: it peaks at 44 percent with sync workers and no cache, and stays between 28 and 32 percent with threads and the cache.",
+      series: [
+        minuteSeries("Sync workers, no cache", "load-20261102T052551Z", palette.off, "38 %", APP_CPU),
+        minuteSeries("Threads and cache", "load-20261103T125112Z", palette.series[0], "31 %", APP_CPU),
+      ],
+      xMin: 1,
+      xMax: 11,
+      xStep: 2,
+      yMax: 50,
+      format: formatPct,
+    },
+    palette,
+  )
+}
+
+export function fixesCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...rateChart,
+      label: "saas-app CPU by request rate, before the dashboard fixes and in the three runs after them.",
+      format: formatPct,
+      series: [
+        rateSeries("Before the fixes", "stress-20261103T115330Z", palette.off, "~480", APP_CPU),
+        rateSeries("After, run 1", "stress-20261104T052442Z", palette.series[0], "~430", APP_CPU),
+        rateSeries("After, run 2", "stress-20261104T053920Z", palette.series[2], "~497", APP_CPU),
+        rateSeries("After, run 3", "stress-20261104T080836Z", palette.series[1], "~573", APP_CPU),
+      ],
+      xMin: 150,
+      xMax: 650,
+      xStep: 50,
+      yMax: 100,
+    },
+    palette,
+  )
+}
+
+export function nearPeakCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...minuteChart,
+      label: "saas-app CPU by minute at about 445 requests per second. Run 1 reaches 90 percent in minute 6, then recovers to about 78. Run 2 holds about 60.",
+      series: [
+        minuteSeries("Run 1", "soak-20261104T074625Z", palette.series[0], "79 %", APP_CPU),
+        minuteSeries("Run 2", "soak-20261104T083207Z", palette.series[2], "61 %", APP_CPU),
+      ],
+      xMin: 1,
+      xMax: 14,
+      xStep: 1,
+      yMax: 100,
+      format: formatPct,
+    },
+    palette,
+  )
+}
+
+/** The number in a table cell: "1,120 MB" is 1120, "39 %" is 39. */
+export function cellNumber(cell: string | number): number {
+  return Number.parseFloat(String(cell).replace(/,/g, ""))
+}
+
+/** Both numbers in a cell such as "350 / 358". */
+function cellPair(cell: string | number): [number, number] {
+  const [first, second] = String(cell).split(" / ")
+  return [cellNumber(first), cellNumber(second)]
+}
+
+function rowNamed(table: ResultTableData, name: string): (string | number)[] {
+  const row = table.rows.find((r) => r[0] === name)
+  if (!row) throw new Error(`No row named ${name}`)
+  return row
+}
+
+function columnNumbers(table: ResultTableData, column: number, rows = table.rows): number[] {
+  return rows.map((r) => cellNumber(r[column]))
+}
+
+const ENDPOINT_ROWS = matchingTable.rows.slice(0, 5)
+
+function endpointP95Option(
+  offColumn: number,
+  onColumn: number,
+  traffic: string,
+  palette: SeriesPalette,
+): EChartsOption {
+  return barsOption(
+    {
+      label: `${traffic} traffic: k6 p95 per endpoint with the cache off and on. The table below has the same values.`,
+      categories: ENDPOINT_ROWS.map((r) => String(r[0])),
+      format: formatMs,
+      series: [
+        { name: "Cache off", color: palette.off, data: columnNumbers(matchingTable, offColumn, ENDPOINT_ROWS) },
+        { name: "Cache on", color: palette.series[0], data: columnNumbers(matchingTable, onColumn, ENDPOINT_ROWS) },
+      ],
+    },
+    palette,
+  )
+}
+
+export function endpointMixedOption(palette: SeriesPalette): EChartsOption {
+  return endpointP95Option(1, 2, "Mixed", palette)
+}
+
+export function endpointReadOption(palette: SeriesPalette): EChartsOption {
+  return endpointP95Option(3, 4, "Read-mostly", palette)
+}
+
+/** Cache off and on, for mixed and read-mostly traffic, from one row of the table. */
+function trafficBars(
+  rowName: string,
+  label: string,
+  format: (value: number) => string,
+  palette: SeriesPalette,
+): EChartsOption {
+  const row = rowNamed(matchingTable, rowName)
+  return barsOption(
+    {
+      label,
+      categories: ["Mixed", "Read-mostly"],
+      format,
+      labelWidth: 80,
+      series: [
+        { name: "Cache off", color: palette.off, data: [cellNumber(row[1]), cellNumber(row[3])] },
+        { name: "Cache on", color: palette.series[0], data: [cellNumber(row[2]), cellNumber(row[4])] },
+      ],
+    },
+    palette,
+  )
+}
+
+export function postgresRowsOption(palette: SeriesPalette): EChartsOption {
+  return trafficBars(
+    "Postgres rows read/s",
+    "Millions of Postgres rows read per second, cache off and on. The table below has the same values.",
+    (value) => `${value} M`,
+    palette,
+  )
+}
+
+export function dbCpuOption(palette: SeriesPalette): EChartsOption {
+  return trafficBars(
+    "saas-db CPU",
+    "saas-db CPU at matching rates, cache off and on. The table below has the same values.",
+    formatPct,
+    palette,
+  )
+}
+
+export function hitRatioOption(palette: SeriesPalette): EChartsOption {
+  const row = rowNamed(matchingTable, "Hit ratio: dashboard / scores")
+  const [mixedDashboard, mixedScores] = cellPair(row[2])
+  const [readDashboard, readScores] = cellPair(row[4])
+  return barsOption(
+    {
+      label: "Cache hit ratio for the dashboard and scores endpoints. The table below has the same values.",
+      categories: ["dashboard", "scores"],
+      format: formatPct,
+      labelWidth: 80,
+      series: [
+        { name: "Mixed", color: palette.series[0], data: [mixedDashboard, mixedScores] },
+        { name: "Read-mostly", color: palette.series[1], data: [readDashboard, readScores] },
+      ],
+    },
+    palette,
+  )
+}
+
+function linesByRate(
+  label: string,
+  series: LineSeries[],
+  yMax: number,
+  format: (value: number) => string,
+  palette: SeriesPalette,
+): EChartsOption {
+  return lineChartOption(
+    { ...rateChart, label, series, format, xMin: 300, xMax: 600, xStep: 50, yMax },
+    palette,
+  )
+}
+
+function tableLine(
+  table: ResultTableData,
+  name: string,
+  column: number,
+  color: string,
+): LineSeries {
+  return {
+    name,
+    color,
+    points: table.rows.map((r) => ({ x: cellNumber(r[0]), y: cellNumber(r[column]) })),
+  }
+}
+
+export function trueP95LatencyOption(palette: SeriesPalette): EChartsOption {
+  return linesByRate(
+    "True per-minute latency by request rate: mean, slowest group p95 and Django p95. The table below has the same values.",
+    [
+      tableLine(trueP95Table, "Slowest group p95", 2, palette.series[0]),
+      tableLine(trueP95Table, "Django p95", 3, palette.series[1]),
+      tableLine(trueP95Table, "Mean", 1, palette.series[2]),
+    ],
+    120,
+    formatMs,
+    palette,
+  )
+}
+
+export function trueP95CpuOption(palette: SeriesPalette): EChartsOption {
+  return linesByRate(
+    "saas-app and saas-db CPU by request rate in the same run. The table below has the same values.",
+    [
+      tableLine(trueP95Table, "saas-app CPU", 4, palette.series[0]),
+      tableLine(trueP95Table, "saas-db CPU", 5, palette.series[1]),
+    ],
+    100,
+    formatPct,
+    palette,
+  )
+}
+
+function beforeAfterBars(
+  table: ResultTableData,
+  beforeColumn: number,
+  afterColumn: number,
+  label: string,
+  palette: SeriesPalette,
+): EChartsOption {
+  return barsOption(
+    {
+      label: `${label} The table below has the same values.`,
+      categories: table.rows.map((r) => String(r[0])),
+      format: formatMs,
+      labelWidth: 110,
+      series: [
+        { name: "Before", color: palette.off, data: columnNumbers(table, beforeColumn) },
+        { name: "After", color: palette.series[0], data: columnNumbers(table, afterColumn) },
+      ],
+    },
+    palette,
+  )
+}
+
+export function readsMissOption(palette: SeriesPalette): EChartsOption {
+  return beforeAfterBars(readsTable, 1, 2, "Time for a cache miss on each read, before and after the fixes.", palette)
+}
+
+export function readsHitOption(palette: SeriesPalette): EChartsOption {
+  return beforeAfterBars(readsTable, 3, 4, "Time for a cache hit on each read, before and after the fixes.", palette)
+}
+
+export function profileMissOption(palette: SeriesPalette): EChartsOption {
+  return beforeAfterBars(profileTable, 1, 2, "Profile: total time for a cache miss, before and after the fixes.", palette)
+}
+
+export function profilePythonOption(palette: SeriesPalette): EChartsOption {
+  return beforeAfterBars(profileTable, 3, 4, "Profile: Python CPU for a cache miss, before and after the fixes.", palette)
+}
+
+export function profileHitOption(palette: SeriesPalette): EChartsOption {
+  return beforeAfterBars(profileTable, 5, 6, "Profile: time for a cache hit, before and after the fixes.", palette)
+}
+
+/** `rows`: table row name to chart category, each drawn for mixed and read-mostly traffic. */
+function splitHoldBars(
+  rows: { row: string; name: string }[],
+  label: string,
+  format: (value: number) => string,
+  palette: SeriesPalette,
+): EChartsOption {
+  const pick = (mixedColumn: number, readColumn: number) => [
+    ...rows.map(({ row }) => cellNumber(rowNamed(splitHoldTable, row)[mixedColumn])),
+    ...rows.map(({ row }) => cellNumber(rowNamed(splitHoldTable, row)[readColumn])),
+  ]
+  return barsOption(
+    {
+      label: `${label} The table below has the same values.`,
+      categories: [
+        ...rows.map(({ name }) => `Mixed, ${name}`),
+        ...rows.map(({ name }) => `Read, ${name}`),
+      ],
+      format,
+      labelWidth: 90,
+      series: [
+        { name: "Before", color: palette.off, data: pick(1, 3) },
+        { name: "Split", color: palette.series[0], data: pick(2, 4) },
+      ],
+    },
+    palette,
+  )
+}
+
+export function splitLatencyOption(palette: SeriesPalette): EChartsOption {
+  return splitHoldBars(
+    [
+      { row: "Mean", name: "mean" },
+      { row: "p95, all requests", name: "p95" },
+    ],
+    "Latency over 5 minutes at a fixed rate, before and after the split.",
+    formatMs,
+    palette,
+  )
+}
+
+export function splitCpuOption(palette: SeriesPalette): EChartsOption {
+  return splitHoldBars(
+    [
+      { row: "App-tier CPU, in cores", name: "app tier" },
+      { row: "saas-db CPU, in cores", name: "saas-db" },
+    ],
+    "CPU in cores at a fixed rate, before and after the split.",
+    (value) => `${value}`,
+    palette,
+  )
+}
+
+export function splitMemoryOption(palette: SeriesPalette): EChartsOption {
+  return splitHoldBars(
+    [{ row: "App-tier memory in use", name: "app tier" }],
+    "App-tier memory in use at a fixed rate, before and after the split.",
+    (value) => `${value.toLocaleString("en-US")} MB`,
+    palette,
+  )
+}
+
+/** One column of the before / after table, as a line for each deploy. */
+function splitStressOption(
+  column: number,
+  label: string,
+  yMax: number,
+  format: (value: number) => string,
+  palette: SeriesPalette,
+): EChartsOption {
+  const line = (name: string, color: string, side: 0 | 1): LineSeries => ({
+    name,
+    color,
+    points: splitStressTable.rows.map((r) => ({
+      x: cellPair(r[0])[side],
+      y: cellPair(r[column])[side],
+    })),
+  })
+  return linesByRate(
+    `${label} The table below has the same values.`,
+    [line("Before", palette.off, 0), line("Split", palette.series[0], 1)],
+    yMax,
+    format,
+    palette,
+  )
+}
+
+export function splitStressMeanOption(palette: SeriesPalette): EChartsOption {
+  return splitStressOption(1, "Mean latency by request rate, before and after the split.", 20, formatMs, palette)
+}
+
+export function splitStressP95Option(palette: SeriesPalette): EChartsOption {
+  return splitStressOption(2, "Slowest group p95 by request rate, before and after the split.", 120, formatMs, palette)
+}
+
+export function splitStressCpuOption(palette: SeriesPalette): EChartsOption {
+  return splitStressOption(4, "CPU of the busiest app container by request rate, before and after the split.", 100, formatPct, palette)
 }
 
 export const changesTable: ResultTableData = {

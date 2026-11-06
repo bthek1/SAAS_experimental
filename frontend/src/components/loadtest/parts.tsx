@@ -57,6 +57,21 @@ export function TableCard({
   )
 }
 
+/** A table whose figures are already charted: the same values, for reading exact numbers. */
+export function TableDetails({ table, summary = "Show the table" }: {
+  table: ResultTableData
+  summary?: string
+}) {
+  return (
+    <details className="text-sm">
+      <summary className="cursor-pointer text-muted-foreground">{summary}</summary>
+      <div className="mt-2">
+        <ResultsTable table={table} />
+      </div>
+    </details>
+  )
+}
+
 export function Section({
   title,
   children,

@@ -88,7 +88,8 @@ just loadtest-down                     # stop (volumes kept)
 
 Each run prints a `testid` and a Grafana link to the **k6** dashboard for that run (login `admin`,
 password `GRAFANA_ADMIN_PASSWORD`, default `admin`). Other scenarios are `soak`, `respondent`,
-`pdf` and `outage`. Plan and baselines: issue #9.
+`pdf` and `outage`. Plan: issue #9. Write-ups of measured runs are in `loadtest/baselines/`, and their charts are
+on the app's **Load tests** page (`/load-tests`, login required). That page is updated by hand when a baseline is added.
 
 ### Load-test deploy (Proxmox LXC containers)
 

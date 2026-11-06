@@ -32,6 +32,7 @@ Prefer documented conventions over one-off solutions.
 | Day-to-day commands | [`justfile`](justfile) (`just`) and the Commands section below |
 | JWT handling | `frontend/src/api/client.ts`, `jwt_settings` in `backend/common/common/settings/base.py` |
 | Celery wiring | `backend/catalog/core/celery.py`, `backend/catalog/apps/utils/tasks.py`, `frontend/src/hooks/useTaskPoller.ts` |
+| Load test results page | `frontend/src/routes/_authed/load-tests.tsx`, `frontend/src/lib/loadtestResults.ts` (figures), `frontend/src/lib/loadtestCharts.ts` (charts) |
 | Active / finished plans | GitHub issues labelled `plan` (`gh issue list --label plan [--state closed]`) |
 
 ---
@@ -327,7 +328,7 @@ TypeScript stays on 6.0 until `typescript-eslint` supports 7 (it requires `types
 `package-lock.json`). Never run `npm` or `npx` from the repo root.
 
 **Layout (`src/`):** `api/` (client, endpoint functions, `queryKeys.ts`), `components/` (`ui/`
-for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `store/`, `test/`,
+for shadcn, `charts/`, `layout/`, one folder per feature), `hooks/`, `lib/`, `routes/`, `schemas/`, `store/`, `test/`,
 `__tests__/routes/`, `types/`.
 
 **Conventions**
@@ -377,7 +378,10 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
 **Utilities**
 - Dates: always through the `src/lib/date.ts` wrappers, never `date-fns` directly in components.
 - Charts: ECharts only, through the lazy-loaded `src/components/charts/EChart.tsx` wrapper (keep
-  it code-split). Do not add another chart library.
+  it code-split, as `ChartCard` does). Do not add another chart library. For done / waiting charts, use
+  `useChartPalette`. For separate series, use `useSeriesPalette` (`--series-*` in `index.css`), and give each
+  series a fixed slot so it keeps its colour. Keep that order: it is what keeps neighbouring series distinct
+  under colour blindness. Never use two y-axes.
 - Markdown / LLM output: render with `src/components/Markdown.tsx`.
 - Surveys: render with `src/components/survey/SurveyRenderer.tsx`. It maps SurveyJS's CSS
   variables onto the shadcn tokens. Read a submitted response against its
@@ -398,6 +402,9 @@ for shadcn, `charts/`, `layout/`), `hooks/`, `lib/`, `routes/`, `schemas/`, `sto
   `src/test/renderRoute.tsx` (loaders, guards and links all run).
 - Co-locate tests with the code they test (`Button.test.tsx` next to `button.tsx`). Route tests
   live in `src/__tests__/routes/`. Zod schemas get plain unit tests.
+- happy-dom has no canvas, so route tests mock `echarts-for-react` and test the option objects in `lib/`.
+  What needs a real canvas (chart size, tooltips, ECharts' aria label) goes in Playwright, as
+  `e2e/load-tests.spec.ts` does.
 - End-to-end tests use Playwright and live in `frontend/e2e/*.spec.ts` (outside `src/`, excluded
   from Vitest in `vite.config.ts`). `playwright.config.ts` starts Vite on :5174, or reuses a dev
   server already running there. Specs mock the backend with `page.route` on URLs whose pathname
@@ -488,8 +495,11 @@ configs, `just k6 load TARGET=lxc RATE=<fixed> HOLD=5m` on each, back to back, i
 affected by run-to-run variation than comparing knees. Only compare runs with the same settings. Stop a soak
 after 5 minutes in a row over 1 % dropped iterations: it won't stop itself. Record each
 baseline as `loadtest/baselines/<date>.md` (`just k6-report <testid>` makes the tables), then add
-it to the `/load-tests` page (`frontend/src/lib/loadtestResults.ts` for figures, `components/loadtest/LoadTestTabs.tsx`
-for text), which is copied by hand. The page needs a login but its JS chunk does not, so keep LAN addresses and secrets out of it.
+it to the `/load-tests` page, which is copied by hand: figures in `frontend/src/lib/loadtestResults.ts`, charts in
+`lib/loadtestCharts.ts`, text in `components/loadtest/LoadTestTabs.tsx`. Prefer a chart to a bare table. A chart of table
+figures reads them from that table (`cellNumber`), so there is one copy, and the table goes behind `TableDetails`. Check any
+figure written in a chart's end label or aria text against the data. The page needs a login but its JS chunk does not, so keep
+LAN addresses and secrets out of it.
 Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_enabled` in
 `infra/ansible/group_vars/{app,instances}.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
 `just loadtest-reset` rsyncs the working tree, so it deploys whatever is checked out.

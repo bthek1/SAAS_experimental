@@ -1,21 +1,49 @@
 import { Link } from "@tanstack/react-router"
 import { ChartCard } from "@/components/dashboard/ChartCard"
-import { Findings, Prose, ResultsTable, Section, TableCard } from "@/components/loadtest/parts"
+import { Findings, Prose, Section, TableCard, TableDetails } from "@/components/loadtest/parts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSeriesPalette } from "@/hooks/useChartPalette"
 import {
+  barsHeight,
   cacheKneesOption,
   cacheMixedOption,
   cacheReadOption,
   changesOption,
   changesTable,
+  dbCpuOption,
+  endpointMixedOption,
+  endpointReadOption,
+  fixesCpuOption,
   fixesOption,
+  hitRatioOption,
+  holdCpuOption,
   holdOption,
+  kneeCpuOption,
+  kneeLatencyOption,
+  nearPeakCpuOption,
   nearPeakOption,
+  postgresRowsOption,
+  profileHitOption,
+  profileMissOption,
+  profilePythonOption,
+  rampAppCpuOption,
+  rampDbCpuOption,
   rampOption,
   rampTable,
+  readsHitOption,
+  readsMissOption,
   soakCpuOption,
+  soakDbCpuOption,
+  soakDroppedOption,
   soakLatencyOption,
+  splitCpuOption,
+  splitLatencyOption,
+  splitMemoryOption,
+  splitStressCpuOption,
+  splitStressMeanOption,
+  splitStressP95Option,
+  trueP95CpuOption,
+  trueP95LatencyOption,
 } from "@/lib/loadtestCharts"
 import {
   CHANGES,
@@ -46,7 +74,7 @@ export function CapacityTab() {
           title="Knee per stress run, req/s"
           description="Mixed traffic (47 % of requests write). Every run starts from the same reset data."
           option={changesOption(palette)}
-          height={Math.max(320, 48 + CHANGES.length * 48)}
+          height={barsHeight(CHANGES.length, 1)}
         />
         <Prose>
           <strong>Read the gaps with care.</strong> The grey run repeated the settings above it and
@@ -59,6 +87,19 @@ export function CapacityTab() {
           </Link>
           .
         </Prose>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ChartCard
+            title="p95 at each knee, ms"
+            description="Since run start."
+            option={kneeLatencyOption(palette)}
+            height={barsHeight(CHANGES.length, 2)}
+          />
+          <ChartCard
+            title="CPU at each knee, %"
+            option={kneeCpuOption(palette)}
+            height={barsHeight(CHANGES.length, 2)}
+          />
+        </div>
         <TableCard title="The numbers at each knee" table={changesTable} />
       </Section>
 
@@ -74,12 +115,19 @@ export function CapacityTab() {
           option={rampOption(palette)}
           height={380}
         />
-        <details className="text-sm">
-          <summary className="cursor-pointer text-muted-foreground">Show the table</summary>
-          <div className="mt-2">
-            <ResultsTable table={rampTable} />
-          </div>
-        </details>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ChartCard
+            title="saas-app CPU, %, by request rate"
+            option={rampAppCpuOption(palette)}
+            height={340}
+          />
+          <ChartCard
+            title="saas-db CPU, %, by request rate"
+            option={rampDbCpuOption(palette)}
+            height={340}
+          />
+        </div>
+        <TableDetails table={rampTable} />
       </Section>
     </div>
   )
@@ -114,11 +162,42 @@ export function CacheTab() {
             height={300}
           />
         </div>
-        <TableCard
-          title="At matching rates"
-          description="k6 p95 per endpoint in ms, since run start, so an earlier stall inflates the read-off column. Only the first three endpoints are cached: the others speed up because Postgres is less busy."
-          table={matchingTable}
-        />
+        <Prose>
+          <strong>At matching rates:</strong> k6 p95 per endpoint in ms, since run start, so an
+          earlier stall inflates the read-off column. Only the first three endpoints are cached: the
+          others speed up because Postgres is less busy. Mixed compares 375 req/s off with 380 on,
+          and read-mostly compares 360 req/s with 360.
+        </Prose>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ChartCard
+            title="Mixed traffic: p95 per endpoint, ms"
+            option={endpointMixedOption(palette)}
+            height={barsHeight(5, 2)}
+          />
+          <ChartCard
+            title="Read-mostly traffic: p95 per endpoint, ms"
+            option={endpointReadOption(palette)}
+            height={barsHeight(5, 2)}
+          />
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+          <ChartCard
+            title="Postgres rows read per second"
+            option={postgresRowsOption(palette)}
+            height={barsHeight(2, 2)}
+          />
+          <ChartCard
+            title="saas-db CPU, %"
+            option={dbCpuOption(palette)}
+            height={barsHeight(2, 2)}
+          />
+          <ChartCard
+            title="Cache hit ratio, %"
+            option={hitRatioOption(palette)}
+            height={barsHeight(2, 2)}
+          />
+        </div>
+        <TableDetails table={matchingTable} />
         <Findings>
           <li>
             <strong>Most of the gain is less Postgres contention.</strong> The dashboards caused
@@ -174,6 +253,17 @@ export function GrowthTab() {
             option={soakCpuOption(palette)}
             height={300}
           />
+          <ChartCard
+            title="saas-db CPU, %, by minute"
+            option={soakDbCpuOption(palette)}
+            height={300}
+          />
+          <ChartCard
+            title="Iterations dropped per minute"
+            description="These miss a counter's first jump, so they add up to less than the run's total of 7,074."
+            option={soakDroppedOption(palette)}
+            height={300}
+          />
         </div>
         <Findings>
           <li>
@@ -198,11 +288,18 @@ export function GrowthTab() {
           a hold. The cache cuts that drift but doesn't remove it, because a miss still pays for the
           full query. The earlier run also used sync workers, so this isn't a pure cache comparison.
         </Prose>
-        <ChartCard
-          title="Mean latency, ms, by minute, at ~215 req/s"
-          option={holdOption(palette)}
-          height={280}
-        />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ChartCard
+            title="Mean latency, ms, by minute, at ~215 req/s"
+            option={holdOption(palette)}
+            height={280}
+          />
+          <ChartCard
+            title="saas-app CPU, %, by minute, at ~215 req/s"
+            option={holdCpuOption(palette)}
+            height={280}
+          />
+        </div>
         <TableCard title="The two holds" table={holdTable} />
       </Section>
     </div>
@@ -222,32 +319,65 @@ export function FixesTab() {
         bigger than any gain it could show. Mean latency is usually lower at matching rates, most
         clearly at the top: 32 ms before at ~480 req/s, against 16 and 7 ms after.
       </Prose>
-      <ChartCard
-        title="Stress: mean latency, ms, by request rate"
-        option={fixesOption(palette)}
-        height={340}
-      />
-      <TableCard
-        title="True per-minute p95, stress run 3"
-        description="The first run with histograms, so there is no earlier figure to compare with. Slowest endpoint group in each minute."
-        table={trueP95Table}
-      />
-      <ChartCard
-        title="15 minutes near peak rate: mean latency, ms, by minute"
-        description="~445 req/s, about 10,000 new questionnaires a minute, reaching about 150,000 rows. Both from reset data, same code and command. Neither reached the stop rule and no request failed. Run 1 dropped 2,280 iterations in minutes 6 to 9 (saas-app at 82–90 % CPU), then recovered at about 78 %. Run 2 held about 60 % CPU and dropped none after startup."
-        option={nearPeakOption(palette)}
-        height={300}
-      />
-      <TableCard
-        title="One owner's reads on the deploy, at the end of each soak"
-        description="Median of 3 for the later run, with no other traffic. That owner has 18,416 questionnaires; the earlier one had 15,346."
-        table={readsTable}
-      />
-      <TableCard
-        title="Profile of a cache miss"
-        description="A throwaway Postgres on the dev host, so read these as ratios. 300,000 questionnaires, the owner has 15,000, cache off. Median of 3 alternating rounds."
-        table={profileTable}
-      />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard
+          title="Stress: mean latency, ms, by request rate"
+          option={fixesOption(palette)}
+          height={340}
+        />
+        <ChartCard
+          title="Stress: saas-app CPU, %, by request rate"
+          option={fixesCpuOption(palette)}
+          height={340}
+        />
+      </div>
+
+      <h3 className="font-medium">True per-minute p95, stress run 3</h3>
+      <Prose>
+        The first run with histograms, so there is no earlier figure to compare with. Slowest
+        endpoint group in each minute.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Latency, ms, by request rate" option={trueP95LatencyOption(palette)} height={300} />
+        <ChartCard title="CPU, %, by request rate" option={trueP95CpuOption(palette)} height={300} />
+      </div>
+      <TableDetails table={trueP95Table} />
+
+      <h3 className="font-medium">15 minutes near peak rate</h3>
+      <Prose>
+        ~445 req/s, about 10,000 new questionnaires a minute, reaching about 150,000 rows. Both from
+        reset data, same code and command. Neither reached the stop rule and no request failed. Run
+        1 dropped 2,280 iterations in minutes 6 to 9 (saas-app at 82–90 % CPU), then recovered at
+        about 78 %. Run 2 held about 60 % CPU and dropped none after startup.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Mean latency, ms, by minute" option={nearPeakOption(palette)} height={300} />
+        <ChartCard title="saas-app CPU, %, by minute" option={nearPeakCpuOption(palette)} height={300} />
+      </div>
+
+      <h3 className="font-medium">One owner's reads on the deploy, at the end of each soak</h3>
+      <Prose>
+        Median of 3 for the later run, with no other traffic. That owner has 18,416 questionnaires;
+        the earlier one had 15,346.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Cache miss, ms" option={readsMissOption(palette)} height={barsHeight(3, 2)} />
+        <ChartCard title="Cache hit, ms" option={readsHitOption(palette)} height={barsHeight(3, 2)} />
+      </div>
+      <TableDetails table={readsTable} />
+
+      <h3 className="font-medium">Profile of a cache miss</h3>
+      <Prose>
+        A throwaway Postgres on the dev host, so read these as ratios. 300,000 questionnaires, the
+        owner has 15,000, cache off. Median of 3 alternating rounds.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        <ChartCard title="Miss, ms" option={profileMissOption(palette)} height={barsHeight(4, 2)} />
+        <ChartCard title="Miss, Python CPU, ms" option={profilePythonOption(palette)} height={barsHeight(4, 2)} />
+        <ChartCard title="Hit, ms" option={profileHitOption(palette)} height={barsHeight(4, 2)} />
+      </div>
+      <TableDetails table={profileTable} />
+
       <Findings>
         <li>
           <strong>The profile confirms the likely causes.</strong> Parsing the timestamps the median
@@ -269,6 +399,7 @@ export function FixesTab() {
 }
 
 export function SplitTab() {
+  const palette = useSeriesPalette()
   return (
     <Section title="What splitting into two services did">
       <Prose>
@@ -279,16 +410,30 @@ export function SplitTab() {
         run: 5 app-tier cores instead of 2, and about twice the memory in use. The gain is that
         respondents keep working while <code>catalog</code> is down.
       </Prose>
-      <TableCard
-        title="Holding 5 minutes at a fixed rate, one run each"
-        description="No failed or dropped requests in any of the four. CPU and memory are one reading, 5 minutes in. The differences are small enough to be run-to-run variation."
-        table={splitHoldTable}
-      />
-      <TableCard
-        title="Stress, mixed traffic, at matching rates"
-        description="Each cell is before / after the split. Busiest app container is saas-app before and saas-instances after."
-        table={splitStressTable}
-      />
+      <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>
+      <Prose>
+        No failed or dropped requests in any of the four. CPU and memory are one reading, 5 minutes
+        in. The differences are small enough to be run-to-run variation.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        <ChartCard title="Latency, ms" option={splitLatencyOption(palette)} height={barsHeight(4, 2)} />
+        <ChartCard title="CPU, in cores" option={splitCpuOption(palette)} height={barsHeight(4, 2)} />
+        <ChartCard title="App-tier memory in use, MB" option={splitMemoryOption(palette)} height={barsHeight(4, 2)} />
+      </div>
+      <TableDetails table={splitHoldTable} />
+
+      <h3 className="font-medium">Stress, mixed traffic, at matching rates</h3>
+      <Prose>
+        Each table cell is before / after the split. Busiest app container is saas-app before and
+        saas-instances after.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        <ChartCard title="Mean latency, ms" option={splitStressMeanOption(palette)} height={300} />
+        <ChartCard title="Slowest group p95, ms" option={splitStressP95Option(palette)} height={300} />
+        <ChartCard title="Busiest app container CPU, %" option={splitStressCpuOption(palette)} height={300} />
+      </div>
+      <TableDetails table={splitStressTable} />
+
       <TableCard title="What each deploy runs" table={splitDeployTable} />
       <Findings>
         <li>

@@ -19,7 +19,40 @@ describe("/load-tests", () => {
     const kpis = await screen.findByRole("list", { name: "Key figures" })
     expect(within(kpis).getByText("Failed requests").nextElementSibling).toHaveTextContent("1")
     expect(screen.getByRole("heading", { name: "Capacity after each change" })).toBeInTheDocument()
-    expect(await screen.findAllByTestId("echart")).toHaveLength(2)
+    expect(await screen.findAllByTestId("echart")).toHaveLength(6)
+  })
+
+  it.each([
+    ["capacity", "Latency as the rate climbs", 6],
+    ["cache", "When Redis fails", 8],
+    ["growth", "Holding a steady rate", 6],
+    ["fixes", "What the dashboard fixes did", 11],
+    ["split", "What splitting into two services did", 6],
+  ])("renders the %s tab with its %s section and %i charts", async (tab, heading, charts) => {
+    renderRoute(`/load-tests?tab=${tab}`)
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument()
+    expect(await screen.findAllByTestId("echart")).toHaveLength(charts)
+  })
+
+  it("renders the method tab as text, with both of its cards", async () => {
+    renderRoute("/load-tests?tab=method")
+    expect(await screen.findByRole("region", { name: "Still open" })).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "How this was measured" })).toBeInTheDocument()
+    expect(screen.queryByTestId("echart")).not.toBeInTheDocument()
+  })
+
+  it("keeps each charted table available for exact numbers", async () => {
+    renderRoute("/load-tests?tab=fixes")
+    await screen.findByRole("heading", { name: "What the dashboard fixes did" })
+    expect(screen.getAllByText("Show the table")).toHaveLength(3)
+  })
+
+  it("links from the capacity notes to the dashboard fixes", async () => {
+    const user = userEvent.setup()
+    const { router } = renderRoute("/load-tests")
+    await user.click(await screen.findByRole("link", { name: "compared separately" }))
+    expect(await screen.findByRole("heading", { name: "What the dashboard fixes did" })).toBeInTheDocument()
+    expect(router.state.location.search).toEqual({ tab: "fixes" })
   })
 
   it("keeps the chosen tab in the URL and renders only that tab", async () => {

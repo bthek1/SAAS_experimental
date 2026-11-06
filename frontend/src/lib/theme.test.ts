@@ -7,6 +7,11 @@ describe('themeTokens', () => {
     expect(themeTokens.primary).toBe('--primary')
     expect(themeTokens.border).toBe('--border')
   })
+
+  it('names the seven series slots and the baseline colour', () => {
+    const seriesVars = Object.values(themeTokens).filter((name) => name.startsWith('--series'))
+    expect(seriesVars).toHaveLength(8)
+  })
 })
 
 describe('getCSSVar', () => {
