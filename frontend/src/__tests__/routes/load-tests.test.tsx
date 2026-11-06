@@ -27,7 +27,7 @@ describe("/load-tests", () => {
     ["cache", "When Redis fails", 8],
     ["growth", "Holding a steady rate", 6],
     ["fixes", "What the dashboard fixes did", 11],
-    ["split", "What splitting into two services did", 6],
+    ["split", "What splitting into two services did", 8],
   ])("renders the %s tab with its %s section and %i charts", async (tab, heading, charts) => {
     renderRoute(`/load-tests?tab=${tab}`)
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument()

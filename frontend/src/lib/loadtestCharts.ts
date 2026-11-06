@@ -573,6 +573,49 @@ export function soakDroppedOption(palette: SeriesPalette): EChartsOption {
   )
 }
 
+const SOAK_SPLIT = "soak-20261106T080534Z"
+const splitSoakChart = {
+  ...minuteChart,
+  xMin: 0,
+  xMax: 60,
+  xStep: 10,
+  marker: { x: 45, text: "k6 logs in again" },
+}
+
+export function splitSoakLatencyOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...splitSoakChart,
+      label:
+        "Mean latency by minute at about 350 requests per second. Before the split it is 9.6 milliseconds at minute 35 and 33 at minute 45, where that run was stopped. The split is 9.7 at minute 35, 47 at minute 45 while k6 logs in again, and 9.8 at minute 59.",
+      series: [
+        minuteSeries("Before the split", SOAK_AFTER, palette.off, "33 ms", LATENCY, 3),
+        minuteSeries("Split", SOAK_SPLIT, palette.series[0], "9.8 ms", LATENCY, 3),
+      ],
+      yMax: 50,
+      format: formatMs,
+    },
+    palette,
+  )
+}
+
+export function splitSoakCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...splitSoakChart,
+      label:
+        "CPU of the busiest app container by minute: saas-app before the split, saas-instances after. Before the split it reaches 77 percent at minute 43. The split stays between 45 and 62 percent and ends at 50.",
+      series: [
+        minuteSeries("Before the split", SOAK_AFTER, palette.off, "67 %", APP_CPU, 3),
+        minuteSeries("Split", SOAK_SPLIT, palette.series[0], "50 %", APP_CPU, 3),
+      ],
+      yMax: 100,
+      format: formatPct,
+    },
+    palette,
+  )
+}
+
 export function holdCpuOption(palette: SeriesPalette): EChartsOption {
   return lineChartOption(
     {

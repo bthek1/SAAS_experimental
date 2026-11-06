@@ -39,6 +39,8 @@ import {
   splitCpuOption,
   splitLatencyOption,
   splitMemoryOption,
+  splitSoakCpuOption,
+  splitSoakLatencyOption,
   splitStressCpuOption,
   splitStressMeanOption,
   splitStressP95Option,
@@ -53,6 +55,7 @@ import {
   profileTable,
   readsTable,
   splitDeployTable,
+  splitFullTable,
   splitHoldTable,
   splitStressTable,
   trueP95Table,
@@ -456,8 +459,43 @@ export function SplitTab() {
           req/s, in one run with no comparable earlier run.
         </li>
         <li>
-          <strong>The one failed request is here.</strong> A connection reset from saas-instances
-          during the mixed stress run, whose cause wasn't found.
+          <strong>The one failed request was a connection reset,</strong> since found and fixed
+          (see below).
+        </li>
+      </Findings>
+
+      <h3 className="font-medium">Full baseline on the split, 5 and 6 November</h3>
+      <Prose>
+        All seven scenarios, on the same 2 + 2 cores, with 0 failed requests in every run. The host
+        was busier than for the earlier runs, so fixed-rate latency reads higher, and other work on
+        it may explain that.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Soak, mean latency, ms" option={splitSoakLatencyOption(palette)} height={300} />
+        <ChartCard title="Soak, busiest app container CPU, %" option={splitSoakCpuOption(palette)} height={300} />
+      </div>
+      <TableCard title="Results" table={splitFullTable} />
+      <Findings>
+        <li>
+          <strong>The split held an hour at 350 req/s.</strong> Rows grew from 4,000 to about
+          478,000, with no failed request. Before the split the same soak began to slow at minute
+          42 and was stopped at 45. The split stayed level to the end, though that is one run of
+          each.
+        </li>
+        <li>
+          <strong>Logging in sets the limit.</strong> Every stress run, and the soak at minute 45,
+          slowed when many k6 users logged in at once. Logins hash passwords on{" "}
+          <code>catalog</code>, while <code>instances</code> had CPU to spare.
+        </li>
+        <li>
+          <strong>Moving a core didn't pay.</strong> On 1 + 3 cores logins were about 10 times
+          slower under load, and the gain on <code>instances</code> was within run-to-run
+          variation, so the deploy stays on 2 + 2.
+        </li>
+        <li>
+          <strong>The connection reset is fixed.</strong> gunicorn closed idle connections after 2
+          seconds while nginx kept them for 60, and a reused one could be reset. A test that aimed
+          at this gave 306 failures in 19,120 requests before the fix and none after.
         </li>
       </Findings>
     </Section>
@@ -474,8 +512,8 @@ export function MethodTab() {
         <CardContent>
           <Findings>
             <li>
-              <strong>Find the next limit.</strong> The last soak was stopped at minute 45, so run
-              one until it gives out.
+              <strong>Find the next limit.</strong> The split held a 1-hour soak, so where it gives
+              out past about 478,000 rows is still unknown. A 3-hour soak would find it.
             </li>
             <li>
               <strong>Explain the variation.</strong> The same test on the same code ended at ~430,
@@ -491,17 +529,14 @@ export function MethodTab() {
               still reads every row in the window for its totals.
             </li>
             <li>
-              <strong>Resize the app tier.</strong> saas-instances is now the busiest container, and{" "}
-              <code>catalog</code> uses about 3 % of its 2 cores. Moving cores across hasn't been
-              tried.
+              <strong>Pre-allocate k6's VUs.</strong> New VUs log in during a slowdown, and on the
+              split those logins on <code>catalog</code> are what break every stress run. The knee
+              is partly a test artefact until this is tried.
             </li>
             <li>
-              <strong>Soak the split.</strong> Only short runs from reset data have been measured so
-              far, and the cause of its one connection reset wasn't found.
-            </li>
-            <li>
-              <strong>Pre-allocate k6's VUs.</strong> New VUs log in during a slowdown, which may
-              feed the break and make the knee partly a test artefact.
+              <strong>Keep the host quiet.</strong> Other work on the same host matched the slowest
+              runs, but this was never proven. A run on a quiet host, or one with its own cores,
+              would settle how much of the variation it causes.
             </li>
           </Findings>
         </CardContent>

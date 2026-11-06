@@ -15,6 +15,8 @@ import {
   readsMissOption,
   soakDroppedOption,
   splitMemoryOption,
+  splitSoakCpuOption,
+  splitSoakLatencyOption,
   splitStressP95Option,
   type SeriesPalette,
 } from "./loadtestCharts"
@@ -235,6 +237,23 @@ describe("charts read from the tables", () => {
     const [before] = seriesOf(soakDroppedOption(palette))
     expect(before.data[0]).toEqual([3, 0])
     expect(before.data[before.data.length - 1]).toEqual([35, 2260])
+  })
+})
+
+describe("split soak", () => {
+  const split = RUNS["soak-20261106T080534Z"]
+
+  it("labels the last minute with its own value", () => {
+    const last = split[split.length - 1]
+    expect(last[1]).toBe(9.8)
+    expect(last[2]).toBe(50)
+    expect(JSON.stringify(splitSoakLatencyOption(palette))).toContain("9.8 ms")
+    expect(JSON.stringify(splitSoakCpuOption(palette))).toContain("50 %")
+  })
+
+  it("puts the re-login drops at minute 45, where the chart marks them", () => {
+    expect(split.findIndex((minute) => minute[4] > 0) + 1).toBe(45)
+    expect(seriesOf(splitSoakLatencyOption(palette))[0].markLine?.data[0].xAxis).toBe(45)
   })
 })
 
