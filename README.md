@@ -229,6 +229,9 @@ own copy of each type (#13):
 - `manage.py reconcile_refs [--dry-run]` compares every copy with `catalog` and repairs differences.
   It lists any copy whose type is gone but which instances still use, and leaves those in place.
 
+The app's **Service interface** page (`/service-interface`, login required) explains the same flow
+in more detail.
+
 ### A stuck outbox
 
 `OutboxStuck` fires when an event has waited over a minute (`app_outbox_oldest_pending_seconds`). Respondents are
@@ -282,7 +285,7 @@ their names and belong to `catalog`, so never drop those.
 │       ├── api/      Axios client, query keys, API functions
 │       ├── components/ui/  shadcn/ui components
 │       ├── hooks/    Custom hooks (auth, etc.)
-│       ├── lib/      cn() helper, date-fns wrappers
+│       ├── lib/      Plain logic: cn(), date wrappers, pagination, dashboards, load-test figures and charts
 │       ├── routes/   TanStack Router file-based routes (_authed/ needs login; take*/ are public share links)
 │       ├── schemas/  Zod validation schemas
 │       ├── store/    Zustand global state slices
@@ -292,7 +295,7 @@ their names and belong to `catalog`, so never drop those.
 ├── infra/observability/  Prometheus config + rules, Grafana provisioning and generated dashboards
 ├── infra/pulumi/     Pulumi program: the load-test LXC containers on Proxmox (#9)
 ├── infra/ansible/    Ansible: configures those containers (just converge)
-├── loadtest/         k6 scenarios (k6/), run.sh (`just k6`), results/ (gitignored)
+├── loadtest/         k6 scenarios (k6/), run.sh (`just k6`), report.py (`just k6-report`), baselines/, results/ (gitignored)
 └── AGENTS.md         Rules for AI coding agents
 ```
 
