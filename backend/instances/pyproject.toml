@@ -5,6 +5,7 @@ description = "Owns questionnaires and batteries made from the types, dashboards
 requires-python = ">=3.14"
 dependencies = [
   "common",
+  "django-mongodb-backend~=6.0.4",
   "weasyprint>=70.0",
 ]
 

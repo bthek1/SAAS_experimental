@@ -36,7 +36,16 @@ CACHE_REQUESTS = "app_cache_requests_total"
 CACHE_GROUPS = ("dashboard", "dashboard-scores", "pdf", "type-list")
 
 
-ROLES = ("gateway", "catalog", "instances", "db", "cache", "loadgen", "monitor")
+ROLES = (
+    "gateway",
+    "catalog",
+    "instances",
+    "db",
+    "mongo",
+    "cache",
+    "loadgen",
+    "monitor",
+)
 # Guest 241 was saas-app until #21, and older runs' samples keep that label.
 PREVIOUS_INSTANCES = {"catalog": "saas-app"}
 

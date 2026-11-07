@@ -3,6 +3,9 @@ import {
   CACHE_PAIRS,
   CHANGES,
   matchingTable,
+  mongoHoldTable,
+  mongoSoakTable,
+  mongoStressTable,
   profileTable,
   RAMP,
   readsTable,
@@ -978,6 +981,125 @@ export function splitStressP95Option(palette: SeriesPalette): EChartsOption {
 
 export function splitStressCpuOption(palette: SeriesPalette): EChartsOption {
   return splitStressOption(4, "CPU of the busiest app container by request rate, before and after the split.", 100, formatPct, palette)
+}
+
+/** Postgres (the baseline colour) against MongoDB, for mixed and read-mostly traffic. */
+function engineHoldBars(
+  rows: { row: string; name: string }[],
+  label: string,
+  format: (value: number) => string,
+  palette: SeriesPalette,
+): EChartsOption {
+  const pick = (mixedColumn: number, readColumn: number) => [
+    ...rows.map(({ row }) => cellNumber(rowNamed(mongoHoldTable, row)[mixedColumn])),
+    ...rows.map(({ row }) => cellNumber(rowNamed(mongoHoldTable, row)[readColumn])),
+  ]
+  return barsOption(
+    {
+      label: `${label} The table below has the same values.`,
+      categories: [
+        ...rows.map(({ name }) => `Mixed, ${name}`),
+        ...rows.map(({ name }) => `Read, ${name}`),
+      ],
+      format,
+      labelWidth: 90,
+      series: [
+        { name: "Postgres", color: palette.off, data: pick(1, 3) },
+        { name: "MongoDB", color: palette.series[0], data: pick(2, 4) },
+      ],
+    },
+    palette,
+  )
+}
+
+export function mongoLatencyOption(palette: SeriesPalette): EChartsOption {
+  return engineHoldBars(
+    [
+      { row: "Mean", name: "mean" },
+      { row: "p95, all requests", name: "p95" },
+    ],
+    "Latency over 5 minutes at a fixed rate, with instances on Postgres and on MongoDB.",
+    formatMs,
+    palette,
+  )
+}
+
+export function mongoCpuOption(palette: SeriesPalette): EChartsOption {
+  return engineHoldBars(
+    [{ row: "Database CPU, minute 5", name: "database" }],
+    "CPU of the database container at minute 5 of the same runs, Postgres on saas-db and MongoDB on saas-mongo.",
+    formatPct,
+    palette,
+  )
+}
+
+export function mongoKneeOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label:
+        "Knee of each stress run. Mixed traffic: Postgres about 575, 579 and 614 requests per second, MongoDB about 332 and 322. Read-mostly: Postgres about 495, 526 and 509, MongoDB about 404 and 419. The table below has the same values.",
+      categories: mongoStressTable.rows.map((r) => String(r[0])),
+      format: (value) => `~${value}`,
+      labelWidth: 120,
+      series: [
+        {
+          name: "Knee",
+          color: palette.off,
+          data: mongoStressTable.rows.map((r) => ({
+            value: cellNumber(String(r[1]).replace("~", "")),
+            itemStyle: { color: String(r[0]).includes("MongoDB") ? palette.series[0] : palette.off },
+          })),
+        },
+      ],
+    },
+    palette,
+  )
+}
+
+function soakLine(column: number, name: string, color: string, endLabel: string): LineSeries {
+  return { ...tableLine(mongoSoakTable, name, column, color), endLabel }
+}
+
+const engineSoakChart = {
+  ...minuteChart,
+  xMin: 0,
+  xMax: 18,
+  xStep: 3,
+  marker: { x: 13, text: "MongoDB drops begin" },
+}
+
+export function mongoSoakLatencyOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...engineSoakChart,
+      label:
+        "Slowest endpoint group's p95 by minute at about 350 requests per second. Postgres rises from 13 to 57 milliseconds by minute 18. MongoDB rises from 34 to 1,388, and k6 began dropping iterations at minute 13. The table below has the same values.",
+      series: [
+        soakLine(1, "Postgres", palette.off, "57 ms"),
+        soakLine(2, "MongoDB", palette.series[0], "1,388 ms"),
+      ],
+      yMax: 1500,
+      format: formatMs,
+    },
+    palette,
+  )
+}
+
+export function mongoSoakCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...engineSoakChart,
+      label:
+        "Database container CPU by minute in the same soaks. Postgres rises from 9 to 14 percent, MongoDB from 16 to 76. The table below has the same values.",
+      series: [
+        soakLine(3, "Postgres", palette.off, "14 %"),
+        soakLine(4, "MongoDB", palette.series[0], "76 %"),
+      ],
+      yMax: 100,
+      format: formatPct,
+    },
+    palette,
+  )
 }
 
 export const changesTable: ResultTableData = {

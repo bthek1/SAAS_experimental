@@ -1,0 +1,30 @@
+# {{ ansible_managed }} (infra/ansible/roles/mongodb). #30.
+# instances' database when it runs on MongoDB. A one-member replica set: transactions
+# need one, and with auth on, a replica set needs a key file too.
+storage:
+  dbPath: /var/lib/mongodb
+  wiredTiger:
+    engineConfig:
+      # Set, not left to MongoDB: inside an LXC it can size from the host's memory.
+      # The same as shared_buffers on saas-db (a quarter of the same memory), so
+      # the comparison is fair.
+      cacheSizeGB: {{ mongo_cache_size_gb }}
+
+systemLog:
+  destination: file
+  path: /var/log/mongodb/mongod.log
+  logAppend: true
+
+net:
+  port: {{ ports.mongodb }}
+  bindIp: "127.0.0.1,{{ guest_ip }}"
+
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+
+replication:
+  replSetName: {{ mongo_replica_set }}
+
+security:
+  authorization: enabled
+  keyFile: /etc/mongodb/keyfile

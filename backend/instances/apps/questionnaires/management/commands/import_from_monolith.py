@@ -41,10 +41,11 @@ def copies(version: str) -> list[tuple]:
         ),
         (
             BatteryTypeRefSlot,
-            'battery_type_id, questionnaire_type_id, "order"',
+            'id, battery_type_id, questionnaire_type_id, "order"',
             (
-                'SELECT battery_type_id, questionnaire_type_id, "order" '
-                "FROM questionnaires_batterytypeitem"
+                # The slot's key is a UUID with no database default (#29).
+                "SELECT gen_random_uuid(), battery_type_id, questionnaire_type_id, "
+                '"order" FROM questionnaires_batterytypeitem'
             ),
         ),
         (

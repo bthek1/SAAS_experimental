@@ -1,0 +1,8 @@
+# MongoDB for instances (#30): instances alone reaches it, the scraper its exporter.
+nft_rules:
+  - {port: "{{ ports.mongodb }}", from: ["{{ guest_ips.instances }}"]}
+  - {port: "{{ ports.mongodb_exporter }}", from: ["{{ guest_ips.monitor }}"]}
+
+mongo_replica_set: rs0
+# A quarter of the container's 1 GB, as shared_buffers on saas-db (roles/postgres).
+mongo_cache_size_gb: 0.25

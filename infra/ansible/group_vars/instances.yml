@@ -12,3 +12,4 @@ conn_max_age: 60
 cache_enabled: true
 loadtest_questionnaires_per_owner: 200
 app_reset_db: false
+# Which database: instances_db_engine in all.yml (#30).

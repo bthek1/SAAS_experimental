@@ -28,7 +28,12 @@ app_env_service:
     JWT_SIGNING_KEY: "{{ jwt_signing_key | trim | replace('\n', '\\n') }}"
   # Never the signing key: this service verifies tokens and cannot mint them.
   instances:
-    INSTANCES_DATABASE_URL: "postgres://{{ instances_db_user }}:{{ instances_db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ instances_db_name }}"
+    INSTANCES_DATABASE_URL: "{{ app_instances_database_urls[instances_db_engine] }}"
+# instances_db_engine: group_vars/all.yml (#30).
+app_instances_database_urls:
+  postgres: "postgres://{{ instances_db_user }}:{{ instances_db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ instances_db_name }}"
+  mongo: "mongodb://{{ mongo_instances_user }}:{{ mongo_instances_password }}@{{ guest_ips.mongo }}:{{ ports.mongodb }}/{{ app_mongo_path }}"
+app_mongo_path: "{{ instances_db_name }}?replicaSet=rs0&authSource={{ instances_db_name }}"
 # The service's environment. Also passed to migrate and seed_loadtest, so they see
 # exactly what gunicorn sees.
 app_env: "{{ app_env_shared | combine(app_env_service[app_service]) }}"

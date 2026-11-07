@@ -188,3 +188,69 @@ export const holdTable: ResultTableData = {
     ["Threads and cache", "139,335", "0 / 0", "8.9 ms", "135 ms", "4.2 to 4.8 ms", "load-20261103T125112Z"],
   ],
 }
+
+// #30: `instances` on Postgres against MongoDB, loadtest/baselines/2026-11-06-instances-mongodb.md.
+// MongoDB runs are after its two query fixes, and so is the first Postgres run of each stress mix.
+export const mongoHoldTable: ResultTableData = {
+  columns: [{ title: "" }, { title: "Mixed, Postgres", num: true }, { title: "Mixed, MongoDB", num: true }, { title: "Read, Postgres", num: true }, { title: "Read, MongoDB", num: true }],
+  rows: [
+    ["Requests", "110,445", "110,386", "75,900", "76,128"],
+    ["Mean", "3.86 ms", "6.68 ms", "4.06 ms", "4.85 ms"],
+    ["p95, all requests", "8.54 ms", "16.12 ms", "8.74 ms", "10.44 ms"],
+    ["Max", "115 ms", "283 ms", "127 ms", "165 ms"],
+    ["Database CPU, minute 5", "9 %", "28 %", "6 %", "12 %"],
+  ],
+}
+
+export const mongoStressTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Knee, req/s", num: true }, { title: "Slowest group p95", num: true }, { title: "instances CPU", num: true }, { title: "Database CPU", num: true }, { title: "Test id", code: true }],
+  rows: [
+    ["Mixed: Postgres 1", "~575", "90 ms", "73 %", "22 %", "stress-20261106T212630Z"],
+    ["Mixed: Postgres 2", "~579", "123 ms", "77 %", "25 %", "stress-20261106T170912Z"],
+    ["Mixed: Postgres 3", "~614", "101 ms", "79 %", "25 %", "stress-20261106T173708Z"],
+    ["Mixed: MongoDB 1", "~332", "147 ms", "44 %", "30 %", "stress-20261106T215041Z"],
+    ["Mixed: MongoDB 2", "~322", "127 ms", "43 %", "27 %", "stress-20261106T220425Z"],
+    ["Read: Postgres 1", "~495", "62 ms", "77 %", "14 %", "stress-20261106T221832Z"],
+    ["Read: Postgres 2", "~526", "95 ms", "85 %", "15 %", "stress-20261106T180649Z"],
+    ["Read: Postgres 3", "~509", "80 ms", "82 %", "15 %", "stress-20261106T184413Z"],
+    ["Read: MongoDB 1", "~404", "112 ms", "65 %", "39 %", "stress-20261106T224643Z"],
+    ["Read: MongoDB 2", "~419", "145 ms", "67 %", "42 %", "stress-20261106T230725Z"],
+  ],
+}
+
+/** The first 18 minutes of each 1-hour soak at ~350 req/s; MongoDB's was stopped there. */
+export const mongoSoakTable: ResultTableData = {
+  columns: [{ title: "Minute", num: true }, { title: "Slowest group p95, Postgres", num: true }, { title: "Slowest group p95, MongoDB", num: true }, { title: "Database CPU, Postgres", num: true }, { title: "Database CPU, MongoDB", num: true }],
+  rows: [
+    [1, "13 ms", "34 ms", "9 %", "16 %"],
+    [2, "14 ms", "57 ms", "9 %", "20 %"],
+    [3, "17 ms", "83 ms", "10 %", "24 %"],
+    [4, "19 ms", "116 ms", "10 %", "27 %"],
+    [5, "21 ms", "143 ms", "10 %", "30 %"],
+    [6, "23 ms", "170 ms", "11 %", "33 %"],
+    [7, "27 ms", "195 ms", "11 %", "37 %"],
+    [8, "30 ms", "284 ms", "11 %", "41 %"],
+    [9, "32 ms", "341 ms", "12 %", "46 %"],
+    [10, "34 ms", "358 ms", "12 %", "50 %"],
+    [11, "37 ms", "417 ms", "12 %", "54 %"],
+    [12, "37 ms", "437 ms", "12 %", "56 %"],
+    [13, "41 ms", "665 ms", "13 %", "61 %"],
+    [14, "44 ms", "682 ms", "13 %", "65 %"],
+    [15, "47 ms", "1,102 ms", "13 %", "67 %"],
+    [16, "51 ms", "1,294 ms", "13 %", "72 %"],
+    [17, "52 ms", "1,435 ms", "14 %", "74 %"],
+    [18, "57 ms", "1,388 ms", "14 %", "76 %"],
+  ],
+}
+
+export const mongoResultsTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Postgres" }, { title: "MongoDB" }],
+  rows: [
+    ["Soak, ~350 req/s for 1 hour", "Held: 0 failed of 1,266,447", "Stopped at minute 18: 0 failed, but over 1 % dropped for 5 minutes"],
+    ["Respondent flow, 150 req/s for 5 minutes", "p95 4.8 ms, 0 failed", "p95 6.8 ms, 0 failed"],
+    ["PDF export, 5 req/s for 5 minutes", "p95 104 ms, 0 failed", "p95 110 ms, 0 failed"],
+    ["Outage, catalog stopped", "0 failed of 2,754", "0 failed of 2,754"],
+    ["Events after instances restarts", "Caught up in 10 s", "Caught up in 5 s"],
+    ["Storage, 4,000 questionnaires", "7.2 MB", "3.6 MB: data compressed, indexes the same size"],
+  ],
+}
