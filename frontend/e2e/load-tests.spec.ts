@@ -81,7 +81,7 @@ test("opens a charted table's exact numbers on request", async ({ page }) => {
   await expect(cell).toBeVisible();
 });
 
-for (const tab of ["capacity", "cache", "growth", "fixes", "split", "method"]) {
+for (const tab of ["capacity", "cache", "growth", "fixes", "split", "mongo", "method"]) {
   test(`fits a phone without sideways scrolling: ${tab}`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openPage(page, `/load-tests?tab=${tab}`);

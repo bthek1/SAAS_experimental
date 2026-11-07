@@ -298,3 +298,38 @@ describe("results data", () => {
     expect(rampTable.rows).toHaveLength(minutes)
   })
 })
+
+describe("Postgres against MongoDB", () => {
+  const ariaOf = (option: object) =>
+    (option as { aria: { label: { description: string } } }).aria.label.description
+
+  it("labels each soak line's end with its last row", () => {
+    const last = results.mongoSoakTable.rows[results.mongoSoakTable.rows.length - 1]
+    expect(last.slice(1)).toEqual(["57 ms", "1,388 ms", "14 %", "76 %"])
+    expect(JSON.stringify(charts.mongoSoakLatencyOption(palette))).toContain("1,388 ms")
+    expect(ariaOf(charts.mongoSoakLatencyOption(palette))).toContain("from 34 to 1,388")
+    expect(ariaOf(charts.mongoSoakCpuOption(palette))).toContain("from 16 to 76")
+  })
+
+  it("marks MongoDB's first dropped minute where the chart says", () => {
+    expect(seriesOf(charts.mongoSoakLatencyOption(palette))[0].markLine?.data[0].xAxis).toBe(13)
+  })
+
+  it("reads every stress knee from the table, coloured by engine", () => {
+    const [knees] = seriesOf(charts.mongoKneeOption(palette)) as unknown as {
+      data: { value: number; itemStyle: { color: string } }[]
+    }[]
+    expect(knees.data.map((d) => d.value)).toEqual([575, 579, 614, 332, 322, 495, 526, 509, 404, 419])
+    expect(knees.data[3].itemStyle.color).toBe("#1")
+    expect(knees.data[0].itemStyle.color).toBe("#off")
+    for (const knee of [575, 579, 614, 332, 322, 495, 526, 509, 404, 419]) {
+      expect(ariaOf(charts.mongoKneeOption(palette))).toContain(String(knee))
+    }
+  })
+
+  it("fixed-rate latency, Postgres then MongoDB", () => {
+    const [postgres, mongo] = seriesOf(charts.mongoLatencyOption(palette))
+    expect(postgres.data).toEqual([3.86, 8.54, 4.06, 8.74])
+    expect(mongo.data).toEqual([6.68, 16.12, 4.85, 10.44])
+  })
+})

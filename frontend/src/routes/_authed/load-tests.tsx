@@ -6,6 +6,7 @@ import {
   FixesTab,
   GrowthTab,
   MethodTab,
+  MongoTab,
   SplitTab,
 } from "@/components/loadtest/LoadTestTabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,10 +18,11 @@ const TABS = [
   { value: "growth", label: "Data growth", Panel: GrowthTab },
   { value: "fixes", label: "Dashboard fixes", Panel: FixesTab },
   { value: "split", label: "Service split", Panel: SplitTab },
+  { value: "mongo", label: "Postgres vs MongoDB", Panel: MongoTab },
   { value: "method", label: "Method & open questions", Panel: MethodTab },
 ] as const
 
-const tabValues = ["capacity", "cache", "growth", "fixes", "split", "method"] as const
+const tabValues = ["capacity", "cache", "growth", "fixes", "split", "mongo", "method"] as const
 type TabValue = (typeof tabValues)[number]
 
 const searchSchema = z.object({

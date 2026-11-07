@@ -92,6 +92,7 @@ def test_the_containers_and_nothing_else_on_proxmox():
             "saas-gateway",
             "saas-instances",
             "saas-loadgen",
+            "saas-mongo",
             "saas-monitor",
         ]
         proxmox = {typ for typ, _, _ in MOCKS.resources if typ.startswith("proxmoxve:")}
@@ -170,4 +171,8 @@ def test_secrets_are_generated_not_configured():
         "grafana_admin_password",
         "loadtest_owner_password",
         "redis_password",
+        "mongo_admin_password",
+        "mongo_instances_password",
+        "mongo_exporter_password",
+        "mongo_keyfile",
     }

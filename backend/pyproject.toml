@@ -47,7 +47,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.ruff]
 line-length = 88
-exclude = ["migrations", ".venv", "static", "media"]
+exclude = ["migrations", "mongo_migrations", ".venv", "static", "media"]
 target-version = "py314"
 fix = true
 
@@ -118,6 +118,7 @@ exclude = '''
 /(
     \.venv
   | migrations
+  | mongo_migrations
   | static
   | media
   | .*\.pyi

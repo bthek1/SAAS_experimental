@@ -61,6 +61,12 @@ def generate_secrets() -> dict[str, pulumi.Output]:
         "grafana_admin_password": _password("grafana-admin-password", 24),
         "loadtest_owner_password": _password("loadtest-owner-password", 24),
         "redis_password": _password("redis-password"),
+        # saas-mongo (#30): its admin, the instances user, the exporter, and the key a
+        # replica set with auth needs even with one member.
+        "mongo_admin_password": _password("mongo-admin-password"),
+        "mongo_instances_password": _password("mongo-instances-password"),
+        "mongo_exporter_password": _password("mongo-exporter-password"),
+        "mongo_keyfile": _password("mongo-keyfile", 756),
     }
 
 

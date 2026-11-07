@@ -20,6 +20,11 @@ import {
   holdOption,
   kneeCpuOption,
   kneeLatencyOption,
+  mongoCpuOption,
+  mongoKneeOption,
+  mongoLatencyOption,
+  mongoSoakCpuOption,
+  mongoSoakLatencyOption,
   nearPeakCpuOption,
   nearPeakOption,
   postgresRowsOption,
@@ -52,6 +57,10 @@ import {
   failureTable,
   holdTable,
   matchingTable,
+  mongoHoldTable,
+  mongoResultsTable,
+  mongoSoakTable,
+  mongoStressTable,
   profileTable,
   readsTable,
   splitDeployTable,
@@ -496,6 +505,66 @@ export function SplitTab() {
           <strong>The connection reset is fixed.</strong> gunicorn closed idle connections after 2
           seconds while nginx kept them for 60, and a reused one could be reset. A test that aimed
           at this gave 306 failures in 19,120 requests before the fix and none after.
+        </li>
+      </Findings>
+    </Section>
+  )
+}
+
+export function MongoTab() {
+  const palette = useSeriesPalette()
+  return (
+    <Section title="Postgres against MongoDB for instances">
+      <Prose>
+        <code>instances</code> ran on MongoDB 8.0 with the same 2 cores and 1 GB as Postgres, through{" "}
+        <code>django-mongodb-backend</code>, and every scenario ran on each engine back to back. Both
+        gave <strong>0 failed requests</strong> in every run, and respondents kept working with{" "}
+        <code>catalog</code> down. But <strong>MongoDB was slower, and got slower as rows grew</strong>:
+        the mixed stress knee fell from ~575–614 to ~322–332 req/s, and the 1-hour soak was stopped at
+        minute 18. <code>instances</code> stays on Postgres.
+      </Prose>
+
+      <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>
+      <Prose>
+        MongoDB's p95 was nearly twice Postgres's under mixed traffic. Its database CPU also rose every
+        minute at a constant rate, from 16 to 28 %, where Postgres's stayed near 9 %.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Latency, ms" option={mongoLatencyOption(palette)} height={barsHeight(4, 2)} />
+        <ChartCard title="Database CPU, %" option={mongoCpuOption(palette)} height={barsHeight(2, 2)} />
+      </div>
+      <TableDetails table={mongoHoldTable} />
+
+      <h3 className="font-medium">Stress and soak</h3>
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        <ChartCard title="Knee per stress run, req/s" option={mongoKneeOption(palette)} height={barsHeight(10, 1)} />
+        <ChartCard title="Soak, slowest group p95, ms" option={mongoSoakLatencyOption(palette)} height={300} />
+        <ChartCard title="Soak, database CPU, %" option={mongoSoakCpuOption(palette)} height={300} />
+      </div>
+      <TableDetails table={mongoStressTable} />
+      <TableDetails table={mongoSoakTable} />
+      <TableCard title="Other runs" table={mongoResultsTable} />
+      <Findings>
+        <li>
+          <strong>The first runs collapsed, from two translation problems.</strong> The backend builds
+          unique indexes as partial, which cannot find a null, so each questionnaire with no battery
+          scanned every battery: 2.8 million documents read to return 10 rows. And it joins every
+          matching row before it sorts and limits a page. Fixing both took p95 at a fixed rate from
+          5.27 s to 16 ms.
+        </li>
+        <li>
+          <strong>What is left grows with rows.</strong> Dashboard cache misses still join every row in
+          their window before keeping 10 or 500, which Postgres's planner avoids. That is what set
+          MongoDB's knee, with both containers' CPU to spare, and what slowed the soak.
+        </li>
+        <li>
+          <strong>MongoDB needs its own code paths.</strong> Transactions, the double-submit guard,
+          list joins and index shapes all differ by engine already, and each remaining slow query
+          would need another.
+        </li>
+        <li>
+          <strong>It does save disk.</strong> Compressed data took about half the space, though its
+          indexes, with UUIDs stored as text, were no smaller.
         </li>
       </Findings>
     </Section>

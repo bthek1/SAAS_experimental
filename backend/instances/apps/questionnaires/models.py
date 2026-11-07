@@ -14,7 +14,10 @@ class TimestampedModel(models.Model):
 
     class Meta:
         abstract = True
-        ordering = ["-created_at"]
+        # `-id` breaks ties: MongoDB stores milliseconds, so rows made together tie.
+        # The (owner_id, -created_at, -id) indexes match this order: without `-id`
+        # MongoDB sorts every row of the owner to return one page (#30).
+        ordering = ["-created_at", "-id"]
 
 
 # Read-only copies of the definitions, kept current by events from `catalog` (#13).
@@ -31,7 +34,7 @@ class TypeRef(models.Model):
 
     class Meta:
         abstract = True
-        ordering = ["-created_at"]
+        ordering = ["-created_at", "-id"]
 
     def __str__(self) -> str:
         return self.title
@@ -42,7 +45,7 @@ class QuestionnaireTypeRef(TypeRef):
     questionnaire_json = models.JSONField(default=dict, blank=True)
 
     class Meta(TypeRef.Meta):
-        indexes = [models.Index(fields=["owner_id", "-created_at"])]
+        indexes = [models.Index(fields=["owner_id", "-created_at", "-id"])]
 
 
 class BatteryTypeRef(TypeRef):
@@ -50,12 +53,13 @@ class BatteryTypeRef(TypeRef):
     description = models.TextField(blank=True, default="")
 
     class Meta(TypeRef.Meta):
-        indexes = [models.Index(fields=["owner_id", "-created_at"])]
+        indexes = [models.Index(fields=["owner_id", "-created_at", "-id"])]
 
 
 class BatteryTypeRefSlot(models.Model):
     """A plain UUID, not a foreign key: a battery type's event can arrive first."""
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     battery_type = models.ForeignKey(
         BatteryTypeRef, on_delete=models.CASCADE, related_name="slots"
     )
@@ -73,6 +77,7 @@ class BatteryTypeRefSlot(models.Model):
 class RetiredRef(models.Model):
     """Stops a late event from bringing back a copy of a deleted type."""
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     kind = models.CharField(max_length=32)
     ref_id = models.UUIDField()
     retired_at = models.DateTimeField(auto_now_add=True)
@@ -113,7 +118,7 @@ class Battery(TimestampedModel):
 
     class Meta(TimestampedModel.Meta):
         verbose_name_plural = "batteries"
-        indexes = [models.Index(fields=["owner_id", "-created_at"])]
+        indexes = [models.Index(fields=["owner_id", "-created_at", "-id"])]
 
     def __str__(self) -> str:
         return f"{self.battery_type.title} - {self.name or self.share_token}"
@@ -141,8 +146,9 @@ class Questionnaire(TimestampedModel):
 
     class Meta(TimestampedModel.Meta):
         indexes = [
-            models.Index(fields=["owner_id", "-created_at"]),
-            # Partial: most dashboard reads only want submitted rows.
+            models.Index(fields=["owner_id", "-created_at", "-id"]),
+            # Partial: most dashboard reads only want submitted rows. Full on MongoDB,
+            # see core/mongodb/base.py.
             models.Index(
                 fields=["owner_id", "-submitted_at"],
                 condition=models.Q(submitted_at__isnull=False),
