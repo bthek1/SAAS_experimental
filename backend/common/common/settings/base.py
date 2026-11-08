@@ -125,10 +125,17 @@ REST_FRAMEWORK = {
 }
 
 
-def jwt_settings(*, can_sign: bool, dev_fallback: bool) -> dict:
-    """RS256, so a service without the private key can verify but never mint (#13)."""
-    signing = env.str("JWT_SIGNING_KEY", default="", multiline=True) if can_sign else ""
-    verifying = env.str("JWT_VERIFYING_KEY", default="", multiline=True)
+def jwt_settings(*, can_sign: bool, dev_fallback: bool, use_env: bool = True) -> dict:
+    """RS256, so a service without the private key can verify but never mint (#13).
+
+    `use_env=False` ignores JWT_* in the environment and gives the dev pair: tests sign
+    with DEV_SIGNING_KEY, so a key in a developer's `.env` must not reach them (#33).
+    """
+    signing = verifying = ""
+    if use_env:
+        if can_sign:
+            signing = env.str("JWT_SIGNING_KEY", default="", multiline=True)
+        verifying = env.str("JWT_VERIFYING_KEY", default="", multiline=True)
     if dev_fallback:
         signing = (signing or DEV_SIGNING_KEY) if can_sign else ""
         verifying = verifying or DEV_VERIFYING_KEY

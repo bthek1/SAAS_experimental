@@ -11,7 +11,7 @@ DATABASES = {
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
-SIMPLE_JWT = jwt_settings(can_sign=False, dev_fallback=True)
+SIMPLE_JWT = jwt_settings(can_sign=False, dev_fallback=True, use_env=False)
 PEER_OUTBOUND_TOKEN = INSTANCES_TO_CATALOG_TOKEN
 PEER_INBOUND_TOKEN = CATALOG_TO_INSTANCES_TOKEN
 

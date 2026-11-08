@@ -226,8 +226,9 @@ selects it (via `DJANGO_SETTINGS_MODULE`). All config comes from env vars via `d
 repo-root `.env` (`base.py` reads `BASE_DIR.parent / ".env"`). Never hardcode secrets or
 credentials. `DATABASE_URL` configures `catalog`'s database.
 
-**Auth:** JWT via simplejwt, RS256 (#13). `POST /api/token/` and `POST /api/token/refresh/`. `dev`,
-`test` and `e2e` fall back to the published pair in `common/dev_keys.py`; `prod` and `loadtest`
+**Auth:** JWT via simplejwt, RS256 (#13). `POST /api/token/` and `POST /api/token/refresh/`. `dev`
+falls back to the published pair in `common/dev_keys.py`; `test` and `e2e` always use it, ignoring
+`JWT_*` in `.env`, since tests sign with it (#33); `prod` and `loadtest`
 need `JWT_SIGNING_KEY` and `JWT_VERIFYING_KEY`, and refuse the dev key. Instance views authenticate with
 `apps/questionnaires/auth.py`: no user table, so `request.user` there has only `pk`, and rows hold a plain
 `owner_id`. Deactivation and deletion arrive as events (`apps/catalog/user_events.py`) into `BlockedOwner`.
