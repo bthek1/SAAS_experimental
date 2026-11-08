@@ -17,7 +17,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import dashboard, services
-from .db import joined
 from .models import Battery, Questionnaire
 from .pdf import generate_response_pdf
 from .serializers import (
@@ -62,7 +61,7 @@ class QuestionnaireViewSet(OwnedModelViewSet):
     serializer_class = QuestionnaireSerializer
 
     def get_queryset(self):
-        queryset = joined(super().get_queryset(), "questionnaire_type")
+        queryset = super().get_queryset().select_related("questionnaire_type")
         if self.action != "list":
             return queryset
         query = QuestionnaireListQuerySerializer(
@@ -133,12 +132,12 @@ class QuestionnaireViewSet(OwnedModelViewSet):
 
 
 def with_slots(queryset):
-    return joined(queryset, "battery_type").prefetch_related(
+    return queryset.select_related("battery_type").prefetch_related(
         Prefetch(
             "questionnaires",
-            queryset=joined(Questionnaire.objects.all(), "questionnaire_type").order_by(
-                "battery_order"
-            ),
+            queryset=Questionnaire.objects.select_related(
+                "questionnaire_type"
+            ).order_by("battery_order"),
         )
     )
 

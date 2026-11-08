@@ -21,11 +21,11 @@ from common.peers import (
     ServiceUnavailable,
     catalog_client,
 )
+from django.db import transaction
 from django.db.models import RestrictedError
 from django.utils.dateparse import parse_datetime
 from prometheus_client import Counter
 
-from .db import atomic
 from .models import (
     Battery,
     BatteryTypeRef,
@@ -68,7 +68,7 @@ def _fields(kind: str, version: int, data: dict) -> dict:
     return fields
 
 
-@atomic
+@transaction.atomic
 def _upsert(kind: str, ref_id, version: int, data: dict) -> str:
     fields = _fields(kind, version, data)
     ref, created = (
@@ -137,7 +137,7 @@ def _apply_user_event(action: str, owner_id, version: int) -> str:
     return APPLIED
 
 
-@atomic
+@transaction.atomic
 def apply_event(event: dict) -> str:
     """Apply one event from `catalog`. Safe to call any number of times."""
     kind, _, action = event["type"].rpartition(".")
@@ -156,7 +156,7 @@ def apply_event(event: dict) -> str:
     return _upsert(kind, ref_id, event["version"], event["data"])
 
 
-@atomic
+@transaction.atomic
 def store_snapshot(snapshot: dict) -> str:
     """Store an authoritative answer from `catalog`, clearing any tombstone."""
     kind = snapshot["type"].rpartition(".")[0]
@@ -198,7 +198,7 @@ def ensure_questionnaire_types(ids) -> None:
             raise ServiceUnavailable()
 
 
-@atomic
+@transaction.atomic
 def retire_ref(kind: str, ref_id) -> None:
     """Delete a copy before its source goes. Raises RefInUse if instances use it."""
     ref = MODELS[kind].objects.select_for_update().filter(pk=ref_id).first()

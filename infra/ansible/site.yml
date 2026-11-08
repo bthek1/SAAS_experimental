@@ -11,11 +11,6 @@
   roles:
     - {role: postgres, tags: [db]}
 
-- name: MongoDB for instances (saas-mongo, issue 30)
-  hosts: mongo
-  roles:
-    - {role: mongodb, tags: [mongo]}
-
 - name: Redis cache (saas-cache)
   hosts: cache
   roles:

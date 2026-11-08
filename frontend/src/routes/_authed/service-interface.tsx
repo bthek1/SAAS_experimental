@@ -29,7 +29,7 @@ const SERVICES = [
   },
   {
     name: "instances",
-    database: "Its own database: PostgreSQL, or MongoDB",
+    database: "Its own PostgreSQL database",
     summary: "Everything made from a type, and what respondents send back.",
     owns: [
       "Questionnaires and batteries",
@@ -155,7 +155,7 @@ const FLOWS: { title: string; steps: ReactNode[] }[] = [
         <Code>catalog</Code> refuses with a 409 if a battery type still includes the questionnaire type.
       </>,
       <>
-        It then asks <Code>instances</Code> to retire the copy. A delete restriction there refuses
+        It then asks <Code>instances</Code> to retire the copy. A database restriction there refuses
         with a 409 if anything was made from it.
       </>,
       "If instances cannot answer, the owner gets a 503 and nothing is deleted.",

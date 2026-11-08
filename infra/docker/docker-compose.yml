@@ -36,30 +36,6 @@ services:
     volumes:
       - instances_postgres_data:/var/lib/postgresql/data/
 
-  # instances on MongoDB instead (#29). Only with `--profile mongo`, and used only when
-  # `.env` sets INSTANCES_DATABASE_URL to it for a host-run server, or by
-  # `core.settings.test_mongo`. A single-node replica set: transactions need one.
-  # No auth, so loopback only.
-  instances_mongo:
-    image: mongo:8
-    profiles: [mongo]
-    command: ["--replSet", "rs0", "--bind_ip_all"]
-    ports:
-      - "127.0.0.1:27018:27017"
-    volumes:
-      - instances_mongo_data:/data/db
-    healthcheck:
-      # Also initiates the replica set on first start.
-      test:
-        - CMD
-        - mongosh
-        - --quiet
-        - --eval
-        - "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok }"
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   catalog:
     build:
       context: ../../backend
@@ -200,4 +176,3 @@ services:
 volumes:
   postgres_data:
   instances_postgres_data:
-  instances_mongo_data:

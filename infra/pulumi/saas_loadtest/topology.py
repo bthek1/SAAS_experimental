@@ -28,14 +28,12 @@ GUEST_IDS = {
     "cache": 245,
     "instances": 246,
     "gateway": 247,
-    # instances on MongoDB, to compare with Postgres on saas-db (#30).
-    "mongo": 248,
 }
 ROLES = tuple(GUEST_IDS)
 ID_RANGE = range(241, 250)
 RESERVED = range(220, 241)  # ~/kubernates_project's VMs
 
-# The host had ~24 GB available on 2026-11-02 (63 GB total). About 9 GB here.
+# The host had ~24 GB available on 2026-11-02 (63 GB total). About 8 GB here.
 DEFAULT_SIZES = {
     # catalog keeps 2 cores although it is mostly idle: logins hash passwords, and on
     # 1 core they were ~10x slower under load (1.4 s -> 14 s), for a hot-path gain on
@@ -50,8 +48,6 @@ DEFAULT_SIZES = {
     "instances": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
     # nginx only.
     "gateway": {"cores": 1, "memoryMb": 512, "diskGb": 4},
-    # The same as saas-db, so only the database differs in the comparison (#30).
-    "mongo": {"cores": 2, "memoryMb": 1024, "diskGb": 10},
 }
 
 

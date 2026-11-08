@@ -103,7 +103,6 @@ Rarer tasks have no recipe. Run them directly:
 | Vitest UI | `cd frontend && npm run test:ui` |
 | Frontend e2e (Playwright) | `cd frontend && npm run e2e` (first time: `npx playwright install chromium`) |
 | Playwright UI / report | `cd frontend && npm run e2e:ui` / `npx playwright show-report` |
-| `instances` tests on MongoDB | `just compose --profile mongo up -d instances_mongo`, then `cd backend && uv run pytest instances --ds core.settings.test_mongo` |
 | Frontend e2e against a real backend | `cd frontend && npm run e2e:integration` (needs `uv sync` in `backend/`, no Docker) |
 
 ### Local services and ports
@@ -115,7 +114,6 @@ Host ports are offset so they do not clash with a locally installed Postgres or 
 | `db` | `5435` -> 5432 | Postgres 16 (`appuser` / `apppassword` / `appdb`) |
 | `redis` | `127.0.0.1:6380` -> 6379 | Celery broker (db 0) and cache (db 1). Loopback only: see Cache |
 | `db` (`instances_db`) | `5437` -> 5432 | The `instances` database (`instancesdb`). `db` above is `catalog`'s |
-| `instances_mongo` | `127.0.0.1:27018` -> 27017 | `instances` on MongoDB (#29). Only with `--profile mongo`; no auth, so loopback only |
 | `gateway` | `8005` | One public origin, so `VITE_API_BASE_URL` stays valid |
 | `catalog` | `8006` | Django dev server |
 | `instances` | `8007` | Django dev server |
@@ -147,6 +145,9 @@ values in the root `.env`.
 **Stack:** Python 3.14, Django 6.0, DRF, PostgreSQL (psycopg3), simplejwt, Celery + Redis
 (`django-celery-results`, `django-celery-beat`), django-environ, uv, ruff, mypy, pytest +
 pytest-django, factory-boy, faker, freezegun, pytest-mock.
+
+`instances` on MongoDB was tried and removed (#29, #30): it was slower and got slower as rows grew.
+The k6 results are in `loadtest/baselines/2026-11-06-instances-mongodb.md` and on `/load-tests`.
 
 Django is held at 6.0.x because `django-celery-beat` 2.9.0 requires `django<6.1`. Upgrade with
 `uv lock --upgrade` from `backend/` (the workspace root, one lock for all services); it moves to 6.1 once celery-beat allows it.
@@ -208,24 +209,6 @@ to `/internal/`, an event or an outage behaviour updates it too (#27).
 - Datetimes are timezone-aware (`USE_TZ = True`, `TIME_ZONE = "UTC"`). Use
   `django.utils.timezone.now()`, or `datetime.now(UTC)` outside the ORM. Never naive
   `datetime.now()` or `datetime.utcnow()`. Freeze time in tests with `freezegun`.
-
-**MongoDB for `instances` (#29).** `instances` runs on Postgres or MongoDB, chosen by the scheme of
-`INSTANCES_DATABASE_URL` (`core/settings/database.py`). MongoDB needs a replica set (transactions). Its
-engine is `core.mongodb`, `django-mongodb-backend` with two changes to indexes: one whose condition is only
-`isnull=False` is built in full, since the backend cannot build it partial, and so is a unique index on a
-field that is never null. The backend makes those partial, and a partial index cannot find `null`, so
-`select_related` on a nullable foreign key scanned the whole target collection per row (#30). Django's own apps there use
-ObjectId keys from `mongo_migrations/` (generated: rerun `makemigrations admin auth contenttypes` under
-`core.settings.test_mongo` after a Django upgrade). On MongoDB, Django's `transaction.atomic` does nothing
-and `select_for_update()` is ignored, so `instances` code uses `atomic()` from `apps/questionnaires/db.py`,
-and guards a one-time change with a conditional `update()` (as `submit_questionnaire` does), not a row
-lock. Every model needs a UUID key (the backend refuses integer auto keys) and lists need an `-id`
-tiebreaker, because MongoDB stores milliseconds and rows made together tie. An index that serves a list
-ends with that `-id` too: MongoDB has no incremental sort, so without it a page sorts all the owner's rows.
-The backend runs `select_related` as a `$lookup` before `$sort` and `$limit`, so a page joins every
-matching row: on a list, use `joined()` from `db.py` (a join on Postgres, a prefetch on MongoDB). Run the
-suite on both engines after a model or query change, and check a hot query with `explain` on MongoDB
-(mongod logs every query over 100 ms with `docsExamined`).
 
 **Settings:** shared ones are in `common/common/settings/`. Each service adds `core/settings/service.py`,
 and `core/settings/{dev,prod,test,e2e,loadtest}.py` that import both. Anything a profile changes, such as
@@ -326,8 +309,7 @@ mutating `base`'s in place would leak into `prod`.
   cache Redis gains Celery, its broker gets a second instance. Only the dev stack shares one, with
   no `maxmemory`.
 
-**Testing:** `core.settings.test` in each service uses SQLite and a fast password hasher. `instances` also has
-`core.settings.test_mongo`, the same tests on MongoDB (`INSTANCES_TEST_MONGO_URL`, default the dev `instances_mongo`). It also sets
+**Testing:** `core.settings.test` in each service uses SQLite and a fast password hasher. It also sets
 `CACHE_ENABLED = False` (`e2e` inherits this), so tests see fresh data. Cache tests opt in with the
 `cache_on` fixture, and need `django_capture_on_commit_callbacks(execute=True)` for a bump to run. Fixtures go in
 `conftest.py` (app-level or `backend/<service>/conftest.py`). App tests live in `apps/<name>/`.
@@ -487,10 +469,10 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 
 ## Infra: Proxmox LXC containers (`infra/pulumi/`)
 
-The load-test deploy (#9, Phases 3 to 5, #13) runs in eight unprivileged LXC containers on the Proxmox
+The load-test deploy (#9, Phases 3 to 5, #13) runs in seven unprivileged LXC containers on the Proxmox
 host `192.168.2.70` (node `bthek1`): `saas-catalog` 241 (the `catalog` service; it kept its `app` role and id so
 Pulumi never replaces it), `saas-db` 242, `saas-monitor` 243, `saas-loadgen` 244, `saas-cache` 245,
-`saas-instances` 246, `saas-gateway` 247, `saas-mongo` 248 (#30). A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
+`saas-instances` 246, `saas-gateway` 247. A container's IP is its id as the last octet (`192.168.2.241`…). Pulumi
 creates bare containers. Ansible (Phase 4) configures them.
 
 - ⚠️ **Guest ids 241 to 249 only.** Ids are fixed per role in `saas_loadtest/topology.py`, never
@@ -532,7 +514,7 @@ Tuning knobs: `gunicorn_workers`, `gunicorn_threads`, `conn_max_age` and `cache_
 `just loadtest-reset` rsyncs the working tree, so it deploys whatever is checked out.
 
 **Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
-(all), `postgres` (saas-db), `mongodb` (saas-mongo), `redis` (saas-cache), `app` (saas-catalog and saas-instances, told apart by
+(all), `postgres` (saas-db), `redis` (saas-cache), `app` (saas-catalog and saas-instances, told apart by
 `app_service` and `app_unit` in `group_vars`), `gateway` (saas-gateway), `monitor` (saas-monitor) and
 `loadgen` (saas-loadgen). The inventory (`inventory/pulumi.py`) reads the Pulumi stack outputs, secrets
 included, and refuses any non-private address. Nothing secret is stored in the repo.
@@ -545,16 +527,7 @@ included, and refuses any non-private address. Nothing secret is stored in the r
   - saas-db holds `catalogdb` and `instancesdb` with separate login roles. The monolith's `appdb` is still
     there, unused, as a way back;
   - Postgres 16 and Redis from apt (Redis: no RDB or AOF, `maxmemory` + `allkeys-lru`);
-  - saas-mongo runs MongoDB 8.0 from MongoDB's apt repository (key and packages pinned in `group_vars/all.yml`),
-    a one-member replica set `rs0` with auth and a key file, its WiredTiger cache set to saas-db's
-    `shared_buffers`. `instances` uses it only with `-e instances_db_engine=mongo` (#30). Switch with a reset,
-    so the new database gets the copies and the seed: `cd infra/ansible && ansible-playbook site.yml --tags app
-    --limit app,instances -e app_reset_db=true -e instances_db_engine=mongo`. Without `-e`, the next converge
-    or `just loadtest-reset` puts it back on Postgres. `manage.py flush` empties MongoDB without shrinking its
-    files, so measure storage on a dropped and re-seeded database. The comparison is
-    `loadtest/baselines/2026-11-06-instances-mongodb.md`: Postgres stays the engine. A new container's host key
-    is not trusted yet: add it first (`ssh-keyscan -t ed25519 <ip> >> ~/.ssh/known_hosts`);
-  - Prometheus, Grafana, node_exporter, postgres_exporter, redis_exporter, mongodb_exporter, k6 and uv as release binaries
+  - Prometheus, Grafana, node_exporter, postgres_exporter, redis_exporter, k6 and uv as release binaries
     pinned by version **and sha256** in `group_vars/all.yml`. Bump both together.
 - A second run must report `changed=0`, and `--check --diff` must show nothing. A task that
   always reports changed hides real changes: fix it rather than ignore it. `ansible-lint`

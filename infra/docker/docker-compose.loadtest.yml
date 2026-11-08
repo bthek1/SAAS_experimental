@@ -35,27 +35,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # instances on MongoDB instead (#29), not published. Started only with
-  # COMPOSE_PROFILES=mongo, and used only with LOADTEST_INSTANCES_DATABASE_URL set:
-  #   COMPOSE_PROFILES=mongo LOADTEST_INSTANCES_DATABASE_URL='mongodb://instances_mongo:27017/instancesdb?replicaSet=rs0&directConnection=true' just loadtest-up
-  instances_mongo:
-    image: mongo:8
-    profiles: [mongo]
-    command: ["--replSet", "rs0", "--bind_ip_all"]
-    volumes:
-      - loadtest_instances_mongo:/data/db
-    healthcheck:
-      # Also initiates the replica set on first start.
-      test:
-        - CMD
-        - mongosh
-        - --quiet
-        - --eval
-        - "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok }"
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   # Cache only, not published. Same settings as saas-cache on the LXC deploy.
   redis:
     image: redis:7.4.8-alpine
@@ -131,9 +110,6 @@ services:
     depends_on:
       instances_db:
         condition: service_healthy
-      instances_mongo:
-        condition: service_healthy
-        required: false
       redis:
         condition: service_healthy
     env_file:
@@ -142,7 +118,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: core.settings.loadtest
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
-      INSTANCES_DATABASE_URL: ${LOADTEST_INSTANCES_DATABASE_URL:-postgres://appuser:apppassword@instances_db:5432/instancesdb}
+      INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CACHE_REDIS_URL: redis://redis:6379/1
       # The names here are private by suffix, which core.settings.loadtest requires of every entry.
       ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal,catalog.loadtest.internal,instances.loadtest.internal
@@ -287,6 +263,5 @@ networks:
 volumes:
   loadtest_postgres:
   loadtest_instances_postgres:
-  loadtest_instances_mongo:
   loadtest_prometheus:
   loadtest_grafana:

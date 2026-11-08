@@ -2,7 +2,7 @@
 
 A decoupled web application, created from the `django_react_template` starter:
 
-- **`backend/`**: two Django REST Framework services, `catalog` and `instances`, behind one gateway, each with its own database (Python 3.14, PostgreSQL, `instances` optionally on MongoDB, Celery)
+- **`backend/`**: two Django REST Framework services, `catalog` and `instances`, behind one gateway, each with its own database (Python 3.14, PostgreSQL, Celery)
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router, TanStack Query)
 
 ---
@@ -67,12 +67,6 @@ npm run e2e:ui          # same, in Playwright's UI mode
 npm run e2e:integration # end-to-end against both real services behind the router (fresh SQLite, ports 8015-8017 / 5184)
 ```
 
-`instances` can run on MongoDB instead of Postgres (#29): set `INSTANCES_DATABASE_URL` to a
-`mongodb://` URL (see `.env.example`). Start the dev one with `just compose --profile mongo up -d
-instances_mongo`, then run the same tests on it with `cd backend && uv run pytest instances --ds
-core.settings.test_mongo`. On MongoDB, timestamps from `instances` have millisecond precision, and
-foreign-key rules (a type in use cannot be deleted) are enforced by Django rather than the database.
-
 The integration suite (`frontend/e2e/integration/questionnaires.spec.ts`) walks the questionnaire
 flow end to end: build a type, share a link, answer it logged out, see the score, step through a
 battery, and check that one user cannot see another's data.
@@ -99,11 +93,9 @@ on the app's **Load tests** page (`/load-tests`, login required). That page is u
 
 ### Load-test deploy (Proxmox LXC containers)
 
-The baseline runs on eight LXC containers on the Proxmox host (`saas-catalog` .241,
+The baseline runs on seven LXC containers on the Proxmox host (`saas-catalog` .241,
 `saas-db` .242, `saas-monitor` .243, `saas-loadgen` .244, `saas-cache` .245, `saas-instances` .246,
-`saas-gateway` .247, `saas-mongo` .248, on `192.168.2.0/24`). `saas-mongo` holds `instances`' data
-only when it is switched to MongoDB (#30, see AGENTS.md). The comparison, which kept `instances` on
-Postgres, is `loadtest/baselines/2026-11-06-instances-mongodb.md` and the `/load-tests` page. Pulumi creates them and Ansible
+`saas-gateway` .247, on `192.168.2.0/24`). Pulumi creates them and Ansible
 configures them. One-time setup (state, passphrase, API token): `infra/pulumi/Pulumi.loadtest.yaml.example`.
 
 ```bash
@@ -115,7 +107,7 @@ just k6 smoke TARGET=lxc        # k6 on saas-loadgen, through saas-gateway
 ```
 
 Grafana: `http://192.168.2.243:3000` (password: `just infra stack output grafana_admin_password
---show-secrets`), with dashboards k6, Django, Gateway, Containers, Postgres, MongoDB and Redis cache.
+--show-secrets`), with dashboards k6, Django, Gateway, Containers, Postgres and Redis cache.
 
 ---
 
@@ -283,7 +275,7 @@ their names and belong to `catalog`, so never drop those.
 │   ├── common/       Shared infrastructure: settings, cache, metrics, peer calls. No models.
 │   ├── catalog/      Service: manage.py, core/, apps/
 │   │   └── apps/     accounts (users, JWT), catalog (types, outbox), utils (health, Celery demo)
-│   ├── instances/    Service: manage.py, core/, apps/, mongo_migrations/ (Django's apps on MongoDB)
+│   ├── instances/    Service: manage.py, core/, apps/
 │   │   └── apps/     questionnaires (instances, share links, dashboards, PDFs, type copies)
 │   ├── contracts/    JSON shapes of /internal/ calls, tested by both services
 │   └── tests/        Repo-level tests (service boundary, gateway, infra layout, k6 targets)
@@ -316,7 +308,7 @@ their names and belong to `catalog`, so never drop those.
 | Backend language | Python 3.14 |
 | Backend framework | Django 6 + Django REST Framework |
 | Auth | JWT (`djangorestframework-simplejwt`) |
-| Database | PostgreSQL 16 (`instances` also runs on MongoDB 8, through `django-mongodb-backend`) |
+| Database | PostgreSQL 16 |
 | Async tasks | Celery + Redis (`django-celery-results`, `django-celery-beat`) |
 | Cache | Redis, through Django's cache framework and `common/cache.py` |
 | Dependency manager | [uv](https://github.com/astral-sh/uv) |

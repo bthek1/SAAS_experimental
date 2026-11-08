@@ -523,64 +523,6 @@ def postgres_dashboard():
     )
 
 
-def mongo_latency(kind: str) -> str:
-    # The server's own totals, in microseconds: mean time per operation each minute.
-    latency = rate("mongodb_mongod_op_latencies_latency_total", f'type="{kind}"')
-    ops = rate("mongodb_mongod_op_latencies_ops_total", f'type="{kind}"')
-    return f"sum({latency}) / sum({ops}) / 1e6"
-
-
-DOCUMENTS = "mongodb_mongod_metrics_document_total"
-
-
-def mongodb_dashboard():
-    return dashboard(
-        "mongodb",
-        "MongoDB",
-        [
-            panel(
-                "Operations",
-                [(f"sum by (type) ({rate('mongodb_op_counters_total')})", "{{type}}")],
-                unit="ops",
-            ),
-            panel(
-                "Mean server latency",
-                [
-                    (mongo_latency(kind), kind)
-                    for kind in ("read", "write", "command", "transactions")
-                ],
-                unit="s",
-            ),
-            panel(
-                "Documents",
-                [
-                    (f"sum by (state) ({rate(DOCUMENTS)})", "{{state}}/s"),
-                ],
-            ),
-            panel(
-                "WiredTiger cache",
-                [
-                    (
-                        'max(mongodb_mongod_wiredtiger_cache_bytes{type="total"})',
-                        "used",
-                    ),
-                    ("max(mongodb_mongod_wiredtiger_cache_max_bytes)", "limit"),
-                ],
-                unit="bytes",
-            ),
-            panel(
-                "Connections",
-                [
-                    ('max(mongodb_connections{state="current"})', "current"),
-                    ('max(mongodb_connections{state="active"})', "active"),
-                ],
-            ),
-        ],
-        [],
-        "mongodb_exporter on saas-mongo (LXC deploy only, #30): instances on MongoDB.",
-    )
-
-
 CACHE_REQUESTS = "app_cache_requests_total"
 
 
@@ -640,7 +582,6 @@ DASHBOARDS = {
     "containers.json": containers_dashboard,
     "postgres.json": postgres_dashboard,
     "redis.json": redis_dashboard,
-    "mongodb.json": mongodb_dashboard,
 }
 
 
