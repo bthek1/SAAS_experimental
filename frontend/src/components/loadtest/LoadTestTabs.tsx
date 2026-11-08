@@ -521,7 +521,7 @@ export function MongoTab() {
         gave <strong>0 failed requests</strong> in every run, and respondents kept working with{" "}
         <code>catalog</code> down. But <strong>MongoDB was slower, and got slower as rows grew</strong>:
         the mixed stress knee fell from ~575–614 to ~322–332 req/s, and the 1-hour soak was stopped at
-        minute 18. <code>instances</code> stays on Postgres.
+        minute 18. <code>instances</code> stays on Postgres, and the MongoDB support was removed.
       </Prose>
 
       <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>

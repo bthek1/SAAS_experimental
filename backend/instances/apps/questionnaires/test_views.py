@@ -4,7 +4,6 @@ import pytest
 from common.peers import RefInUse
 
 from . import refs, services
-from .db import is_mongodb
 from .factories import (
     BatteryTypeFactory,
     QuestionnaireFactory,
@@ -158,8 +157,7 @@ def test_battery_list_query_count(
     bt = BatteryTypeFactory(owner=user, questionnaire_types=[qtype, qtype])
     for _ in range(3):
         services.create_battery(bt)
-    # MongoDB fetches each relation in its own query rather than joining (db.joined).
-    with django_assert_max_num_queries(5 if is_mongodb() else 3):
+    with django_assert_max_num_queries(3):
         assert auth_client.get(BATTERIES_URL).data["count"] == 3
 
 

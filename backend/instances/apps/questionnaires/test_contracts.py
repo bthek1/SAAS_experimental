@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from .catalog_client import HttpCatalog
-from .db import is_mongodb
 from .models import (
     BatteryTypeRef,
     BlockedOwner,
@@ -36,9 +35,7 @@ def test_questionnaire_type_changed(internal_client):
     assert response.json() == {"result": "applied"}
     ref = QuestionnaireTypeRef.objects.get(pk=QT)
     assert (ref.owner_id, ref.title) == (OWNER, "PHQ-9")
-    # MongoDB keeps milliseconds (#29), the other engines microseconds.
-    fraction = "123000" if is_mongodb() else "123456"
-    assert ref.updated_at.isoformat() == f"2026-01-02T03:04:05.{fraction}+00:00"
+    assert ref.updated_at.isoformat() == "2026-01-02T03:04:05.123456+00:00"
 
 
 def test_battery_type_changed(internal_client):

@@ -12,8 +12,8 @@ on MongoDB against 8.5 ms on Postgres (mixed), and 10.4 against 8.7 ms (read-mos
 knee was **~322 to ~332 req/s on MongoDB against ~575 to ~614 on Postgres**, and read-mostly ~404 to
 ~419 against ~495 to ~526. The 1-hour soak at ~350 req/s held on Postgres and was **stopped at minute 18
 on MongoDB**, after 5 minutes over 1 % dropped. MongoDB's data takes about half the disk (compressed),
-and its indexes take about the same. **Decision: `instances` stays on Postgres.** MongoDB support stays
-in the code (#29) and on the deploy (`saas-mongo`), switched off.
+and its indexes take about the same. **Decision: `instances` stays on Postgres.** On 2026-11-08 the MongoDB
+support (#29, #30) was removed, reverting the code to `f9f94e9`; these results are kept as the record.
 
 ## Deploy
 

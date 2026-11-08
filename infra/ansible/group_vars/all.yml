@@ -24,16 +24,6 @@ k6_url: "https://github.com/grafana/k6/releases/download/v{{ k6_version }}/k6-v{
 redis_exporter_version: "1.96.0"
 redis_exporter_sha256: 7e828c0edd05e0984c3be380aacb389c230463db1c1f72141ec67267fc2b7510
 redis_exporter_url: "https://github.com/oliver006/redis_exporter/releases/download/v{{ redis_exporter_version }}/redis_exporter-v{{ redis_exporter_version }}.linux-amd64.tar.gz"
-# MongoDB for instances (#30): MongoDB's apt repository for Ubuntu 24.04. The key is the
-# 8.0 series' release signing key (4B0752C1BCA238C0B4EE14DC41DE058A4E7DCA05).
-mongodb_series: "8.0"
-mongodb_version: "8.0.34"
-mongosh_version: "2.14.1"
-mongodb_key_url: "https://pgp.mongodb.com/server-{{ mongodb_series }}.asc"
-mongodb_key_sha256: 8c467ea138207ee8d0cbbce3e005c82c73c81b3263e7909bdc36b9a1feff14f6
-mongodb_exporter_version: "0.54.0"
-mongodb_exporter_sha256: 84e5c8145f4e78df2915f5aa8f3ccddbfd1b817d6a29db5a27525bb68b4095b4
-mongodb_exporter_url: "https://github.com/percona/mongodb_exporter/releases/download/v{{ mongodb_exporter_version }}/mongodb_exporter-{{ mongodb_exporter_version }}.linux-amd64.tar.gz"
 uv_version: "0.9.7"
 uv_sha256: b26fcc8dfa1c39b5a5613445af3be3eefda45d9a39359bee271eafe34913583e
 uv_url: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
@@ -48,8 +38,6 @@ ports:
   grafana: 3000
   redis: 6379
   redis_exporter: 9121
-  mongodb: 27017
-  mongodb_exporter: 9216
 
 # The app's database (on saas-db).
 # The monolith's appdb stays on saas-db, unused, as a way back (#13).
@@ -57,13 +45,6 @@ db_name: catalogdb
 db_user: appuser
 instances_db_name: instancesdb
 instances_db_user: instancesuser
-# On saas-mongo (#30), the same database name.
-mongo_instances_user: instancesuser
-# Which database instances runs on (#30): postgres (saas-db) or mongo (saas-mongo).
-# In all.yml because both services' env templates read it. Switch with:
-#   just converge --tags app --limit instances -e instances_db_engine=mongo
-# Each keeps its own data, so switching back finds Postgres as it was.
-instances_db_engine: postgres
 
 # nftables (roles/common): input is default-deny. Each rule opens one port to
 # a list of sources. SSH from the admin hosts is always open.
