@@ -1,10 +1,10 @@
-"""What `catalog` does over HTTP, whichever framework serves it (#34).
+"""What `catalog` does over HTTP: the contract the SPA and `instances` rely on (#34).
 
-The suite starts the service under test as a real server, next to a stub `instances`,
-and talks to both only over HTTP. It imports no service code, so the same tests check
-the Django version and the FastAPI one (#35).
+The suite starts `catalog` as a real server, next to a stub `instances`, and talks to
+both only over HTTP. It imports no service code, which is how it checked the Django
+version and the FastAPI one against each other until #38 removed Django.
 
-    cd backend && uv run pytest parity --target=django
+    cd backend && uv run pytest parity
 """
 
 import os
@@ -26,26 +26,15 @@ CATALOG_TO_INSTANCES_TOKEN = "test-catalog-to-instances"
 PASSWORD = "parity-pass-123"
 
 
-def _django(port: int) -> tuple[list[list[str]], dict]:
-    manage = [sys.executable, "catalog/manage.py"]
+def _commands(port: int) -> tuple[list[list[str]], dict]:
     return (
         [
-            [*manage, "migrate", "--noinput"],
-            [*manage, "runserver", f"127.0.0.1:{port}", "--noreload"],
-        ],
-        {"DJANGO_SETTINGS_MODULE": "core.settings.parity"},
-    )
-
-
-def _fastapi(port: int) -> tuple[list[list[str]], dict]:
-    return (
-        [
-            [sys.executable, "-m", "catalog_fastapi", "migrate"],
+            [sys.executable, "-m", "catalog", "migrate"],
             [
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "catalog_fastapi.app:app",
+                "catalog.app:app",
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -54,18 +43,6 @@ def _fastapi(port: int) -> tuple[list[list[str]], dict]:
             ],
         ],
         {"SETTINGS": "parity"},
-    )
-
-
-TARGETS = {"django": _django, "fastapi": _fastapi}
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--target",
-        choices=sorted(TARGETS),
-        default="django",
-        help="Which catalog implementation to start and test.",
     )
 
 
@@ -97,11 +74,10 @@ def _wait_until_up(url: str, process: subprocess.Popen, log: Path) -> None:
 
 
 @pytest.fixture(scope="session")
-def base_url(request, stub):
-    target = request.config.getoption("--target")
+def base_url(stub):
     port = free_port()
     with tempfile.TemporaryDirectory(prefix="parity-") as tmp:
-        commands, extra_env = TARGETS[target](port)
+        commands, extra_env = _commands(port)
         env = {
             **os.environ,
             **extra_env,
@@ -111,7 +87,7 @@ def base_url(request, stub):
         log = Path(tmp) / "server.log"
         with log.open("w") as out:
             for command in commands[:-1]:
-                subprocess.run(  # noqa: S603 (fixed commands from TARGETS)
+                subprocess.run(  # noqa: S603 (fixed commands from _commands)
                     command, cwd=BACKEND, env=env, stdout=out, stderr=out, check=True
                 )
             # Its own session, so the stop below also reaches a reloader's child.

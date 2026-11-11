@@ -2,6 +2,8 @@ import type { EChartsOption } from "echarts"
 import {
   CACHE_PAIRS,
   CHANGES,
+  fastapiHoldTable,
+  fastapiKneeTable,
   matchingTable,
   mongoHoldTable,
   mongoSoakTable,
@@ -983,16 +985,18 @@ export function splitStressCpuOption(palette: SeriesPalette): EChartsOption {
   return splitStressOption(4, "CPU of the busiest app container by request rate, before and after the split.", 100, formatPct, palette)
 }
 
-/** Postgres (the baseline colour) against MongoDB, for mixed and read-mostly traffic. */
+/** Two engines on the same table: the baseline in the neutral colour, mixed and read-mostly traffic. */
 function engineHoldBars(
+  table: ResultTableData,
+  [baseline, candidate]: [string, string],
   rows: { row: string; name: string }[],
   label: string,
   format: (value: number) => string,
   palette: SeriesPalette,
 ): EChartsOption {
   const pick = (mixedColumn: number, readColumn: number) => [
-    ...rows.map(({ row }) => cellNumber(rowNamed(mongoHoldTable, row)[mixedColumn])),
-    ...rows.map(({ row }) => cellNumber(rowNamed(mongoHoldTable, row)[readColumn])),
+    ...rows.map(({ row }) => cellNumber(rowNamed(table, row)[mixedColumn])),
+    ...rows.map(({ row }) => cellNumber(rowNamed(table, row)[readColumn])),
   ]
   return barsOption(
     {
@@ -1004,8 +1008,8 @@ function engineHoldBars(
       format,
       labelWidth: 90,
       series: [
-        { name: "Postgres", color: palette.off, data: pick(1, 3) },
-        { name: "MongoDB", color: palette.series[0], data: pick(2, 4) },
+        { name: baseline, color: palette.off, data: pick(1, 3) },
+        { name: candidate, color: palette.series[0], data: pick(2, 4) },
       ],
     },
     palette,
@@ -1014,6 +1018,8 @@ function engineHoldBars(
 
 export function mongoLatencyOption(palette: SeriesPalette): EChartsOption {
   return engineHoldBars(
+    mongoHoldTable,
+    ["Postgres", "MongoDB"],
     [
       { row: "Mean", name: "mean" },
       { row: "p95, all requests", name: "p95" },
@@ -1026,6 +1032,8 @@ export function mongoLatencyOption(palette: SeriesPalette): EChartsOption {
 
 export function mongoCpuOption(palette: SeriesPalette): EChartsOption {
   return engineHoldBars(
+    mongoHoldTable,
+    ["Postgres", "MongoDB"],
     [{ row: "Database CPU, minute 5", name: "database" }],
     "CPU of the database container at minute 5 of the same runs, Postgres on saas-db and MongoDB on saas-mongo.",
     formatPct,
@@ -1139,4 +1147,41 @@ export const rampTable: ResultTableData = {
   rows: RAMP.flatMap((s) =>
     RUNS[s.run].map((r, i) => [s.name, i + 1, r[0], formatMs(r[1]), `${r[2]} %`, `${r[3]} %`]),
   ),
+}
+
+export function fastapiHoldOption(palette: SeriesPalette): EChartsOption {
+  return engineHoldBars(
+    fastapiHoldTable,
+    ["Django", "FastAPI"],
+    [
+      { row: "questionnaire-type-list p95", name: "type list" },
+      { row: "health p95", name: "health" },
+    ],
+    "p95 of catalog's endpoint groups over 5 minutes at a fixed rate, with catalog on Django and on FastAPI. Type list: 5.12 against 5.79 milliseconds mixed, 5.31 against 5.09 read. Health: 2.56 against 2.30 mixed, 3.02 against 2.34 read.",
+    formatMs,
+    palette,
+  )
+}
+
+export function fastapiKneeOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label:
+        "Knee of each stress run. Mixed traffic: Django about 575, 579 and 614 requests per second, FastAPI about 600. Read-mostly: Django about 495, 526 and 509, FastAPI about 518. The table below has the same values.",
+      categories: fastapiKneeTable.rows.map((r) => String(r[0])),
+      format: (value) => `~${value}`,
+      labelWidth: 120,
+      series: [
+        {
+          name: "Knee",
+          color: palette.off,
+          data: fastapiKneeTable.rows.map((r) => ({
+            value: cellNumber(String(r[1]).replace("~", "")),
+            itemStyle: { color: String(r[0]).includes("FastAPI") ? palette.series[0] : palette.off },
+          })),
+        },
+      ],
+    },
+    palette,
+  )
 }

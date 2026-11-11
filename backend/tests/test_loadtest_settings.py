@@ -1,7 +1,8 @@
-"""core.settings.loadtest (#9): prod over plain HTTP, private hosts only.
+"""instances' core.settings.loadtest (#9): prod over plain HTTP, private hosts only.
 
 Each case loads the settings in a fresh interpreter, since a settings module
-can only be imported once per process.
+can only be imported once per process. catalog's loadtest profile (FastAPI, #38)
+is checked in catalog/tests/test_settings.py.
 """
 
 import json
@@ -11,7 +12,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from common.dev_keys import DEV_SIGNING_KEY
 
 BACKEND = Path(__file__).resolve().parent.parent
 
@@ -33,12 +33,10 @@ print(json.dumps({
 """
 
 
-def load(
-    allowed_hosts: str, service: str = "catalog", **env: str
-) -> subprocess.CompletedProcess:
+def load(allowed_hosts: str, **env: str) -> subprocess.CompletedProcess:
     return subprocess.run(  # noqa: S603 - fixed argv, our own interpreter
         [sys.executable, "-c", PROBE],
-        cwd=BACKEND / service,
+        cwd=BACKEND / "instances",
         capture_output=True,
         text=True,
         check=False,
@@ -46,7 +44,6 @@ def load(
             **os.environ,
             "DJANGO_SETTINGS_MODULE": "core.settings.loadtest",
             "SECRET_KEY": "x" * 50,
-            "JWT_SIGNING_KEY": "not-the-dev-key",
             "JWT_VERIFYING_KEY": "public",
             "DATABASE_URL": "postgres://u:p@127.0.0.1:5432/db",
             "INSTANCES_DATABASE_URL": "postgres://u:p@127.0.0.1:5433/db",
@@ -71,7 +68,8 @@ def test_loads_with_private_hosts(hosts):
     proc = load(hosts)
     assert proc.returncode == 0, proc.stderr
     loaded = json.loads(proc.stdout)
-    assert loaded.pop("signing_key") == "not-the-dev-key"
+    # It verifies tokens and cannot mint them.
+    assert loaded.pop("signing_key") == ""
     assert loaded == {
         "ssl_redirect": False,
         "hsts": 0,
@@ -108,9 +106,6 @@ def test_selected_by_settings_env_var():
         "common/common/settings/dev.py",
         "common/common/settings/prod.py",
         "common/common/settings/test.py",
-        "catalog/core/settings/dev.py",
-        "catalog/core/settings/prod.py",
-        "catalog/core/settings/test.py",
         "instances/core/settings/dev.py",
         "instances/core/settings/prod.py",
         "instances/core/settings/test.py",
@@ -127,32 +122,19 @@ def test_conn_max_age_comes_from_the_environment():
     assert json.loads(proc.stdout)["conn_max_age"] == 0
 
 
-def test_refuses_a_missing_jwt_key():
-    result = load("localhost", JWT_SIGNING_KEY="")
-    assert result.returncode != 0
-    assert "Set JWT_SIGNING_KEY" in result.stderr
-
-
-def test_refuses_the_published_dev_key():
-    result = load("localhost", JWT_SIGNING_KEY=DEV_SIGNING_KEY)
-    assert result.returncode != 0
-    assert "published dev key" in result.stderr
-
-
 def test_instances_never_load_the_signing_key():
-    proc = load("localhost", service="instances")
+    proc = load("localhost", JWT_SIGNING_KEY="a-signing-key")
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["signing_key"] == ""
 
 
 def test_instances_refuse_a_missing_verifying_key():
-    result = load("localhost", service="instances", JWT_VERIFYING_KEY="")
+    result = load("localhost", JWT_VERIFYING_KEY="")
     assert result.returncode != 0
     assert "JWT_VERIFYING_KEY" in result.stderr
 
 
-@pytest.mark.parametrize("service", ["catalog", "instances"])
-def test_refuses_missing_peer_tokens(service):
-    result = load("localhost", service=service, CATALOG_TO_INSTANCES_TOKEN="")
+def test_refuses_missing_peer_tokens():
+    result = load("localhost", CATALOG_TO_INSTANCES_TOKEN="")
     assert result.returncode != 0
     assert "CATALOG_TO_INSTANCES_TOKEN" in result.stderr

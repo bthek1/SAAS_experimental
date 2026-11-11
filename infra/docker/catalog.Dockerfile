@@ -1,5 +1,4 @@
-# Build context is backend/. catalog runs on FastAPI (#37); backend/catalog/ is the
-# Django version, kept until #38 removes it.
+# Build context is backend/. catalog runs on FastAPI (#35 to #38).
 FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 ENV UV_COMPILE_BYTECODE=1
@@ -15,22 +14,21 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
 COPY common/pyproject.toml common/pyproject.toml
 COPY catalog/pyproject.toml catalog/pyproject.toml
-COPY catalog_fastapi/pyproject.toml catalog_fastapi/pyproject.toml
 COPY instances/pyproject.toml instances/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-workspace --no-dev --package catalog-fastapi
+    uv sync --frozen --no-install-workspace --no-dev --package catalog
 
 # Copy project source
 COPY . /app
 
 # Install the workspace packages
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package catalog-fastapi
+    uv sync --frozen --no-dev --package catalog
 
 ENV PATH="/venv/bin:$PATH"
 
-WORKDIR /app/catalog_fastapi
+WORKDIR /app/catalog
 
 EXPOSE 8000
 
-CMD ["uvicorn", "catalog_fastapi.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "catalog.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

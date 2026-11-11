@@ -1,4 +1,4 @@
-# Django + React monorepo justfile
+# FastAPI + Django + React monorepo justfile
 # Only day-to-day commands live here. Run `just` to list them.
 
 set dotenv-load := false
@@ -79,7 +79,7 @@ compose *args:
 # Apply database migrations on both services (catalog: Alembic, adopting a Django-built db)
 [group('backend')]
 be-migrate:
-    cd backend && uv run python -m catalog_fastapi migrate
+    cd backend && uv run python -m catalog migrate
     cd backend && uv run python instances/manage.py migrate
 
 # New migration after model changes: just be-makemigrations questionnaires | catalog "<message>"
@@ -90,21 +90,20 @@ be-makemigrations app message="change":
     cd backend
     case "{{ app }}" in
         questionnaires) uv run python instances/manage.py makemigrations questionnaires ;;
-        catalog) cd catalog_fastapi && uv run alembic revision --autogenerate -m "{{ message }}" ;;
+        catalog) cd catalog && uv run alembic revision --autogenerate -m "{{ message }}" ;;
         *) echo "unknown app {{ app }}: questionnaires (instances) or catalog (Alembic)" >&2; exit 1 ;;
     esac
 
 # Create a staff superuser for /admin/ from DJANGO_SUPERUSER_* in .env
 [group('backend')]
 be-superuser:
-    cd backend && uv run python -m catalog_fastapi create-superuser
+    cd backend && uv run python -m catalog create-superuser
 
 # Run the backend test suites: each service, then the repo-level checks
 [group('backend')]
 be-test:
-    cd backend && uv run pytest catalog_fastapi
     cd backend && uv run pytest catalog
-    cd backend && uv run pytest parity --target=fastapi
+    cd backend && uv run pytest parity
     cd backend && uv run pytest instances
     cd backend && uv run pytest tests
 
@@ -166,8 +165,8 @@ loadtest-seed *args:
             *) echo "unknown option $1" >&2; exit 1 ;;
         esac
     done
-    {{ loadtest_compose }} exec catalog python -m catalog_fastapi seed-loadtest --owners "$owners"
-    {{ loadtest_compose }} exec catalog python -m catalog_fastapi relay-outbox --once
+    {{ loadtest_compose }} exec catalog python -m catalog seed-loadtest --owners "$owners"
+    {{ loadtest_compose }} exec catalog python -m catalog relay-outbox --once
     {{ loadtest_compose }} exec instances python manage.py seed_loadtest --questionnaires-per-owner "$per_owner"
 
 # Run a k6 scenario, results to Prometheus/Grafana: smoke load stress soak respondent pdf outage [KEY=VALUE…]
@@ -232,7 +231,7 @@ db-reset:
 be-dev: be-migrate
     #!/usr/bin/env bash
     trap 'kill 0' EXIT
-    (cd backend && uv run uvicorn catalog_fastapi.app:app --host 0.0.0.0 --port 8006 --reload --reload-dir catalog_fastapi) &
+    (cd backend && uv run uvicorn catalog.app:app --host 0.0.0.0 --port 8006 --reload --reload-dir catalog) &
     (cd backend && uv run python instances/manage.py runserver 0.0.0.0:8007) &
     python3 infra/gateway/dev_router.py --port 8005 \
         --service catalog=http://localhost:8006 --service instances=http://localhost:8007 &
@@ -241,7 +240,7 @@ be-dev: be-migrate
 # Retry events the immediate push could not deliver
 [private]
 be-relay:
-    cd backend && uv run python -m catalog_fastapi relay-outbox
+    cd backend && uv run python -m catalog relay-outbox
 
 # Run the Vite dev server on :5174
 [private]

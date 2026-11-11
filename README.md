@@ -59,6 +59,11 @@ fonts-dejavu-core`; on macOS run `brew install pango`. Without them, everything 
 ```bash
 just be-test            # backend: pytest for each service, the parity suite, then the repo-level checks
 just fe-test            # frontend unit and route tests (Vitest)
+just infra-test         # Pulumi program and Ansible role checks, no containers needed
+
+cd backend
+uv run pytest parity    # catalog's API over real HTTP, against a stub instances (what the SPA and instances rely on)
+cd ..
 
 cd frontend
 npx playwright install chromium   # first time only: downloads the browser

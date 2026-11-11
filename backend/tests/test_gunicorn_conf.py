@@ -11,7 +11,7 @@ from common import gunicorn_conf
 BACKEND = Path(__file__).resolve().parent.parent
 
 
-@pytest.mark.parametrize("service", ["catalog", "catalog_fastapi", "instances"])
+@pytest.mark.parametrize("service", ["catalog", "instances"])
 def test_each_service_uses_the_shared_config(service: str) -> None:
     """gunicorn reads this file from the working directory, so it has to exist."""
     config = (BACKEND / service / "gunicorn.conf.py").read_text()

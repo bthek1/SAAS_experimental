@@ -92,3 +92,34 @@ def test_promtool(args):
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_service_panels_read_both_frameworks():
+    # instances exports django-prometheus names, catalog its own (#37). A panel that
+    # read only one would show half the traffic.
+    dashboard = (
+        REPO_ROOT / "infra/observability/grafana/dashboards/django.json"
+    ).read_text()
+    for django_name, fastapi_name in [
+        (
+            "django_http_requests_total_by_view_transport_method_total",
+            "http_requests_total",
+        ),
+        (
+            "django_http_requests_latency_seconds_by_view_method_bucket",
+            "http_request_duration_seconds_bucket",
+        ),
+        ("django_db_execute_total", "db_queries_total"),
+        ("django_db_query_duration_seconds_bucket", "db_query_duration_seconds_bucket"),
+    ]:
+        assert django_name in dashboard
+        assert fastapi_name in dashboard
+
+
+def test_fastapi_latency_buckets_match_django_prometheus():
+    # histogram_quantile over both families is only valid with the same bucket edges.
+    from django_prometheus.conf import PROMETHEUS_LATENCY_BUCKETS
+
+    from catalog.db import LATENCY_BUCKETS
+
+    assert tuple(LATENCY_BUCKETS) == tuple(PROMETHEUS_LATENCY_BUCKETS)

@@ -20,7 +20,7 @@ services:
       - path: ../../.env
         required: false
     environment:
-      # FastAPI (#37): its profile, as DJANGO_SETTINGS_MODULE picks Django's.
+      # catalog (FastAPI) reads SETTINGS; instances (Django) reads DJANGO_SETTINGS_MODULE.
       SETTINGS: dev
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
@@ -51,7 +51,7 @@ services:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.prod.Dockerfile
-    command: ["python", "-m", "catalog_fastapi", "relay-outbox"]
+    command: ["python", "-m", "catalog", "relay-outbox"]
     depends_on:
       - db
       - instances

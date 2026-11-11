@@ -351,9 +351,18 @@ The package is `backend/catalog/catalog/`; tests are in `backend/catalog/tests/`
   database, so `services.py` does CASCADE and RESTRICT by hand. Work that must wait for the commit goes
   through `db.on_commit()`. Postgres connections set `client_encoding=utf8` and `TimeZone=UTC`: the LXC
   databases are `SQL_ASCII`.
+- **Never hold a connection while waiting or doing slow work** (#38). The pool has 15 connections
+  per worker (`db.POOL_SIZE + db.POOL_OVERFLOW`), and `app.py` caps AnyIO's threads at the same
+  number, so extra requests queue for a thread instead of failing on the 30 s pool timeout. Keep
+  that cap if the pool changes. A dependency that queries ends its transaction before it returns,
+  as `auth.current_user` does, or a request waits for the endpoint's thread holding a connection.
+  End the transaction before CPU-heavy work too: `authenticate` commits before the pbkdf2 hash, and
+  `create_user` hashes before its first query. Both once failed requests on a stress run's login
+  burst. `tests/test_pool_deadlock.py` reproduces each with 2 threads and 1 connection.
 - **Migrations.** Alembic, revision 0001 is the schema Django left. `python -m catalog migrate` stamps a
   Django-built database at 0001 by itself, then upgrades. New revision: `just be-makemigrations catalog
-  "<message>"`, then read it. Never edit an applied revision.
+  "<message>"`, then read it. Never edit an applied revision. `tests/catalog_django_schema.txt` is 0001's
+  schema, frozen from Django's while both existed: never regenerate it to make a test pass.
 - **Settings.** `settings.py` (pydantic-settings) reads the env and the root `.env`. `SETTINGS` picks
   `dev`, `test`, `e2e`, `parity`, `prod` or `loadtest`, with the same rules as Django's profiles: the
   test profiles never read `.env` and always use the dev JWT pair (#33); `prod` and `loadtest` require
@@ -368,8 +377,13 @@ The package is `backend/catalog/catalog/`; tests are in `backend/catalog/tests/`
   uvicorn (#24). `gunicorn_threads` does not apply: sync endpoints run in uvicorn's thread pool, and
   SQLAlchemy pools 5 connections (15 under load) per worker.
 - **Tests.** `catalog/tests/` on in-memory SQLite (`Base.metadata.create_all`), with `RecordingInstances`
-  for the peer and `cache_on` (an in-memory Redis stand-in). Schema and concurrency checks against Postgres
-  are in `tests/test_catalog_schema.py`.
+  for the peer and `cache_on` (an in-memory Redis stand-in). `test_app.py` builds the app with other
+  settings (HTTPS redirect, hosts, CORS); the parity suite covers the API itself. Postgres checks
+  (0001 against Django's frozen schema, adopting a Django-built database, Alembic against the models,
+  concurrent writers, a `SQL_ASCII` database) are in `tests/test_catalog_schema.py`; Django compatibility
+  (hashes and tokens through `instances`' Django, frozen seed ids) in `tests/test_catalog_compat.py`. `tests/test_observability.py` checks the dashboards read both metric
+  families and that the latency buckets match django-prometheus's. `infra/ansible/tests/test_app_role.py`
+  checks every command the app role runs is defined.
 
 ---
 

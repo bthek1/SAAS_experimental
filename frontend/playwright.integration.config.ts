@@ -14,8 +14,8 @@ import {
 function catalog(port: number) {
   return {
     command:
-      "rm -f catalog_fastapi/e2e.sqlite3 && uv run python -m catalog_fastapi migrate" +
-      ` && uv run uvicorn catalog_fastapi.app:app --port ${port} --no-access-log`,
+      "rm -f catalog/e2e.sqlite3 && uv run python -m catalog migrate" +
+      ` && uv run uvicorn catalog.app:app --port ${port} --no-access-log`,
     cwd: "../backend",
     env: { SETTINGS: "e2e" },
     url: `http://localhost:${port}/internal/health/`,

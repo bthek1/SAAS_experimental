@@ -11,7 +11,6 @@
     { "prefix": "/api/questionnaire-types/", "service": "catalog" },
     { "prefix": "/api/battery-types/", "service": "catalog" },
     { "prefix": "/admin/", "service": "catalog" },
-    { "prefix": "/static/", "service": "catalog" },
     { "prefix": "/api/questionnaires/", "service": "instances" },
     { "prefix": "/api/batteries/", "service": "instances" },
     { "prefix": "/api/dashboard/", "service": "instances" },

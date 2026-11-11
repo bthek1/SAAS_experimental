@@ -54,6 +54,26 @@ def test_questionnaire_type_needs_a_title(client, owner):  # noqa: ARG001
     assert list(response.json()) == ["title"]
 
 
+@pytest.mark.parametrize(
+    ("title", "message"),
+    [
+        (None, "This field may not be null."),
+        ("", "This field may not be blank."),
+        ("   ", "This field may not be blank."),
+    ],
+)
+def test_title_null_or_blank(client, owner, title, message):  # noqa: ARG001
+    # The SPA shows these messages under the field.
+    response = client.post("/api/questionnaire-types/", json={"title": title})
+    assert response.status_code == 400
+    assert response.json() == {"title": [message]}
+
+
+def test_title_is_trimmed(client, owner):  # noqa: ARG001
+    response = client.post("/api/questionnaire-types/", json={"title": "  Intake  "})
+    assert response.json()["title"] == "Intake"
+
+
 def test_title_too_long(client, owner):  # noqa: ARG001
     response = client.post("/api/questionnaire-types/", json={"title": "x" * 256})
     assert response.status_code == 400

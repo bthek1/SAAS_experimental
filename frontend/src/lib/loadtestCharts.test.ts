@@ -333,3 +333,28 @@ describe("Postgres against MongoDB", () => {
     expect(mongo.data).toEqual([6.68, 16.12, 4.85, 10.44])
   })
 })
+
+describe("catalog on FastAPI against Django", () => {
+  const ariaOf = (option: object) =>
+    (option as { aria: { label: { description: string } } }).aria.label.description
+
+  it("fixed-rate p95, Django then FastAPI", () => {
+    const [django, fastapi] = seriesOf(charts.fastapiHoldOption(palette))
+    expect(django.data).toEqual([5.12, 2.56, 5.31, 3.02])
+    expect(fastapi.data).toEqual([5.79, 2.3, 5.09, 2.34])
+    for (const value of ["5.12", "5.79", "5.31", "5.09", "2.56", "2.30", "3.02", "2.34"]) {
+      expect(ariaOf(charts.fastapiHoldOption(palette))).toContain(value)
+    }
+  })
+
+  it("reads every stress knee from the table, FastAPI in the series colour", () => {
+    const [knees] = seriesOf(charts.fastapiKneeOption(palette)) as unknown as {
+      data: { value: number; itemStyle: { color: string } }[]
+    }[]
+    const values = [575, 579, 614, 600, 495, 526, 509, 518]
+    expect(knees.data.map((d) => d.value)).toEqual(values)
+    expect(knees.data[3].itemStyle.color).toBe("#1")
+    expect(knees.data[0].itemStyle.color).toBe("#off")
+    for (const knee of values) expect(ariaOf(charts.fastapiKneeOption(palette))).toContain(String(knee))
+  })
+})

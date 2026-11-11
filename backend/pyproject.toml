@@ -1,22 +1,21 @@
 [project]
 name = "saas-experimental"
 version = "0.1.0"
-description = "SAAS_experimental: Django REST Framework + React"
+description = "SAAS_experimental: FastAPI + Django REST Framework + React"
 authors = [{ name = "Benedict Thekkel", email = "bthekkel1@gmail.com" }]
 requires-python = ">=3.14"
 # Installs every service into one dev environment. Images install one service each:
 # `uv sync --package catalog`.
-dependencies = ["catalog", "catalog-fastapi", "instances", "common"]
+dependencies = ["catalog", "instances", "common"]
 
 [tool.uv]
 package = false
 
 [tool.uv.workspace]
-members = ["common", "catalog", "catalog_fastapi", "instances"]
+members = ["common", "catalog", "instances"]
 
 [tool.uv.sources]
 catalog = { workspace = true }
-catalog-fastapi = { workspace = true }
 instances = { workspace = true }
 common = { workspace = true }
 
@@ -104,7 +103,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 # Its package directory sits one level down, so ruff can't find its submodules.
-known-first-party = ["catalog_fastapi"]
+known-first-party = ["catalog"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

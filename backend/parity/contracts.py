@@ -1,4 +1,4 @@
-"""backend/contracts/ shapes, compared as `apps/catalog/test_contracts.py` does."""
+"""backend/contracts/ shapes, compared as `catalog/tests/test_contracts.py` does."""
 
 import json
 from pathlib import Path

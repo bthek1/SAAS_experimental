@@ -97,9 +97,9 @@
   become_user: app
   register: app_migrate
   changed_when: >-
-    (app_fastapi | bool and ('Running upgrade' in app_migrate.stderr
+    (app_service == 'catalog' and ('Running upgrade' in app_migrate.stderr
     or 'adopted' in app_migrate.stdout))
-    or (not app_fastapi | bool and 'No migrations to apply' not in app_migrate.stdout)
+    or (app_service != 'catalog' and 'No migrations to apply' not in app_migrate.stdout)
 
 # `just loadtest-reset`: every run starts from the same data. Runs add rows (the
 # respondent flow creates questionnaires), and the unpaginated list got slower

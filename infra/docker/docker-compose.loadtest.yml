@@ -59,9 +59,9 @@ services:
     # FastAPI (#37) under gunicorn, which reads gunicorn.conf.py (keepalive, multiprocess
     # metrics); flags win over it. migrate adopts a database Django built.
     command: >-
-      sh -c "python -m catalog_fastapi migrate
+      sh -c "python -m catalog migrate
       && exec gunicorn --bind :8000 --workers ${LOADTEST_WORKERS:-2}
-      -k uvicorn_worker.UvicornWorker catalog_fastapi.app:app"
+      -k uvicorn_worker.UvicornWorker catalog.app:app"
     depends_on:
       db:
         condition: service_healthy
@@ -151,7 +151,7 @@ services:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.prod.Dockerfile
-    command: ["python", "-m", "catalog_fastapi", "relay-outbox"]
+    command: ["python", "-m", "catalog", "relay-outbox"]
     depends_on:
       catalog:
         condition: service_healthy
