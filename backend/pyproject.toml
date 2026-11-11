@@ -6,16 +6,17 @@ authors = [{ name = "Benedict Thekkel", email = "bthekkel1@gmail.com" }]
 requires-python = ">=3.14"
 # Installs every service into one dev environment. Images install one service each:
 # `uv sync --package catalog`.
-dependencies = ["catalog", "instances", "common"]
+dependencies = ["catalog", "catalog-fastapi", "instances", "common"]
 
 [tool.uv]
 package = false
 
 [tool.uv.workspace]
-members = ["common", "catalog", "instances"]
+members = ["common", "catalog", "catalog_fastapi", "instances"]
 
 [tool.uv.sources]
 catalog = { workspace = true }
+catalog-fastapi = { workspace = true }
 instances = { workspace = true }
 common = { workspace = true }
 
@@ -100,6 +101,10 @@ ignore = [
   "RUF012", # Mutable class attributes
   "N818",   # Exception name should be named with an Error suffix
 ]
+
+[tool.ruff.lint.isort]
+# Its package directory sits one level down, so ruff can't find its submodules.
+known-first-party = ["catalog_fastapi"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

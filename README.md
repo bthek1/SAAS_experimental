@@ -2,7 +2,7 @@
 
 A decoupled web application, created from the `django_react_template` starter:
 
-- **`backend/`**: two Django REST Framework services, `catalog` and `instances`, behind one gateway, each with its own database (Python 3.14, PostgreSQL, Celery)
+- **`backend/`**: two services behind one gateway, each with its own database: `catalog` on FastAPI and `instances` on Django REST Framework (Python 3.14, PostgreSQL, Celery)
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router, TanStack Query)
 
 ---
@@ -20,7 +20,7 @@ cp .env.example .env
 just up
 
 # 4. Run migrations (first time), in a second terminal
-just compose exec catalog python manage.py migrate
+just compose exec catalog python -m catalog migrate
 just compose exec instances python manage.py migrate
 ```
 
@@ -33,9 +33,9 @@ compose file's folder, and create a separate set of containers and volumes.
 |---------|-----|
 | Frontend | http://localhost:5174 |
 | API (gateway) | http://localhost:8005/api/ |
-| Django admin | http://localhost:8005/admin/ (`catalog`), http://localhost:8005/instances-admin/ (`instances`, its own staff accounts) |
+| Admin | http://localhost:8005/admin/ (`catalog`, sqladmin: staff only, create one with `just be-superuser`), http://localhost:8005/instances-admin/ (`instances`' Django admin, its own staff accounts) |
 | Health check | http://localhost:8005/api/health/ |
-| Flower (Celery UI) | http://localhost:5555 (`cd backend/catalog && uv run celery -A core flower --port=5555`) |
+| Flower (Celery UI) | http://localhost:5555 (`cd backend && uv run celery -A catalog.celery_app flower --port=5555`) |
 
 ---
 
@@ -57,7 +57,7 @@ fonts-dejavu-core`; on macOS run `brew install pango`. Without them, everything 
 ### Tests
 
 ```bash
-just be-test            # backend: pytest for each service, then the repo-level checks
+just be-test            # backend: pytest for each service, the parity suite, then the repo-level checks
 just fe-test            # frontend unit and route tests (Vitest)
 
 cd frontend
@@ -149,7 +149,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 - **Pagination (#10).** Every list endpoint returns `Page[X]` = `{count, next, previous, results: [X]}`.
   `page` starts at 1. `page_size` defaults to 25 and is capped at 100. A page past the end returns
   `404`. Lists are newest first (`createdAt`, then `id`, so pages never repeat or skip a row).
-- The `/api/tasks/` endpoints are a Celery demo (`apps/utils/tasks.py`). They are public so the
+- The `/api/tasks/` endpoints are a Celery demo (`catalog/catalog/celery_app.py`). They are public so the
   demo works without login. Add auth before reusing them.
 - `GET /metrics` (not under `/api/`, not part of the contract) is Prometheus text for the
   scraper. It answers only peers in `METRICS_ALLOWED_CIDRS` (default loopback), and returns `404`
@@ -178,7 +178,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
   Creating or changing a type, and deleting anything, shows up at once. Authentication and
   `questionnaireType` validation still run on every request.
 - **Questionnaire-type and battery-type lists are cached for up to 5 minutes (#11).** Any write
-  through the API shows up at once. Only edits in Django admin can take that long.
+  through the API shows up at once. Only edits in the admin can take that long.
 - Share tokens are bearer secrets: anyone holding the link can submit once. They do not expire.
 - **Dashboard.** `days` is `7`, `30` or `90` (omit for all time; anything else is `400`). `tz` is
   an IANA time zone such as `Australia/Sydney` (default UTC; an unknown name is `400`). The SPA
@@ -218,7 +218,7 @@ own copy of each type (#13):
   until it returns, but they stay logged in. `src/api/client.ts` clears the tokens only when the refresh
   is refused (`400` or `401`). Respondents have no token, so they are not affected.
 - An edited type normally reaches `instances` right after the write. If `instances` is down, it
-  waits in the outbox and `manage.py relay_outbox` retries it. Until then a share link shows the
+  waits in the outbox and `python -m catalog relay-outbox` retries it. Until then a share link shows the
   older definition, and the response's snapshot records that same version, so a response always
   matches what the respondent saw.
 - Access tokens are signed with RS256, and `instances` holds only the public key. **Moving to RS256
@@ -239,23 +239,28 @@ not affected, but `instances` serves older definitions and deactivated users kee
 
 ```bash
 just compose logs -f relay_outbox                      # or: journalctl -u saas-relay on saas-catalog
-cd backend && uv run python catalog/manage.py relay_outbox --once   # delivered: N, pending: M
+cd backend && uv run python -m catalog relay-outbox --once   # delivered: N, pending: M
 ```
 
-- **`delivered: 0` and all events pending:** `instances` is unreachable, or the tokens differ. `OutboxEvent.last_error`
-  in catalog's admin says which. They drain by themselves once it is back.
+- **`delivered: 0` and all events pending:** `instances` is unreachable, or the tokens differ. The event's `last_error`
+  (catalog's admin, Outbox Event) says which. They drain by themselves once it is back.
 - **One event keeps failing while others deliver:** `instances` refuses it (`400`). The event's `last_error` has the
   reason. Fix the cause, or repair the copies with `reconcile_refs`.
 - After any long outage, `uv run python instances/manage.py reconcile_refs --dry-run` shows whether copies differ.
 
 ### Moving a pre-split database
 
-A database from before #13 holds everything. It stays `catalog`'s, and instance rows are copied out:
+A database from before #13 holds everything. It stays `catalog`'s, and instance rows are copied out.
+The first two steps need the Django `catalog`, removed in #38: run them from a checkout of `edb8acd`,
+the last commit that has `adopt_monolith_db`. Then, on the current code:
 
 ```bash
 cd backend
+# at edb8acd:
 uv run python catalog/manage.py adopt_monolith_db   # adds the new columns, safe to repeat
 uv run python catalog/manage.py migrate
+# on the current code:
+uv run python -m catalog migrate                     # adopts the Django-built schema (Alembic stamp)
 uv run python instances/manage.py migrate
 uv run python instances/manage.py import_from_monolith --source "$OLD_DATABASE_URL"
 uv run python instances/manage.py reconcile_refs --dry-run    # expect no differences, with both services up
@@ -272,12 +277,14 @@ their names and belong to `catalog`, so never drop those.
 ```
 /
 ├── backend/          uv workspace: one lock, a package per service
-│   ├── common/       Shared infrastructure: settings, cache, metrics, peer calls. No models.
-│   ├── catalog/      Service: manage.py, core/, apps/
-│   │   └── apps/     accounts (users, JWT), catalog (types, outbox), utils (health, Celery demo)
-│   ├── instances/    Service: manage.py, core/, apps/
+│   ├── common/       Django infrastructure for instances: settings, cache, metrics, peer calls. No models.
+│   ├── catalog/      Service on FastAPI: alembic.ini, gunicorn.conf.py, tests/
+│   │   └── catalog/  app, models, routers/ (accounts, types, internal, health and tasks), outbox,
+│   │                 admin, Celery, CLI (`python -m catalog`), migrations/ (Alembic)
+│   ├── instances/    Service on Django: manage.py, core/, apps/
 │   │   └── apps/     questionnaires (instances, share links, dashboards, PDFs, type copies)
 │   ├── contracts/    JSON shapes of /internal/ calls, tested by both services
+│   ├── parity/       catalog's API tested over HTTP only, against a stub instances (#34)
 │   └── tests/        Repo-level tests (service boundary, gateway, infra layout, k6 targets)
 ├── frontend/         React SPA
 │   ├── e2e/          Playwright end-to-end specs
@@ -306,11 +313,11 @@ their names and belong to `catalog`, so never drop those.
 | Layer | Technology |
 |-------|-----------|
 | Backend language | Python 3.14 |
-| Backend framework | Django 6 + Django REST Framework |
-| Auth | JWT (`djangorestframework-simplejwt`) |
+| Backend framework | `catalog`: FastAPI + SQLAlchemy 2 + Alembic, sqladmin. `instances`: Django 6 + Django REST Framework |
+| Auth | JWT, RS256: `catalog` signs with PyJWT (simplejwt's claims), `instances` verifies with `djangorestframework-simplejwt` |
 | Database | PostgreSQL 16 |
-| Async tasks | Celery + Redis (`django-celery-results`, `django-celery-beat`) |
-| Cache | Redis, through Django's cache framework and `common/cache.py` |
+| Async tasks | Celery + Redis (`catalog` only; results in Postgres through Celery's SQLAlchemy backend) |
+| Cache | Redis: `catalog/catalog/cache.py` (JSON values) and `common/cache.py` (Django's cache framework, `instances`) |
 | Dependency manager | [uv](https://github.com/astral-sh/uv) |
 | Frontend language | TypeScript |
 | Frontend bundler | Vite |

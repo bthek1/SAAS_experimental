@@ -8,8 +8,20 @@ import {
   WEB_URL,
 } from "./e2e/integration/ports";
 
-// Full-stack suite: both real Django services behind the gateway's dev router, each with a
-// fresh SQLite database per run.
+// Full-stack suite: both real services (catalog on FastAPI, instances on Django) behind the
+// gateway's dev router, each with a fresh SQLite database per run.
+
+function catalog(port: number) {
+  return {
+    command:
+      "rm -f catalog_fastapi/e2e.sqlite3 && uv run python -m catalog_fastapi migrate" +
+      ` && uv run uvicorn catalog_fastapi.app:app --port ${port} --no-access-log`,
+    cwd: "../backend",
+    env: { SETTINGS: "e2e" },
+    url: `http://localhost:${port}/internal/health/`,
+    reuseExistingServer: false,
+  };
+}
 
 function service(name: string, port: number) {
   return {
@@ -38,7 +50,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   // Never reuse servers: a reused backend would carry data over from an earlier run.
   webServer: [
-    service("catalog", CATALOG_PORT),
+    catalog(CATALOG_PORT),
     service("instances", INSTANCES_PORT),
     {
       // The gateway, from the same route table as nginx.

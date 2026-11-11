@@ -7,6 +7,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
 COPY common/pyproject.toml common/pyproject.toml
 COPY catalog/pyproject.toml catalog/pyproject.toml
+COPY catalog_fastapi/pyproject.toml catalog_fastapi/pyproject.toml
 COPY instances/pyproject.toml instances/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-workspace --no-dev --package instances

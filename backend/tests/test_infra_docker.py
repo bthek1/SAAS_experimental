@@ -205,7 +205,11 @@ def test_loadtest_host_ports_match_docs_and_stay_on_loopback() -> None:
 def test_loadtest_services_run_the_loadtest_settings_under_gunicorn(name: str) -> None:
     service = _compose_config(LOADTEST_COMPOSE)["services"][name]
     assert service["build"]["dockerfile"].endswith(f"{name}.prod.Dockerfile")
-    assert service["environment"]["DJANGO_SETTINGS_MODULE"] == "core.settings.loadtest"
+    # catalog is FastAPI (#37), which picks its profile from SETTINGS.
+    profile = {"catalog": ("SETTINGS", "loadtest")}.get(
+        name, ("DJANGO_SETTINGS_MODULE", "core.settings.loadtest")
+    )
+    assert service["environment"][profile[0]] == profile[1]
     assert "gunicorn" in " ".join(service["command"])
     assert service["environment"]["PROMETHEUS_MULTIPROC_DIR"]
     assert service["environment"]["METRICS_ALLOWED_CIDRS"].endswith("/32")

@@ -1,13 +1,37 @@
 app_root: /srv/app
 app_backend_dir: "{{ app_root }}/backend"
-# Where manage.py and gunicorn run. `core` and `apps` resolve from here.
-app_dir: "{{ app_backend_dir }}/{{ app_service }}"
+# catalog runs on FastAPI unless -e catalog_impl=django (#37). The Django version stays
+# deployable, on the same database, until #38 removes it.
+app_fastapi: "{{ app_service == 'catalog' and (catalog_impl | default('fastapi')) == 'fastapi' }}"
+app_package: "{{ 'catalog-fastapi' if app_fastapi | bool else app_service }}"
+# Where the commands and gunicorn run. Django's `core` and `apps` resolve from here, and
+# gunicorn reads gunicorn.conf.py from here.
+app_dir: "{{ app_backend_dir }}/{{ 'catalog_fastapi' if app_fastapi | bool else app_service }}"
 app_env_file: "/etc/{{ app_unit }}/app.env"
 app_python: "{{ app_backend_dir }}/.venv/bin/python"
+# Each operation, for either implementation. `changed_when` below matches both outputs.
+app_commands:
+  fastapi:
+    migrate: -m catalog_fastapi migrate
+    flush: -m catalog_fastapi reset-db
+    clear_cache: -m catalog_fastapi clear-cache
+    seed: -m catalog_fastapi seed-loadtest
+    relay: -m catalog_fastapi relay-outbox
+    wsgi: -k uvicorn_worker.UvicornWorker catalog_fastapi.app:app
+  django:
+    migrate: manage.py migrate --noinput
+    flush: manage.py flush --noinput
+    clear_cache: manage.py shell -c "from django.core.cache import cache; cache.clear()"
+    seed: manage.py seed_loadtest
+    relay: manage.py relay_outbox
+    wsgi: --worker-class gthread --threads {{ gunicorn_threads }} core.wsgi
+app_cmd: "{{ app_commands['fastapi' if app_fastapi | bool else 'django'] }}"
 # PEM files on one line: core settings read JWT keys with `\\n` for newlines (`multiline`).
 app_jwt_verifying_key: "{{ jwt_verifying_key | trim | replace('\n', '\\n') }}"
 app_env_shared:
   DJANGO_SETTINGS_MODULE: core.settings.loadtest
+  # The FastAPI catalog's profile (#37). Django ignores it, given the module above.
+  SETTINGS: loadtest
   SECRET_KEY: "{{ django_secret_key }}"
   ALLOWED_HOSTS: "{{ guest_ips.gateway }},{{ guest_ip }},localhost,127.0.0.1"
   # Prometheus alone may read /metrics.

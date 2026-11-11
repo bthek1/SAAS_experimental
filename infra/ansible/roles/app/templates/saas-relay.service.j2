@@ -9,10 +9,10 @@ User=app
 Group=app
 WorkingDirectory={{ app_dir }}
 EnvironmentFile={{ app_env_file }}
-# Its own directory: gunicorn's on_starting hook empties the service's.
-Environment=PROMETHEUS_MULTIPROC_DIR=/run/saas-relay/prometheus
 RuntimeDirectory=saas-relay
-ExecStart={{ app_python }} manage.py relay_outbox
+# Its own metrics directory: gunicorn's on_starting hook empties the service's. Set in
+# the command, since EnvironmentFile= overrides Environment= (#37).
+ExecStart=/usr/bin/env PROMETHEUS_MULTIPROC_DIR=/run/saas-relay/prometheus {{ app_python }} {{ app_cmd.relay }}
 Restart=always
 RestartSec=5
 

@@ -5,9 +5,13 @@ nft_rules:
 
 app_service: catalog
 app_unit: saas-app
+# fastapi (#37) or django: just converge --tags app -e catalog_impl=django switches back.
+catalog_impl: fastapi
 # Tuning (#9, Phase 6), changed one at a time and re-measured:
-# gunicorn processes; threads per process; seconds Django keeps each DB connection
-# (0 = per request). Each thread holds its own connection: workers x threads in Postgres.
+# gunicorn processes; threads per process (Django only: FastAPI's uvicorn workers run
+# sync endpoints in their own thread pool); seconds a DB connection is kept (0 = per
+# request). Django holds one connection per thread: workers x threads in Postgres.
+# FastAPI pools per worker: SQLAlchemy's default 5, up to 15 under load.
 # Owners editing types is the quiet side of the split, so it gets fewer workers.
 gunicorn_workers: 3
 gunicorn_threads: 4

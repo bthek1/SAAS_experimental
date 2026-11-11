@@ -55,7 +55,7 @@
   notify: Restart the service
 
 - name: Install the backend's dependencies (Python 3.14 managed by uv)
-  ansible.builtin.command: "uv sync --frozen --no-dev --package {{ app_service }} --python 3.14"
+  ansible.builtin.command: "uv sync --frozen --no-dev --package {{ app_package }} --python 3.14"
   args:
     chdir: "{{ app_backend_dir }}"
   environment: "{{ app_uv_env }}"
@@ -86,21 +86,26 @@
 
 # migrate and seed run outside gunicorn, so their metrics go to a scratch
 # directory, never the one gunicorn's on_starting hook owns.
+# FastAPI: Alembic logs "Running upgrade" only when it applies one, and migrate prints
+# "adopted" when it stamps a database Django built.
 - name: Migrate
-  ansible.builtin.command: "{{ app_python }} manage.py migrate --noinput"
+  ansible.builtin.command: "{{ app_python }} {{ app_cmd.migrate }}"
   args:
     chdir: "{{ app_dir }}"
   environment: "{{ app_manage_env }}"
   become: true
   become_user: app
   register: app_migrate
-  changed_when: "'No migrations to apply' not in app_migrate.stdout"
+  changed_when: >-
+    (app_fastapi | bool and ('Running upgrade' in app_migrate.stderr
+    or 'adopted' in app_migrate.stdout))
+    or (not app_fastapi | bool and 'No migrations to apply' not in app_migrate.stdout)
 
 # `just loadtest-reset`: every run starts from the same data. Runs add rows (the
 # respondent flow creates questionnaires), and the unpaginated list got slower
 # as they grew, so two runs were not comparable (#9, Phase 5).
 - name: Wipe the load-test database (only with -e app_reset_db=true)
-  ansible.builtin.command: "{{ app_python }} manage.py flush --noinput"
+  ansible.builtin.command: "{{ app_python }} {{ app_cmd.flush }}"
   args:
     chdir: "{{ app_dir }}"
   environment: "{{ app_manage_env }}"
@@ -111,13 +116,7 @@
 
 # Runs must start from the same state, and the owners get new ids below.
 - name: Empty the cache (only with -e app_reset_db=true)
-  ansible.builtin.command:
-    argv:
-      - "{{ app_python }}"
-      - manage.py
-      - shell
-      - -c
-      - from django.core.cache import cache; cache.clear()
+  ansible.builtin.command: "{{ app_python }} {{ app_cmd.clear_cache }}"
   args:
     chdir: "{{ app_dir }}"
   environment: "{{ app_manage_env }}"
