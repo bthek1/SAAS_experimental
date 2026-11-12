@@ -121,6 +121,10 @@ the only minute over 1 %.
 
 ## Still open
 
+- **Superseded for `catalog` itself** by [2026-11-11-catalog-alone.md](2026-11-11-catalog-alone.md) (#39). Loading only
+  `catalog` found two more FastAPI bugs, the signing key parsed per token and a new HTTP client per call to
+  `instances`. With them fixed, FastAPI's knee is above Django's. The runs here predate both fixes.
+
 - **Login concurrency.** Fewer threads per worker would shorten each login in a burst, at the cost of
   queueing other `catalog` requests behind them. Worth a `load` comparison if logins matter.
 - **Memory.** ~100 to 170 MiB more than Django, probably sqladmin, pydantic and uvicorn per worker. Not measured

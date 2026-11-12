@@ -69,7 +69,7 @@ just db-reset       # DESTRUCTIVE: drops the Postgres volume, then re-migrates
 
 just loadtest-up    # load-test stack: prod backend + Postgres + Prometheus + Grafana (#9)
 just loadtest-seed --owners 5 --questionnaires-per-owner 200
-just k6 <scenario> [KEY=VALUE…]  # smoke load stress soak respondent pdf outage
+just k6 <scenario> [KEY=VALUE…]  # smoke load stress soak respondent pdf outage catalog
 just loadtest-down  # keeps its volumes
 
 just infra-test     # Pulumi program tests (mocks, no Proxmox)
@@ -512,6 +512,9 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
 - Run one scenario at a time. `run.sh` stops a k6 left behind by an interrupted run.
 - `load`, `stress` and `soak` take `MIX=mixed` (default, 47 % writes) or `MIX=read` (mostly reads).
   A cache's value depends heavily on the mix, so compare both.
+- `catalog` (#39) loads `catalog` alone, since the other mixes leave it near idle: `CATALOG_MIX=crud`
+  (default: lists, details, `/me`, token refresh, type create/update/delete) or `CATALOG_MIX=login` (one
+  login per iteration, the pbkdf2 path). `RATE`/`HOLD` hold a rate; with `MAX_RATE` it steps up as `stress` does.
 - k6 sends trends as native histograms (`K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM`, #20), so
   `k6_http_req_duration_seconds` gives true per-minute latency through `rate()`. Runs before that have
   only `k6_http_req_duration_{p95,avg,…}`, calculated since the run began, so they lag and stay raised after a

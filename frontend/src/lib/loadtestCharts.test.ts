@@ -358,3 +358,29 @@ describe("catalog on FastAPI against Django", () => {
     for (const knee of values) expect(ariaOf(charts.fastapiKneeOption(palette))).toContain(String(knee))
   })
 })
+
+describe("catalog alone (#39)", () => {
+  const ariaOf = (option: object) =>
+    (option as { aria: { label: { description: string } } }).aria.label.description
+
+  it("reads every knee from the table, the final code in the series colour", () => {
+    const [knees] = seriesOf(charts.catalogKneeOption(palette)) as unknown as {
+      data: { value: number; itemStyle: { color: string } }[]
+    }[]
+    const values = [431, 409, 183, 176, 375, 350, 532, 594]
+    expect(knees.data.map((d) => d.value)).toEqual(values)
+    expect(knees.data[0].itemStyle.color).toBe("#off")
+    expect(knees.data[6].itemStyle.color).toBe("#1")
+    expect(knees.data[2].itemStyle.color).toBe("#3")
+    for (const knee of values) expect(ariaOf(charts.catalogKneeOption(palette))).toContain(String(knee))
+  })
+
+  it("group p95, Django then FastAPI, with the label's figures in the table", () => {
+    const [django, fastapi] = seriesOf(charts.catalogGroupOption(palette))
+    expect(django.data).toEqual([8.52, 7.35, 10.06, 6.5, 7.21, 32.88, 34.46, 43.74])
+    expect(fastapi.data).toEqual([4.07, 3.71, 4.95, 2.73, 3.18, 19.2, 19.85, 22.25])
+    for (const value of ["8.52", "4.07", "43.74", "22.25"]) {
+      expect(ariaOf(charts.catalogGroupOption(palette))).toContain(value)
+    }
+  })
+})

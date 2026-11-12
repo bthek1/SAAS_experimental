@@ -169,7 +169,7 @@ loadtest-seed *args:
     {{ loadtest_compose }} exec catalog python -m catalog relay-outbox --once
     {{ loadtest_compose }} exec instances python manage.py seed_loadtest --questionnaires-per-owner "$per_owner"
 
-# Run a k6 scenario, results to Prometheus/Grafana: smoke load stress soak respondent pdf outage [KEY=VALUE…]
+# Run a k6 scenario, results to Prometheus/Grafana: smoke load stress soak respondent pdf outage catalog [KEY=VALUE…]
 [group('loadtest')]
 [positional-arguments]
 k6 scenario *options:

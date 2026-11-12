@@ -12,9 +12,12 @@ import secrets
 import string
 import uuid
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Annotated
 
 import jwt
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
@@ -87,8 +90,21 @@ class TokenError(Exception):
     pass
 
 
+@lru_cache(maxsize=4)
+def _signing_key(pem: str) -> RSAPrivateKey:
+    # Parsing validates the RSA key, ~25 ms of CPU. Given the PEM string, PyJWT
+    # parses it on every signature: a token refresh signs twice, and it took 65 ms
+    # against Django's 2.8 ms on `catalog`'s own load (#39). Keyed by the PEM, so a
+    # settings change still takes effect.
+    key = load_pem_private_key(pem.encode(), password=None)
+    if not isinstance(key, RSAPrivateKey):
+        raise TypeError("JWT_SIGNING_KEY must be an RSA private key")
+    return key
+
+
 def _encode(claims: dict) -> str:
-    return jwt.encode(claims, get_settings().jwt_signing_key, algorithm="RS256")
+    key = _signing_key(get_settings().jwt_signing_key)
+    return jwt.encode(claims, key, algorithm="RS256")
 
 
 def _fresh(token_type: str, lifetime: int, **claims) -> dict:

@@ -5,6 +5,7 @@ for `testing.RecordingInstances` with `set_instances_client()`.
 """
 
 import hmac
+from functools import cache
 from typing import Protocol
 
 import httpx
@@ -27,6 +28,18 @@ class InstancesClient(Protocol):
     def retire(self, kind: str, ref_id) -> None: ...
 
 
+@cache
+def http_client() -> httpx.Client:
+    """One client per process, shared by its threads.
+
+    `httpx.request()` builds a client, and with it an SSL context, on every call:
+    3.6 ms of CPU, and memory that grew by ~140 MiB per worker in a 5-minute run of
+    `catalog`'s own traffic (#39). A shared client also keeps connections to
+    `instances` open; its 5 s idle expiry is well under `instances`' keepalive.
+    """
+    return httpx.Client()
+
+
 def peer_request(method: str, path: str, **kwargs) -> httpx.Response:
     """Call `instances`. PeerUnavailable if it gives no usable answer."""
     settings = get_settings()
@@ -35,7 +48,7 @@ def peer_request(method: str, path: str, **kwargs) -> httpx.Response:
     )
     headers = {"Authorization": f"Bearer {settings.catalog_to_instances_token}"}
     try:
-        response = httpx.request(
+        response = http_client().request(
             method,
             f"{settings.instances_internal_url}{path}",
             headers=headers,

@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSeriesPalette } from "@/hooks/useChartPalette"
 import {
   barsHeight,
+  catalogGroupOption,
+  catalogKneeOption,
   cacheKneesOption,
   cacheMixedOption,
   cacheReadOption,
@@ -56,6 +58,9 @@ import {
 } from "@/lib/loadtestCharts"
 import {
   CHANGES,
+  catalogAloneTable,
+  catalogGroupTable,
+  catalogKneeTable,
   failureTable,
   fastapiBugTable,
   fastapiHoldTable,
@@ -583,12 +588,30 @@ export function FastapiTab() {
     <Section title="catalog on FastAPI against Django">
       <Prose>
         <code>catalog</code> was rewritten on FastAPI with the same API, tables and events, and ran on the
-        same container as Django did. With two connection-pool bugs fixed, it{" "}
-        <strong>performs the same as Django</strong>: its stress knees fall inside Django's ranges, and the
-        1-hour soak held with <strong>0 failed requests</strong>, drifting like Django's. FastAPI
-        uses about 100 to 170 MiB more memory. <code>catalog</code> stays on FastAPI, and the Django version
-        was removed.
+        same container as Django did. On <code>catalog</code>'s own traffic, with four bugs fixed,{" "}
+        <strong>FastAPI is faster</strong>: its knee is ~532 to ~594 req/s against Django's ~409 to ~431, and at the
+        same rate its p95 is 16.5 ms against 27.6 ms, at 25 % CPU against 41 %. Logins, mostly the password
+        hash, are the same on both. On the whole app's traffic, where <code>catalog</code> is nearly idle,
+        the two looked the same. <code>catalog</code> stays on FastAPI, and the Django version was removed.
       </Prose>
+
+      <h3 className="font-medium">catalog's own traffic</h3>
+      <Prose>
+        A k6 scenario that calls only <code>catalog</code>: lists, details, <code>/me</code>, token refresh,
+        and creating, editing and deleting types. Django ran from its last commit. The first FastAPI runs
+        reached less than half Django's knee, from two bugs the whole-app traffic never reached: the signing
+        key was parsed for every token (25 ms each), and every call to <code>instances</code> built a new
+        HTTP client, which also leaked memory.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Knee per stress run, req/s" option={catalogKneeOption(palette)} height={barsHeight(8, 1)} />
+        <ChartCard title="p95 per group at ~240 req/s, ms" option={catalogGroupOption(palette)} height={barsHeight(8, 2)} />
+      </div>
+      <TableDetails table={catalogKneeTable} />
+      <TableDetails table={catalogGroupTable} />
+      <TableCard title="catalog alone, final code" table={catalogAloneTable} />
+
+      <h3 className="font-medium">The whole app's traffic</h3>
 
       <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>
       <Prose>

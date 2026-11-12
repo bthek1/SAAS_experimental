@@ -307,3 +307,45 @@ export const fastapiSoakTable: ResultTableData = {
     ["Test id", "soak-20261106T080534Z", "soak-20261111T112357Z"],
   ],
 }
+
+// #39: `catalog` alone (k6 `catalog` scenario), loadtest/baselines/2026-11-11-catalog-alone.md.
+export const catalogKneeTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Knee, req/s", num: true }, { title: "Slowest group p95", num: true }, { title: "catalog CPU", num: true }, { title: "Test id", code: true }],
+  rows: [
+    ["Django 1", "~431", "97 ms", "79 %", "catalog-20261111T132315Z"],
+    ["Django 2", "~409", "105 ms", "80 %", "catalog-20261111T133042Z"],
+    ["FastAPI, no fix 1", "~183", "267 ms", "76 %", "catalog-20261111T135725Z"],
+    ["FastAPI, no fix 2", "~176", "293 ms", "73 %", "catalog-20261111T140027Z"],
+    ["FastAPI, key fix 1", "~375", "129 ms", "75 %", "catalog-20261111T141819Z"],
+    ["FastAPI, key fix 2", "~350", "93 ms", "63 %", "catalog-20261111T142437Z"],
+    ["FastAPI, both fixes 1", "~532", "45 ms", "61 %", "catalog-20261111T152538Z"],
+    ["FastAPI, both fixes 2", "~594", "84 ms", "74 %", "catalog-20261111T153436Z"],
+  ],
+}
+
+/** ~240 req/s of `catalog`'s own traffic for 5 minutes, back to back, final code. */
+export const catalogGroupTable: ResultTableData = {
+  columns: [{ title: "Group" }, { title: "Django p95", num: true }, { title: "FastAPI p95", num: true }, { title: "Django mean", num: true }, { title: "FastAPI mean", num: true }],
+  rows: [
+    ["type list", "8.52 ms", "4.07 ms", "3.35 ms", "2.22 ms"],
+    ["type detail", "7.35 ms", "3.71 ms", "3.12 ms", "2.15 ms"],
+    ["battery-type list", "10.06 ms", "4.95 ms", "3.98 ms", "2.61 ms"],
+    ["me", "6.50 ms", "2.73 ms", "2.60 ms", "1.51 ms"],
+    ["token refresh", "7.21 ms", "3.18 ms", "2.99 ms", "1.87 ms"],
+    ["type create", "32.88 ms", "19.20 ms", "20.03 ms", "13.53 ms"],
+    ["type update", "34.46 ms", "19.85 ms", "20.81 ms", "13.55 ms"],
+    ["type delete", "43.74 ms", "22.25 ms", "27.17 ms", "15.39 ms"],
+  ],
+}
+
+export const catalogAloneTable: ResultTableData = {
+  columns: [{ title: "catalog alone" }, { title: "Django" }, { title: "FastAPI" }],
+  rows: [
+    ["~240 req/s for 5 minutes: mean, p95", "7.89 ms, 27.61 ms", "5.11 ms, 16.52 ms"],
+    ["~240 req/s: catalog CPU", "41 %", "25 %"],
+    ["~240 req/s: catalog memory", "570 MiB", "586 MiB"],
+    ["Logins: knee", "17.0 per second", "16.8 per second"],
+    ["12 logins per second: token p95", "151.9 ms", "146.5 ms"],
+    ["Test ids", "catalog-20261111T154447Z, catalog-20261111T133726Z", "catalog-20261111T155205Z, catalog-20261111T143044Z"],
+  ],
+}

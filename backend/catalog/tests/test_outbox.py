@@ -109,3 +109,31 @@ def test_retire_failure_is_counted(auth, session, user, instances):
     assert response.status_code == 503
     assert RETIRE_FAILURES._value.get() == before + 1
     assert session.get(QuestionnaireType, qtype.id) is not None
+
+
+def test_peer_calls_share_one_http_client(monkeypatch):
+    # A client per call cost 3.6 ms and leaked memory: ~140 MiB per worker in 5
+    # minutes of `catalog`'s own traffic (#39).
+    import httpx
+
+    from catalog import peers
+
+    peers.http_client.cache_clear()
+    built = []
+    real = httpx.Client
+
+    class Counting(real):
+        def __init__(self, *args, **kwargs):
+            built.append(1)
+            super().__init__(*args, transport=httpx.MockTransport(ok), **kwargs)
+
+    def ok(_request):
+        return httpx.Response(200)
+
+    monkeypatch.setattr(peers.httpx, "Client", Counting)
+    try:
+        for _ in range(3):
+            peers.HttpInstances().send_event({"id": "x"})
+    finally:
+        peers.http_client.cache_clear()
+    assert built == [1]

@@ -40,6 +40,7 @@ def loadtest_files() -> list[Path]:
 
 def test_there_are_scenarios():
     assert sorted(path.stem for path in SCENARIOS.glob("*.js")) == [
+        "catalog",
         "load",
         "outage",
         "pdf",

@@ -102,3 +102,22 @@ def test_header_with_three_parts(client):
 def test_unauthenticated_response_names_the_scheme(client):
     response = client.get("/api/accounts/me/")
     assert response.headers["www-authenticate"] == 'Bearer realm="api"'
+
+
+def test_the_signing_key_is_parsed_once(monkeypatch):
+    # Parsing it cost ~25 ms per signature: token refresh ran 23 times slower than
+    # Django's under load (#39).
+    from catalog import auth as auth_module
+
+    auth_module._signing_key.cache_clear()
+    calls = []
+    real = auth_module.load_pem_private_key
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(auth_module, "load_pem_private_key", counting)
+    for _ in range(3):
+        auth_module._encode({"user_id": "x", "token_type": "access"})
+    assert len(calls) == 1

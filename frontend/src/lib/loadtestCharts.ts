@@ -2,6 +2,8 @@ import type { EChartsOption } from "echarts"
 import {
   CACHE_PAIRS,
   CHANGES,
+  catalogGroupTable,
+  catalogKneeTable,
   fastapiHoldTable,
   fastapiKneeTable,
   matchingTable,
@@ -1180,6 +1182,48 @@ export function fastapiKneeOption(palette: SeriesPalette): EChartsOption {
             itemStyle: { color: String(r[0]).includes("FastAPI") ? palette.series[0] : palette.off },
           })),
         },
+      ],
+    },
+    palette,
+  )
+}
+
+/** Knee per run of catalog's own traffic: Django neutral, FastAPI by fix, the final code in the series colour. */
+export function catalogKneeOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label:
+        "Knee of each stress run of catalog's own traffic. Django about 431 and 409 requests per second. FastAPI about 183 and 176 before the fixes, 375 and 350 with the signing-key fix, 532 and 594 with both fixes. The table below has the same values.",
+      categories: catalogKneeTable.rows.map((r) => String(r[0])),
+      format: (value) => `~${value}`,
+      labelWidth: 140,
+      series: [
+        {
+          name: "Knee",
+          color: palette.off,
+          data: catalogKneeTable.rows.map((r) => {
+            const run = String(r[0])
+            const color = run.includes("both fixes") ? palette.series[0] : run.includes("FastAPI") ? palette.series[2] : palette.off
+            return { value: cellNumber(String(r[1]).replace("~", "")), itemStyle: { color } }
+          }),
+        },
+      ],
+    },
+    palette,
+  )
+}
+
+export function catalogGroupOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label:
+        "p95 of each of catalog's endpoint groups at about 240 requests per second, Django then FastAPI. FastAPI is lower in every group: type list 8.52 against 4.07 milliseconds, type delete 43.74 against 22.25. The table below has the same values.",
+      categories: catalogGroupTable.rows.map((r) => String(r[0])),
+      format: formatMs,
+      labelWidth: 110,
+      series: [
+        { name: "Django", color: palette.off, data: catalogGroupTable.rows.map((r) => cellNumber(r[1])) },
+        { name: "FastAPI", color: palette.series[0], data: catalogGroupTable.rows.map((r) => cellNumber(r[2])) },
       ],
     },
     palette,
