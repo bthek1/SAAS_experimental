@@ -188,3 +188,42 @@ def test_record_change_orders_concurrent_writers(postgres):
     for version, title in events[1:]:
         newest_by_round[title.split("-")[0]] = [version, title]
     assert found["after_each_round"] == [newest_by_round[str(r)] for r in range(20)]
+
+
+DROPPED = """
+import json, time
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
+from catalog import db
+
+db.PING_AFTER_IDLE = 0.5
+engine = db.get_engine()
+with engine.connect() as connection:
+    first = connection.execute(text("SELECT pg_backend_pid()")).scalar_one()
+# The server drops the pooled connection while it sits idle, as a restart would.
+# From outside the pool, which would hand back the same connection.
+with create_engine(engine.url, poolclass=NullPool).connect() as other:
+    other.execute(text("SELECT pg_terminate_backend(:pid)"), {"pid": first})
+    other.commit()
+time.sleep(0.6)
+with engine.connect() as connection:
+    second = connection.execute(text("SELECT pg_backend_pid()")).scalar_one()
+print(json.dumps({"first": first, "second": second}))
+"""
+
+
+def test_a_dropped_connection_is_replaced(postgres):
+    # catalog pings a pooled connection only after it sat idle (#41); one the
+    # server dropped meanwhile is replaced before the request uses it.
+    _container, base = postgres
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", DROPPED],
+        cwd=BACKEND,
+        env=env(f"{base}/baseline"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    found = json.loads(result.stdout.strip().splitlines()[-1])
+    assert found["second"] != found["first"]

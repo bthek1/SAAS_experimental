@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from catalog import services
 from catalog.auth import (
@@ -14,6 +14,7 @@ from catalog.auth import (
 )
 from catalog.errors import AuthenticationFailed, json_body, parse
 from catalog.models import User
+from catalog.responses import json_response
 from catalog.schemas import (
     Credentials,
     MePatch,
@@ -27,35 +28,35 @@ Body = Annotated[Any, Depends(json_body)]
 
 
 @router.post("/api/accounts/register/", status_code=201)
-def register(session: DbSession, body: Body) -> dict:
+def register(session: DbSession, body: Body) -> Response:
     data = parse(Registration, body)
     user = services.create_user(session, data.email, data.password)
-    return {"id": str(user.id), "email": user.email}
+    return json_response({"id": str(user.id), "email": user.email}, 201)
 
 
 @router.get("/api/accounts/me/")
-def me(user: CurrentUser) -> dict:
-    return user_out(user)
+def me(user: CurrentUser) -> Response:
+    return json_response(user_out(user))
 
 
 @router.patch("/api/accounts/me/")
-def patch_me(user: CurrentUser, session: DbSession, body: Body) -> dict:
+def patch_me(user: CurrentUser, session: DbSession, body: Body) -> Response:
     data = parse(MePatch, body)
     changes = {name: getattr(data, name) for name in data.model_fields_set}
-    return user_out(services.update_user(session, user, changes))
+    return json_response(user_out(services.update_user(session, user, changes)))
 
 
 @router.post("/api/token/")
-def obtain_token(session: DbSession, body: Body) -> dict:
+def obtain_token(session: DbSession, body: Body) -> Response:
     data = parse(Credentials, body)
     user = authenticate(session, data.email, data.password)
     if user is None:
         raise AuthenticationFailed("No active account found with the given credentials")
-    return token_pair(user)
+    return json_response(token_pair(user))
 
 
 @router.post("/api/token/refresh/")
-def refresh_token(session: DbSession, body: Body) -> dict:
+def refresh_token(session: DbSession, body: Body) -> Response:
     data = parse(RefreshRequest, body)
     try:
         claims, access, refresh = rotate(data.refresh)
@@ -71,7 +72,7 @@ def refresh_token(session: DbSession, body: Body) -> dict:
                 "code": "no_active_account",
             }
         )
-    return {"access": access, "refresh": refresh}
+    return json_response({"access": access, "refresh": refresh})
 
 
 def _user_id(claims: dict) -> uuid.UUID:

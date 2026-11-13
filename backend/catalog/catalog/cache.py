@@ -25,6 +25,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
 from .db import on_commit
+from .responses import dumps
 from .settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -76,43 +77,44 @@ def _generation(owner_id: UUID | str) -> str:
     return value.decode() if isinstance(value, bytes) else str(value)
 
 
-def cached[T](
+def cached(
     group: str,
     *,
     owner_id: UUID | str,
     params: dict,
     ttl: int,
-    compute: Callable[[], T],
+    compute: Callable[[], Any],
     version: int = 1,
-) -> T:
-    """The cached value for this owner and params, or compute and store it.
+) -> bytes:
+    """The JSON body for this owner and params: cached, or computed and stored.
 
-    `compute` must return JSON-serialisable data. Bump `version` when its shape
-    changes. An exception from `compute` propagates and stores nothing.
+    Returns bytes, so a hit goes out as Redis holds it, never decoded and encoded
+    again (#41). `compute` must return JSON-serialisable data. Bump `version` when
+    its shape changes. An exception from `compute` propagates and stores nothing.
     """
     if group not in CACHE_GROUPS:
         raise ValueError(f"unknown cache group {group!r}: add it to CACHE_GROUPS")
     if not get_settings().cache_enabled:
-        return compute()
+        return dumps(compute())
 
     try:
         key = _entry_key(group, owner_id, _generation(owner_id), params, version)
         raw: Any = client().get(key)
     except RedisError as exc:
         _record_error(group, "read", exc)
-        return compute()
+        return dumps(compute())
 
     if raw is not None:
         CACHE_REQUESTS.labels(group=group, result="hit").inc()
-        return json.loads(raw)
+        return raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
 
     CACHE_REQUESTS.labels(group=group, result="miss").inc()
-    value = compute()
+    body = dumps(compute())
     try:
-        client().set(key, json.dumps(value), ex=ttl)
+        client().set(key, body, ex=ttl)
     except RedisError as exc:
         _record_error(group, "write", exc)
-    return value
+    return body
 
 
 def bump_owner_generation(session: Session, owner_id: UUID | str) -> None:

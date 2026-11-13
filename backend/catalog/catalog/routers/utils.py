@@ -3,31 +3,31 @@
 from typing import Annotated, Any
 
 from celery.result import AsyncResult
-from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Response
 
 from catalog.celery_app import app as celery_app
 from catalog.celery_app import process_data
 from catalog.errors import json_body
+from catalog.responses import json_response
 
 router = APIRouter()
 Body = Annotated[Any, Depends(json_body)]
 
 
 @router.get("/api/health/")
-def health() -> dict:
-    return {"status": "ok"}
+def health() -> Response:
+    return json_response({"status": "ok"})
 
 
 @router.post("/api/tasks/trigger/")
-def task_trigger(body: Body) -> JSONResponse:
+def task_trigger(body: Body) -> Response:
     payload = body if isinstance(body, dict) else {}
     task = process_data.delay(payload)
-    return JSONResponse({"task_id": task.id}, status_code=202)
+    return json_response({"task_id": task.id}, 202)
 
 
 @router.get("/api/tasks/{task_id}/")
-def task_status(task_id: str) -> dict:
+def task_status(task_id: str) -> Response:
     result = AsyncResult(task_id, app=celery_app)
     data: dict = {
         "task_id": task_id,
@@ -39,11 +39,11 @@ def task_status(task_id: str) -> dict:
         data["result"] = result.result
     elif result.failed():
         data["traceback"] = str(result.traceback)
-    return data
+    return json_response(data)
 
 
 @router.post("/api/tasks/{task_id}/revoke/")
-def task_revoke(task_id: str, body: Body) -> dict:
+def task_revoke(task_id: str, body: Body) -> Response:
     terminate = bool(body.get("terminate", False)) if isinstance(body, dict) else False
     AsyncResult(task_id, app=celery_app).revoke(terminate=terminate)
-    return {"task_id": task_id, "revoked": True}
+    return json_response({"task_id": task_id, "revoked": True})

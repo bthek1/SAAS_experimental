@@ -3,6 +3,7 @@ import {
   CACHE_PAIRS,
   CHANGES,
   catalogGroupTable,
+  catalogTuningTable,
   catalogKneeTable,
   fastapiHoldTable,
   fastapiKneeTable,
@@ -1224,6 +1225,23 @@ export function catalogGroupOption(palette: SeriesPalette): EChartsOption {
       series: [
         { name: "Django", color: palette.off, data: catalogGroupTable.rows.map((r) => cellNumber(r[1])) },
         { name: "FastAPI", color: palette.series[0], data: catalogGroupTable.rows.map((r) => cellNumber(r[2])) },
+      ],
+    },
+    palette,
+  )
+}
+
+export function catalogTuningOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label:
+        "Median latency of catalog's read groups at about 240 requests per second, before and after #41, each the mean of two runs. After is lower in every group: type list 1.98 against 1.72 milliseconds, me 1.32 against 1.17. The table below has the same values.",
+      categories: catalogTuningTable.rows.map((r) => String(r[0])),
+      format: formatMs,
+      labelWidth: 110,
+      series: [
+        { name: "Before", color: palette.off, data: catalogTuningTable.rows.map((r) => cellNumber(r[1])) },
+        { name: "After", color: palette.series[0], data: catalogTuningTable.rows.map((r) => cellNumber(r[2])) },
       ],
     },
     palette,

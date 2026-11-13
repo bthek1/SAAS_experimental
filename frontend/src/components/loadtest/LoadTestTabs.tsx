@@ -6,6 +6,7 @@ import { useSeriesPalette } from "@/hooks/useChartPalette"
 import {
   barsHeight,
   catalogGroupOption,
+  catalogTuningOption,
   catalogKneeOption,
   cacheKneesOption,
   cacheMixedOption,
@@ -59,6 +60,8 @@ import {
 import {
   CHANGES,
   catalogAloneTable,
+  catalogTuningRunsTable,
+  catalogTuningTable,
   catalogGroupTable,
   catalogKneeTable,
   failureTable,
@@ -610,6 +613,19 @@ export function FastapiTab() {
       <TableDetails table={catalogKneeTable} />
       <TableDetails table={catalogGroupTable} />
       <TableCard title="catalog alone, final code" table={catalogAloneTable} />
+
+      <h3 className="font-medium">Two smaller fixes (#41)</h3>
+      <Prose>
+        Endpoints now encode their own JSON instead of having FastAPI walk every response through{" "}
+        <code>jsonable_encoder</code>, and a pooled connection is pinged only after sitting idle, instead of
+        on every checkout. Run back to back (before, after, after, before), every read group's median
+        dropped by 0.15 to 0.26 ms, and saas-db handled ~45 % fewer transactions. The encoding saving
+        grows with the size of a page: the seeded owners have only 3 small types each. Writes, mean and
+        p95 varied more between runs than between the two versions.
+      </Prose>
+      <ChartCard title="Median per read group at ~240 req/s, ms" option={catalogTuningOption(palette)} height={barsHeight(6, 2)} />
+      <TableDetails table={catalogTuningTable} />
+      <TableCard title="Before and after #41" table={catalogTuningRunsTable} />
 
       <h3 className="font-medium">The whole app's traffic</h3>
 

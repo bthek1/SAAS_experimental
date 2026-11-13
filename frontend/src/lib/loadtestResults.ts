@@ -338,6 +338,31 @@ export const catalogGroupTable: ResultTableData = {
   ],
 }
 
+// #41: HEAD against the working tree, run head, change, change, head; each figure is the mean of two runs.
+export const catalogTuningTable: ResultTableData = {
+  columns: [{ title: "Group" }, { title: "Before, median", num: true }, { title: "After, median", num: true }],
+  rows: [
+    ["type list", "1.98 ms", "1.72 ms"],
+    ["type detail", "1.90 ms", "1.70 ms"],
+    ["battery-type list", "2.50 ms", "2.35 ms"],
+    ["me", "1.32 ms", "1.17 ms"],
+    ["token refresh", "1.67 ms", "1.50 ms"],
+    ["health", "0.42 ms", "0.37 ms"],
+  ],
+}
+
+export const catalogTuningRunsTable: ResultTableData = {
+  columns: [{ title: "~240 req/s for 5 minutes" }, { title: "Before (two runs)" }, { title: "After (two runs)" }],
+  rows: [
+    ["Median", "2.28, 2.29 ms", "2.05, 2.05 ms"],
+    ["Mean", "5.58, 5.29 ms", "4.73, 5.41 ms"],
+    ["p95", "17.86, 17.16 ms", "15.18, 17.59 ms"],
+    ["catalog CPU", "26.0, 25.2 %", "24.0, 24.8 %"],
+    ["saas-db transactions per second", "902, 867", "483, 508"],
+    ["Test ids", "catalog-20261113T041514Z, catalog-20261113T043624Z", "catalog-20261113T042226Z, catalog-20261113T042914Z"],
+  ],
+}
+
 export const catalogAloneTable: ResultTableData = {
   columns: [{ title: "catalog alone" }, { title: "Django" }, { title: "FastAPI" }],
   rows: [

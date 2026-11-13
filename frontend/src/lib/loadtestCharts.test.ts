@@ -383,4 +383,13 @@ describe("catalog alone (#39)", () => {
       expect(ariaOf(charts.catalogGroupOption(palette))).toContain(value)
     }
   })
+
+  it("#41 read medians, before then after, with the label's figures in the table", () => {
+    const [before, after] = seriesOf(charts.catalogTuningOption(palette))
+    expect(before.data).toEqual([1.98, 1.9, 2.5, 1.32, 1.67, 0.42])
+    expect(after.data).toEqual([1.72, 1.7, 2.35, 1.17, 1.5, 0.37])
+    for (const value of ["1.98", "1.72", "1.32", "1.17"]) {
+      expect(ariaOf(charts.catalogTuningOption(palette))).toContain(value)
+    }
+  })
 })

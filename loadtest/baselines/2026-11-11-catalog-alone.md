@@ -117,6 +117,44 @@ p95 151.9 against 146.5 ms, mean 121.4 against 118.4 ms, `catalog` CPU 63 agains
   same on both.
 - **Host load was not recorded.**
 
+## Two smaller fixes (#41, 2026-11-13)
+
+Endpoints build their JSON themselves (`catalog/responses.py`) instead of returning dicts for FastAPI to walk
+through `jsonable_encoder`, and a cache hit goes out as Redis's bytes. `pool_pre_ping` is replaced by a ping
+only for a connection idle more than 5 s (`db.PING_AFTER_IDLE`).
+
+A first single run against the #39 reference (`catalog-20261113T040659Z`) was ~10 % slower in every group,
+`health` included, which neither change touches: the two days between them moved the numbers more than the
+code. So the comparison is four runs back to back, each from a fresh database: HEAD (`4ec41e0`), the change,
+the change, HEAD. `CATALOG_MIX=crud RATE=200 HOLD=5m`, 0 failed and 0 dropped in all four.
+
+| | Before (HEAD) | After |
+|---|---:|---:|
+| Median | 2.28, 2.29 ms | 2.05, 2.05 ms |
+| Mean | 5.58, 5.29 ms | 4.73, 5.41 ms |
+| p95 | 17.86, 17.16 ms | 15.18, 17.59 ms |
+| `catalog` CPU | 26.0, 25.2 % | 24.0, 24.8 % |
+| saas-db transactions per second | 902, 867 | 483, 508 |
+| Test ids | `catalog-20261113T041514Z`, `catalog-20261113T043624Z` | `catalog-20261113T042226Z`, `catalog-20261113T042914Z` |
+
+Median per read group, mean of the two runs:
+
+| Group | Before | After |
+|---|---:|---:|
+| type list | 1.98 ms | 1.72 ms |
+| type detail | 1.90 ms | 1.70 ms |
+| battery-type list | 2.50 ms | 2.35 ms |
+| me | 1.32 ms | 1.17 ms |
+| token refresh | 1.67 ms | 1.50 ms |
+| health | 0.42 ms | 0.37 ms |
+
+- **Reads gain 0.15 to 0.26 ms each, in both runs.** Writes (11 to 14.5 ms median), the mean and p95 vary more
+  from run to run than between the versions.
+- **saas-db does ~45 % fewer transactions**: the pings were about 400 a second. Only 32 idle pings in a whole run.
+- **The encoding saving depends on page size.** Seeded owners have 3 small types, where it is ~0.06 ms per list.
+  On 25 seeded-size types it is ~0.48 ms, and on 25 types with 10-question definitions ~2.5 ms (measured
+  locally). Real owners with many or large types gain more than this run shows.
+
 ## Still open
 
 - `common/peers.py` builds a client per call too, so `instances`' read-through to `catalog` pays the same cost.

@@ -346,11 +346,15 @@ The package is `backend/catalog/catalog/`; tests are in `backend/catalog/tests/`
 - **Layout.** `routers/` (thin), `schemas.py` (Pydantic bodies and response dicts), `services.py` (all
   writes), `events.py` (outbox), `models.py`, `auth.py`, `cache.py`, `metrics.py`, `admin.py`
   (sqladmin), `celery_app.py`, `__main__.py` (commands). Business logic goes in `services.py`.
+  Endpoints return `responses.json_response(...)`, never a dict: FastAPI walks a returned dict
+  through `jsonable_encoder`, ~10 times the cost of encoding it (#41). A returned Response skips the
+  decorator's `status_code`, so a create passes 201 itself. `cache.cached()` returns the body as bytes.
 - **Database.** SQLAlchemy 2, sync sessions, one per request (`db.get_session`). The tables are the
   ones Django created, with Django's names; `models.py` explains. Django's `on_delete` was never in the
   database, so `services.py` does CASCADE and RESTRICT by hand. Work that must wait for the commit goes
   through `db.on_commit()`. Postgres connections set `client_encoding=utf8` and `TimeZone=UTC`: the LXC
-  databases are `SQL_ASCII`.
+  databases are `SQL_ASCII`. No `pool_pre_ping`: a connection is pinged only after `PING_AFTER_IDLE`
+  seconds in the pool, and replaced if dead (#41).
 - **Never hold a connection while waiting or doing slow work** (#38). The pool has 15 connections
   per worker (`db.POOL_SIZE + db.POOL_OVERFLOW`), and `app.py` caps AnyIO's threads at the same
   number, so extra requests queue for a thread instead of failing on the 30 s pool timeout. Keep

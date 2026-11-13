@@ -18,6 +18,7 @@ from catalog.cache import cached
 from catalog.errors import NotFound, json_body, parse
 from catalog.models import BatteryType, QuestionnaireType
 from catalog.pagination import page_size, paginate
+from catalog.responses import json_response, raw_json_response
 from catalog.schemas import (
     BatteryTypeIn,
     BatteryTypePatch,
@@ -52,7 +53,7 @@ def _list(model, user, session, request: Request, render, *, items: bool = False
     )
     if items:
         query = query.options(selectinload(model.items))
-    return cached(
+    body = cached(
         "type-list",
         owner_id=user.id,
         params={
@@ -66,6 +67,7 @@ def _list(model, user, session, request: Request, render, *, items: bool = False
         ttl=TYPE_LIST_CACHE_SECONDS,
         compute=lambda: paginate(session, request, query, render),
     )
+    return raw_json_response(body)
 
 
 # ── Questionnaire types ────────────────────────────────────────────────────────
@@ -82,12 +84,15 @@ def create_questionnaire_type(user: CurrentUser, session: DbSession, body: Body)
     qtype = QuestionnaireType(
         owner_id=user.id, title=data.title, questionnaire_json=data.questionnaireJson
     )
-    return questionnaire_type_out(services.save_type(session, qtype, owner_id=user.id))
+    saved = services.save_type(session, qtype, owner_id=user.id)
+    return json_response(questionnaire_type_out(saved), 201)
 
 
 @router.get("/api/questionnaire-types/{type_id}/")
 def get_questionnaire_type(user: CurrentUser, session: DbSession, type_id: uuid.UUID):
-    return questionnaire_type_out(_owned(QuestionnaireType, user, session, type_id))
+    return json_response(
+        questionnaire_type_out(_owned(QuestionnaireType, user, session, type_id))
+    )
 
 
 @router.patch("/api/questionnaire-types/{type_id}/")
@@ -100,7 +105,8 @@ def patch_questionnaire_type(
         qtype.title = data.title
     if "questionnaireJson" in data.model_fields_set:
         qtype.questionnaire_json = data.questionnaireJson
-    return questionnaire_type_out(services.save_type(session, qtype, owner_id=user.id))
+    saved = services.save_type(session, qtype, owner_id=user.id)
+    return json_response(questionnaire_type_out(saved))
 
 
 @router.delete("/api/questionnaire-types/{type_id}/", status_code=204)
@@ -134,12 +140,13 @@ def create_battery_type(user: CurrentUser, session: DbSession, body: Body):
         owner_id=user.id, title=data.title, description=data.description
     )
     services.save_type(session, battery, owner_id=user.id, item_ids=item_ids)
-    return _battery_out(session, battery)
+    return json_response(_battery_out(session, battery), 201)
 
 
 @router.get("/api/battery-types/{type_id}/")
 def get_battery_type(user: CurrentUser, session: DbSession, type_id: uuid.UUID):
-    return battery_type_out(_owned(BatteryType, user, session, type_id, items=True))
+    battery = _owned(BatteryType, user, session, type_id, items=True)
+    return json_response(battery_type_out(battery))
 
 
 @router.patch("/api/battery-types/{type_id}/")
@@ -158,7 +165,7 @@ def patch_battery_type(
     if "description" in data.model_fields_set:
         battery.description = data.description
     services.save_type(session, battery, owner_id=user.id, item_ids=item_ids)
-    return _battery_out(session, battery)
+    return json_response(_battery_out(session, battery))
 
 
 @router.delete("/api/battery-types/{type_id}/", status_code=204)

@@ -11,6 +11,7 @@ from functools import cache
 
 from prometheus_client import Counter, Histogram
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.exc import DisconnectionError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -29,6 +30,10 @@ DB_QUERIES = Counter("db_queries_total", "SQL statements executed.")
 DB_LATENCY = Histogram(
     "db_query_duration_seconds", "SQL statement latency.", buckets=LATENCY_BUCKETS
 )
+DB_PINGS = Counter("db_pings_total", "Idle connections checked before reuse.")
+# A connection back in the pool for longer than this is pinged before reuse (#41).
+PING_AFTER_IDLE = 5.0
+CHECKED_IN_AT = "checked_in_at"
 
 
 def _instrument(engine: Engine) -> Engine:
@@ -40,6 +45,41 @@ def _instrument(engine: Engine) -> Engine:
     def _stop(_conn, _cursor, _statement, _parameters, context, _many):
         DB_QUERIES.inc()
         DB_LATENCY.observe(time.perf_counter() - context._query_started)
+
+    return engine
+
+
+def _ping_idle_connections(engine: Engine) -> Engine:
+    """`pool_pre_ping`, for connections that sat idle only (#41).
+
+    `pool_pre_ping` sends `SELECT 1` on every checkout, and an authenticated request
+    checks out twice (`auth.current_user` hands its connection back), so it cost two
+    round trips per request. A connection reused within `PING_AFTER_IDLE` seconds
+    was working a moment ago and goes out as it is. One idle longer, which is what
+    a database restart or a dropped connection leaves behind, is pinged, and if
+    dead the pool replaces it before the request sees it (DisconnectionError).
+    """
+
+    @event.listens_for(engine, "checkin")
+    def _checked_in(_dbapi_connection, record):
+        if record is not None:
+            record.info[CHECKED_IN_AT] = time.monotonic()
+
+    @event.listens_for(engine, "checkout")
+    def _checkout(dbapi_connection, record, _proxy):
+        checked_in = record.info.get(CHECKED_IN_AT)
+        # A new connection has no CHECKED_IN_AT: it was just opened.
+        if checked_in is None or time.monotonic() - checked_in < PING_AFTER_IDLE:
+            return
+        DB_PINGS.inc()
+        try:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("SELECT 1")
+            finally:
+                cursor.close()
+        except Exception as exc:
+            raise DisconnectionError("idle connection failed its ping") from exc
 
     return engine
 
@@ -57,21 +97,21 @@ def make_engine(url: str, *, conn_max_age: int = 60) -> Engine:
         def _foreign_keys(dbapi_connection, _record):
             dbapi_connection.execute("PRAGMA foreign_keys=ON")
 
-        return _instrument(engine)
-    return _instrument(
+        return _ping_idle_connections(_instrument(engine))
+    engine = _instrument(
         create_engine(
             url,
             # As Django sets them on every connection. The LXC databases are
             # SQL_ASCII, where psycopg would otherwise return text as bytes.
             connect_args={"client_encoding": "utf8", "options": "-c TimeZone=UTC"},
-            # A dropped connection is replaced instead of failing that request, as
-            # Django's CONN_HEALTH_CHECKS does.
-            pool_pre_ping=True,
             pool_size=POOL_SIZE,
             max_overflow=POOL_OVERFLOW,
             pool_recycle=conn_max_age if conn_max_age > 0 else -1,
         )
     )
+    # A dropped connection is replaced instead of failing that request, as
+    # Django's CONN_HEALTH_CHECKS does, but only after it sat idle.
+    return _ping_idle_connections(engine)
 
 
 @cache
