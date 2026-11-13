@@ -129,7 +129,7 @@ const FLOWS: { title: string; steps: ReactNode[] }[] = [
       </>,
       "After the commit, it tries to deliver the event once. A failed delivery does not fail the save.",
       <>
-        <Code>relay_outbox</Code> retries anything undelivered every 5 seconds, oldest first.
+        <Code>relay-outbox</Code> retries anything undelivered every 5 seconds, oldest first.
       </>,
       <>
         <Code>instances</Code> updates its copy if the event's version is newer, and ignores it

@@ -10,8 +10,9 @@ CATALOG = BACKEND / "catalog"
 INSTANCES = BACKEND / "instances"
 COMMON = BACKEND / "common" / "common"
 
-CATALOG_ONLY = ("apps.catalog", "apps.accounts", "apps.utils")
-INSTANCES_ONLY = ("apps.questionnaires",)
+# catalog is one package (FastAPI, #38); instances is a Django project.
+CATALOG_ONLY = ("catalog",)
+INSTANCES_ONLY = ("apps", "core")
 
 
 def imported_modules(source: str) -> set[str]:
@@ -51,13 +52,43 @@ def offenders(root: Path, targets: tuple[str, ...]) -> list[str]:
 
 
 def test_no_import_between_services():
-    # Tests too: the two `apps` packages never exist in one process.
+    # Tests too: the services only ever talk over HTTP.
     assert offenders(INSTANCES, CATALOG_ONLY) == []
     assert offenders(CATALOG, INSTANCES_ONLY) == []
 
 
 def test_common_imports_no_service():
-    assert offenders(COMMON, ("apps", "core", *CATALOG_ONLY, *INSTANCES_ONLY)) == []
+    assert offenders(COMMON, (*CATALOG_ONLY, *INSTANCES_ONLY)) == []
+
+
+def test_parity_suite_imports_no_service_code():
+    # It tests catalog over HTTP only, which let it check two implementations (#34).
+    # The dev keypair is the one shared module it may read.
+    targets = ("django", "rest_framework", "apps", "core", "catalog")
+    assert offenders(BACKEND / "parity", targets) == []
+    common = {
+        module
+        for path in python_files(BACKEND / "parity")
+        for module in imported_modules(path.read_text())
+        if module.startswith("common")
+    }
+    assert common <= {"common.dev_keys", "common.dev_keys.DEV_VERIFYING_KEY"}
+
+
+def test_catalog_imports_no_django():
+    # FastAPI, on the tables Django made (#35 to #38). Of `common`, which is
+    # Django-based, it reads only the shared dev keypair and gunicorn rules.
+    package = BACKEND / "catalog"
+    targets = ("django", "rest_framework", "apps", "core")
+    assert offenders(package, targets) == []
+    common = {
+        module
+        for path in python_files(package)
+        for module in imported_modules(path.read_text())
+        if module == "common" or module.startswith("common.")
+    }
+    allowed = ("common.dev_keys", "common.gunicorn_conf")
+    assert all(module.startswith(allowed) for module in common), common
 
 
 def test_common_has_no_models():
@@ -81,9 +112,9 @@ def test_instances_never_call_get_user_model():
 @pytest.mark.parametrize(
     "source",
     [
-        "from apps.catalog.models import QuestionnaireType",
-        "import apps.catalog.models",
-        "from apps import catalog",
+        "from catalog.models import QuestionnaireType",
+        "import catalog.models",
+        "from catalog import services",
     ],
 )
 def test_the_check_catches_a_forbidden_import(source):

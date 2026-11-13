@@ -1,14 +1,13 @@
 {
   "version": "0.2.0",
   "configurations": [
-    // ── Backend: run Django dev server ───────────────────────────────────────
+    // ── Backend: run the catalog dev server (FastAPI, #38) ──────────────────
     {
-      "name": "Django: catalog dev server",
+      "name": "FastAPI: catalog dev server",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/backend/catalog/manage.py",
-      "args": ["runserver", "0.0.0.0:8006"],
-      "django": true,
+      "module": "uvicorn",
+      "args": ["catalog.app:app", "--host", "0.0.0.0", "--port", "8006"],
       "cwd": "${workspaceFolder}/backend",
       "envFile": "${workspaceFolder}/.env",
       "python": "${workspaceFolder}/backend/.venv/bin/python3",

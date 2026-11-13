@@ -12,7 +12,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SCENARIO="${1:?usage: run.sh <smoke|load|stress|soak|respondent|pdf|outage> [TARGET=local|lxc] [KEY=VALUE ...]}"
+SCENARIO="${1:?usage: run.sh <smoke|load|stress|soak|respondent|pdf|outage|catalog> [TARGET=local|lxc] [KEY=VALUE ...]}"
 shift
 [ -f "$ROOT/loadtest/k6/scenarios/${SCENARIO}.js" ] || {
   echo "no scenario loadtest/k6/scenarios/${SCENARIO}.js" >&2

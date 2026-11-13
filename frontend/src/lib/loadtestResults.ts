@@ -254,3 +254,123 @@ export const mongoResultsTable: ResultTableData = {
     ["Storage, 4,000 questionnaires", "7.2 MB", "3.6 MB: data compressed, indexes the same size"],
   ],
 }
+
+// #38: `catalog` on FastAPI against Django, loadtest/baselines/2026-11-11-catalog-fastapi.md.
+// Fixed-rate runs: `catalog`'s own groups over the last 5 minutes, before the pool fixes.
+export const fastapiHoldTable: ResultTableData = {
+  columns: [{ title: "" }, { title: "Mixed, Django", num: true }, { title: "Mixed, FastAPI", num: true }, { title: "Read, Django", num: true }, { title: "Read, FastAPI", num: true }],
+  rows: [
+    ["questionnaire-type-list p95", "5.12 ms", "5.79 ms", "5.31 ms", "5.09 ms"],
+    ["health p95", "2.56 ms", "2.30 ms", "3.02 ms", "2.34 ms"],
+    ["catalog req/s", "26.1", "26.2", "32.8", "33.8"],
+    ["catalog CPU", "2.8 %", "2.9 %", "3.7 %", "3.7 %"],
+  ],
+}
+
+/** Django's knees are the 2026-11-06 Postgres runs from the MongoDB comparison, the closest in time. */
+export const fastapiKneeTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Knee, req/s", num: true }, { title: "Slowest group p95", num: true }, { title: "instances CPU", num: true }, { title: "Failed", num: true }, { title: "Test id", code: true }],
+  rows: [
+    ["Mixed: Django 1", "~575", "90 ms", "73 %", 0, "stress-20261106T212630Z"],
+    ["Mixed: Django 2", "~579", "123 ms", "77 %", 0, "stress-20261106T170912Z"],
+    ["Mixed: Django 3", "~614", "101 ms", "79 %", 0, "stress-20261106T173708Z"],
+    ["Mixed: FastAPI", "~600", "99 ms", "79 %", 0, "stress-20261111T103001Z"],
+    ["Read: Django 1", "~495", "62 ms", "77 %", 0, "stress-20261106T221832Z"],
+    ["Read: Django 2", "~526", "95 ms", "85 %", 0, "stress-20261106T180649Z"],
+    ["Read: Django 3", "~509", "80 ms", "82 %", 0, "stress-20261106T184413Z"],
+    ["Read: FastAPI", "~518", "83 ms", "82 %", 0, "stress-20261111T105429Z"],
+  ],
+}
+
+/** FastAPI stress runs before the fixes, which found the two pool bugs. */
+export const fastapiBugTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Code" }, { title: "Failed", num: true }, { title: "When" }, { title: "Test id", code: true }],
+  rows: [
+    ["Read stress", "No fix", 93, "At the knee, then 2 minutes after k6 stopped", "stress-20261111T080102Z"],
+    ["Read stress", "Fix 1", 23, "At the start, as every user logged in", "stress-20261111T090123Z"],
+    ["Soak", "Fix 1", 101, "At the start, as every user logged in", "soak-20261111T092725Z"],
+    ["Mixed stress, read stress, soak", "Final", 0, "", "stress-20261111T103001Z, stress-20261111T105429Z, soak-20261111T112357Z"],
+  ],
+}
+
+export const fastapiSoakTable: ResultTableData = {
+  columns: [{ title: "1-hour soak at ~350 req/s" }, { title: "Django" }, { title: "FastAPI" }],
+  rows: [
+    ["Requests, failed", "1,267,568, 0 failed", "1,268,223, 0 failed"],
+    ["Mean, p95", "10.7 ms, 27.7 ms", "9.5 ms, 22.1 ms"],
+    ["Dropped iterations", "989", "1,342"],
+    ["Slowest group (dashboard) p95, minute 5 → 58", "21 → 184 ms", "19 → 191 ms"],
+    ["questionnaire-type-list p95", "6.4 ms", "6.8 ms"],
+    ["catalog CPU", "3.4 %", "3.5 %"],
+    ["catalog memory", "339 to 412 MiB", "499 to 510 MiB"],
+    ["token p95 in the re-login burst", "3.8 s", "6.4 s"],
+    ["Test id", "soak-20261106T080534Z", "soak-20261111T112357Z"],
+  ],
+}
+
+// #39: `catalog` alone (k6 `catalog` scenario), loadtest/baselines/2026-11-11-catalog-alone.md.
+export const catalogKneeTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Knee, req/s", num: true }, { title: "Slowest group p95", num: true }, { title: "catalog CPU", num: true }, { title: "Test id", code: true }],
+  rows: [
+    ["Django 1", "~431", "97 ms", "79 %", "catalog-20261111T132315Z"],
+    ["Django 2", "~409", "105 ms", "80 %", "catalog-20261111T133042Z"],
+    ["FastAPI, no fix 1", "~183", "267 ms", "76 %", "catalog-20261111T135725Z"],
+    ["FastAPI, no fix 2", "~176", "293 ms", "73 %", "catalog-20261111T140027Z"],
+    ["FastAPI, key fix 1", "~375", "129 ms", "75 %", "catalog-20261111T141819Z"],
+    ["FastAPI, key fix 2", "~350", "93 ms", "63 %", "catalog-20261111T142437Z"],
+    ["FastAPI, both fixes 1", "~532", "45 ms", "61 %", "catalog-20261111T152538Z"],
+    ["FastAPI, both fixes 2", "~594", "84 ms", "74 %", "catalog-20261111T153436Z"],
+  ],
+}
+
+/** ~240 req/s of `catalog`'s own traffic for 5 minutes, back to back, final code. */
+export const catalogGroupTable: ResultTableData = {
+  columns: [{ title: "Group" }, { title: "Django p95", num: true }, { title: "FastAPI p95", num: true }, { title: "Django mean", num: true }, { title: "FastAPI mean", num: true }],
+  rows: [
+    ["type list", "8.52 ms", "4.07 ms", "3.35 ms", "2.22 ms"],
+    ["type detail", "7.35 ms", "3.71 ms", "3.12 ms", "2.15 ms"],
+    ["battery-type list", "10.06 ms", "4.95 ms", "3.98 ms", "2.61 ms"],
+    ["me", "6.50 ms", "2.73 ms", "2.60 ms", "1.51 ms"],
+    ["token refresh", "7.21 ms", "3.18 ms", "2.99 ms", "1.87 ms"],
+    ["type create", "32.88 ms", "19.20 ms", "20.03 ms", "13.53 ms"],
+    ["type update", "34.46 ms", "19.85 ms", "20.81 ms", "13.55 ms"],
+    ["type delete", "43.74 ms", "22.25 ms", "27.17 ms", "15.39 ms"],
+  ],
+}
+
+// #41: HEAD against the working tree, run head, change, change, head; each figure is the mean of two runs.
+export const catalogTuningTable: ResultTableData = {
+  columns: [{ title: "Group" }, { title: "Before, median", num: true }, { title: "After, median", num: true }],
+  rows: [
+    ["type list", "1.98 ms", "1.72 ms"],
+    ["type detail", "1.90 ms", "1.70 ms"],
+    ["battery-type list", "2.50 ms", "2.35 ms"],
+    ["me", "1.32 ms", "1.17 ms"],
+    ["token refresh", "1.67 ms", "1.50 ms"],
+    ["health", "0.42 ms", "0.37 ms"],
+  ],
+}
+
+export const catalogTuningRunsTable: ResultTableData = {
+  columns: [{ title: "~240 req/s for 5 minutes" }, { title: "Before (two runs)" }, { title: "After (two runs)" }],
+  rows: [
+    ["Median", "2.28, 2.29 ms", "2.05, 2.05 ms"],
+    ["Mean", "5.58, 5.29 ms", "4.73, 5.41 ms"],
+    ["p95", "17.86, 17.16 ms", "15.18, 17.59 ms"],
+    ["catalog CPU", "26.0, 25.2 %", "24.0, 24.8 %"],
+    ["saas-db transactions per second", "902, 867", "483, 508"],
+    ["Test ids", "catalog-20261113T041514Z, catalog-20261113T043624Z", "catalog-20261113T042226Z, catalog-20261113T042914Z"],
+  ],
+}
+
+export const catalogAloneTable: ResultTableData = {
+  columns: [{ title: "catalog alone" }, { title: "Django" }, { title: "FastAPI" }],
+  rows: [
+    ["~240 req/s for 5 minutes: mean, p95", "7.89 ms, 27.61 ms", "5.11 ms, 16.52 ms"],
+    ["~240 req/s: catalog CPU", "41 %", "25 %"],
+    ["~240 req/s: catalog memory", "570 MiB", "586 MiB"],
+    ["Logins: knee", "17.0 per second", "16.8 per second"],
+    ["12 logins per second: token p95", "151.9 ms", "146.5 ms"],
+    ["Test ids", "catalog-20261111T154447Z, catalog-20261111T133726Z", "catalog-20261111T155205Z, catalog-20261111T143044Z"],
+  ],
+}

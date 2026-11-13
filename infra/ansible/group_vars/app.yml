@@ -6,8 +6,9 @@ nft_rules:
 app_service: catalog
 app_unit: saas-app
 # Tuning (#9, Phase 6), changed one at a time and re-measured:
-# gunicorn processes; threads per process; seconds Django keeps each DB connection
-# (0 = per request). Each thread holds its own connection: workers x threads in Postgres.
+# gunicorn processes; threads per process (instances only: catalog's uvicorn workers run
+# sync endpoints in their own thread pool, capped at the SQLAlchemy pool's 15); seconds a
+# DB connection is kept (0 = per request). catalog pools 5, up to 15 under load, per worker.
 # Owners editing types is the quiet side of the split, so it gets fewer workers.
 gunicorn_workers: 3
 gunicorn_threads: 4

@@ -1,5 +1,6 @@
 # Build context is backend/ — from the repo root run:
 #   docker build -f infra/docker/catalog.prod.Dockerfile backend
+# catalog runs on FastAPI (#35 to #38).
 FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -20,15 +21,14 @@ FROM python:3.14-slim-bookworm
 # Copy the application from the builder
 COPY --from=builder --chown=app:app /app /app
 
+# gunicorn reads gunicorn.conf.py from here.
 WORKDIR /app/catalog
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Expose port 8000
 EXPOSE 8000
 
-# Use gunicorn on port 8000
-CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "core.wsgi"]
+# uvicorn workers under gunicorn. keepalive comes from gunicorn.conf.py (#24).
+CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "-k", "uvicorn_worker.UvicornWorker", "catalog.app:app"]

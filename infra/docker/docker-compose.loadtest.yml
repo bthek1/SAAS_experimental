@@ -2,8 +2,8 @@
 # `just k6 <scenario>` and `just loadtest-down`, which pass `--env-file .env` and
 # `-p <repo-dir-name>-loadtest`, so nothing here touches the dev stack's containers or volumes.
 #
-# catalog and instances: the prod images under gunicorn with core.settings.loadtest, behind the
-# gateway, so k6 measures production code, not runserver. Prometheus scrapes each service's
+# catalog (FastAPI, SETTINGS=loadtest, #37) and instances (Django, core.settings.loadtest): the
+# prod images under gunicorn, behind the gateway, so k6 measures production code, not a dev server. Prometheus scrapes each service's
 # /metrics directly and receives k6's results by remote write. Grafana shows both. Every host
 # port is bound to 127.0.0.1. Needs JWT_SIGNING_KEY and JWT_VERIFYING_KEY in .env.
 services:
@@ -56,12 +56,12 @@ services:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.prod.Dockerfile
-    # gunicorn reads gunicorn.conf.py (multiprocess metrics); flags win over it.
-    # adopt_monolith_db does nothing unless this volume predates the split (#13).
+    # FastAPI (#37) under gunicorn, which reads gunicorn.conf.py (keepalive, multiprocess
+    # metrics); flags win over it. migrate adopts a database Django built.
     command: >-
-      sh -c "python manage.py adopt_monolith_db
-      && python manage.py migrate --noinput
-      && exec gunicorn --bind :8000 --workers ${LOADTEST_WORKERS:-2} core.wsgi"
+      sh -c "python -m catalog migrate
+      && exec gunicorn --bind :8000 --workers ${LOADTEST_WORKERS:-2}
+      -k uvicorn_worker.UvicornWorker catalog.app:app"
     depends_on:
       db:
         condition: service_healthy
@@ -71,11 +71,11 @@ services:
       - path: ../../.env
         required: false
     environment:
-      DJANGO_SETTINGS_MODULE: core.settings.loadtest
+      SETTINGS: loadtest
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CACHE_REDIS_URL: redis://redis:6379/1
-      # The names here are private by suffix, which core.settings.loadtest requires of every entry.
+      # The names here are private by suffix, which the loadtest settings require of every entry.
       ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal,catalog.loadtest.internal,instances.loadtest.internal
       CATALOG_INTERNAL_URL: http://catalog.loadtest.internal:8000
       INSTANCES_INTERNAL_URL: http://instances.loadtest.internal:8000
@@ -120,7 +120,7 @@ services:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CACHE_REDIS_URL: redis://redis:6379/1
-      # The names here are private by suffix, which core.settings.loadtest requires of every entry.
+      # The names here are private by suffix, which the loadtest settings require of every entry.
       ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal,catalog.loadtest.internal,instances.loadtest.internal
       CATALOG_INTERNAL_URL: http://catalog.loadtest.internal:8000
       INSTANCES_INTERNAL_URL: http://instances.loadtest.internal:8000
@@ -151,7 +151,7 @@ services:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.prod.Dockerfile
-    command: ["python", "manage.py", "relay_outbox"]
+    command: ["python", "-m", "catalog", "relay-outbox"]
     depends_on:
       catalog:
         condition: service_healthy
@@ -161,11 +161,11 @@ services:
       - path: ../../.env
         required: false
     environment:
-      DJANGO_SETTINGS_MODULE: core.settings.loadtest
+      SETTINGS: loadtest
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CACHE_REDIS_URL: redis://redis:6379/1
-      # The names here are private by suffix, which core.settings.loadtest requires of every entry.
+      # The names here are private by suffix, which the loadtest settings require of every entry.
       ALLOWED_HOSTS: localhost,127.0.0.1,api.loadtest.internal,catalog.loadtest.internal,instances.loadtest.internal
       CATALOG_INTERNAL_URL: http://catalog.loadtest.internal:8000
       INSTANCES_INTERNAL_URL: http://instances.loadtest.internal:8000

@@ -1,13 +1,32 @@
 app_root: /srv/app
 app_backend_dir: "{{ app_root }}/backend"
-# Where manage.py and gunicorn run. `core` and `apps` resolve from here.
+# Where the commands and gunicorn run, and the uv workspace package to install.
+# gunicorn reads gunicorn.conf.py from here; Django's `core` and `apps` resolve from here.
+app_package: "{{ app_service }}"
 app_dir: "{{ app_backend_dir }}/{{ app_service }}"
 app_env_file: "/etc/{{ app_unit }}/app.env"
 app_python: "{{ app_backend_dir }}/.venv/bin/python"
+# Each operation, per service: catalog on FastAPI (#35 to #38), instances on Django.
+app_commands:
+  catalog:
+    migrate: -m catalog migrate
+    flush: -m catalog reset-db
+    clear_cache: -m catalog clear-cache
+    seed: -m catalog seed-loadtest
+    relay: -m catalog relay-outbox
+    wsgi: -k uvicorn_worker.UvicornWorker catalog.app:app
+  instances:
+    migrate: manage.py migrate --noinput
+    flush: manage.py flush --noinput
+    clear_cache: manage.py shell -c "from django.core.cache import cache; cache.clear()"
+    wsgi: --worker-class gthread --threads {{ gunicorn_threads }} core.wsgi
+app_cmd: "{{ app_commands[app_service] }}"
 # PEM files on one line: core settings read JWT keys with `\\n` for newlines (`multiline`).
 app_jwt_verifying_key: "{{ jwt_verifying_key | trim | replace('\n', '\\n') }}"
 app_env_shared:
+  # instances (Django) reads the module, catalog (FastAPI) reads SETTINGS.
   DJANGO_SETTINGS_MODULE: core.settings.loadtest
+  SETTINGS: loadtest
   SECRET_KEY: "{{ django_secret_key }}"
   ALLOWED_HOSTS: "{{ guest_ips.gateway }},{{ guest_ip }},localhost,127.0.0.1"
   # Prometheus alone may read /metrics.

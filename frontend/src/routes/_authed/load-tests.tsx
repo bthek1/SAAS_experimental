@@ -3,6 +3,7 @@ import { z } from "zod"
 import {
   CacheTab,
   CapacityTab,
+  FastapiTab,
   FixesTab,
   GrowthTab,
   MethodTab,
@@ -19,10 +20,11 @@ const TABS = [
   { value: "fixes", label: "Dashboard fixes", Panel: FixesTab },
   { value: "split", label: "Service split", Panel: SplitTab },
   { value: "mongo", label: "Postgres vs MongoDB", Panel: MongoTab },
+  { value: "fastapi", label: "Django vs FastAPI", Panel: FastapiTab },
   { value: "method", label: "Method & open questions", Panel: MethodTab },
 ] as const
 
-const tabValues = ["capacity", "cache", "growth", "fixes", "split", "mongo", "method"] as const
+const tabValues = ["capacity", "cache", "growth", "fixes", "split", "mongo", "fastapi", "method"] as const
 type TabValue = (typeof tabValues)[number]
 
 const searchSchema = z.object({

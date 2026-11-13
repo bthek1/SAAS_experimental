@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSeriesPalette } from "@/hooks/useChartPalette"
 import {
   barsHeight,
+  catalogGroupOption,
+  catalogTuningOption,
+  catalogKneeOption,
   cacheKneesOption,
   cacheMixedOption,
   cacheReadOption,
@@ -13,6 +16,8 @@ import {
   dbCpuOption,
   endpointMixedOption,
   endpointReadOption,
+  fastapiHoldOption,
+  fastapiKneeOption,
   fixesCpuOption,
   fixesOption,
   hitRatioOption,
@@ -54,7 +59,16 @@ import {
 } from "@/lib/loadtestCharts"
 import {
   CHANGES,
+  catalogAloneTable,
+  catalogTuningRunsTable,
+  catalogTuningTable,
+  catalogGroupTable,
+  catalogKneeTable,
   failureTable,
+  fastapiBugTable,
+  fastapiHoldTable,
+  fastapiKneeTable,
+  fastapiSoakTable,
   holdTable,
   matchingTable,
   mongoHoldTable,
@@ -565,6 +579,95 @@ export function MongoTab() {
         <li>
           <strong>It does save disk.</strong> Compressed data took about half the space, though its
           indexes, with UUIDs stored as text, were no smaller.
+        </li>
+      </Findings>
+    </Section>
+  )
+}
+
+export function FastapiTab() {
+  const palette = useSeriesPalette()
+  return (
+    <Section title="catalog on FastAPI against Django">
+      <Prose>
+        <code>catalog</code> was rewritten on FastAPI with the same API, tables and events, and ran on the
+        same container as Django did. On <code>catalog</code>'s own traffic, with four bugs fixed,{" "}
+        <strong>FastAPI is faster</strong>: its knee is ~532 to ~594 req/s against Django's ~409 to ~431, and at the
+        same rate its p95 is 16.5 ms against 27.6 ms, at 25 % CPU against 41 %. Logins, mostly the password
+        hash, are the same on both. On the whole app's traffic, where <code>catalog</code> is nearly idle,
+        the two looked the same. <code>catalog</code> stays on FastAPI, and the Django version was removed.
+      </Prose>
+
+      <h3 className="font-medium">catalog's own traffic</h3>
+      <Prose>
+        A k6 scenario that calls only <code>catalog</code>: lists, details, <code>/me</code>, token refresh,
+        and creating, editing and deleting types. Django ran from its last commit. The first FastAPI runs
+        reached less than half Django's knee, from two bugs the whole-app traffic never reached: the signing
+        key was parsed for every token (25 ms each), and every call to <code>instances</code> built a new
+        HTTP client, which also leaked memory.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Knee per stress run, req/s" option={catalogKneeOption(palette)} height={barsHeight(8, 1)} />
+        <ChartCard title="p95 per group at ~240 req/s, ms" option={catalogGroupOption(palette)} height={barsHeight(8, 2)} />
+      </div>
+      <TableDetails table={catalogKneeTable} />
+      <TableDetails table={catalogGroupTable} />
+      <TableCard title="catalog alone, final code" table={catalogAloneTable} />
+
+      <h3 className="font-medium">Two smaller fixes (#41)</h3>
+      <Prose>
+        Endpoints now encode their own JSON instead of having FastAPI walk every response through{" "}
+        <code>jsonable_encoder</code>, and a pooled connection is pinged only after sitting idle, instead of
+        on every checkout. Run back to back (before, after, after, before), every read group's median
+        dropped by 0.15 to 0.26 ms, and saas-db handled ~45 % fewer transactions. The encoding saving
+        grows with the size of a page: the seeded owners have only 3 small types each. Writes, mean and
+        p95 varied more between runs than between the two versions.
+      </Prose>
+      <ChartCard title="Median per read group at ~240 req/s, ms" option={catalogTuningOption(palette)} height={barsHeight(6, 2)} />
+      <TableDetails table={catalogTuningTable} />
+      <TableCard title="Before and after #41" table={catalogTuningRunsTable} />
+
+      <h3 className="font-medium">The whole app's traffic</h3>
+
+      <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>
+      <Prose>
+        At this rate <code>catalog</code> gets about 30 req/s and uses about 3 % CPU on either, so the
+        differences are under a millisecond, with no direction that holds across both mixes.
+      </Prose>
+      <ChartCard title="catalog p95, ms" option={fastapiHoldOption(palette)} height={barsHeight(4, 2)} />
+      <TableDetails table={fastapiHoldTable} />
+
+      <h3 className="font-medium">Stress and soak</h3>
+      <Prose>
+        Django's knees are from 2026-11-06, the closest runs in time; FastAPI's ran on the final code.
+        Each run broke the same way: <code>instances</code> reached 80 to 90 % CPU, k6 added users, and
+        they all logged in at once.
+      </Prose>
+      <ChartCard title="Knee per stress run, req/s" option={fastapiKneeOption(palette)} height={barsHeight(8, 1)} />
+      <TableDetails table={fastapiKneeTable} />
+      <TableCard title="1-hour soak" table={fastapiSoakTable} />
+
+      <h3 className="font-medium">What the stress runs found</h3>
+      <TableCard title="Failed requests by version of the code" table={fastapiBugTable} />
+      <Findings>
+        <li>
+          <strong>A request held a connection while it waited for a thread.</strong> The login check kept
+          its database connection while the endpoint waited for one of the worker's 40 threads. Under load,
+          every thread waited for one of the 15 connections, and the worker stalled until the 30-second
+          pool timeout. It now hands the connection back first.
+        </li>
+        <li>
+          <strong>Logins held a connection through the password hash</strong>, hundreds of milliseconds
+          of CPU each. A burst of logins took all 15. Logins now release it before hashing, and each worker
+          runs at most 15 threads, so extra requests queue instead of failing.
+        </li>
+        <li>
+          <strong>Django never hit either</strong>, because each of its threads had its own connection.
+          Both bugs have tests that reproduce them with 2 threads and 1 connection.
+        </li>
+        <li>
+          <strong>Logins are slower in a burst.</strong> When k6 logs every user in again, FastAPI runs up
+          to 15 hashes per worker at once against Django's 4, on the same 2 cores, so each login waits longer.
         </li>
       </Findings>
     </Section>

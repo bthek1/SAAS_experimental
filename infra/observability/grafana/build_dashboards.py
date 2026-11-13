@@ -206,29 +206,51 @@ def k6_dashboard():
     )
 
 
-LATENCY = "django_http_requests_latency_seconds_by_view_method_bucket"
-REQUESTS = "django_http_requests_total_by_view_transport_method_total"
-DB_LATENCY = "django_db_query_duration_seconds_bucket"
-STATUSES = "django_http_responses_total_by_status_total"
+# Each pair: the Django service's metric, then the FastAPI catalog's (#37). FastAPI's
+# carry the same `view` label and django-prometheus's buckets, so a query adds them up
+# with `or` (different `service` labels, so no series hides another).
+LATENCY = (
+    "django_http_requests_latency_seconds_by_view_method_bucket",
+    "http_request_duration_seconds_bucket",
+)
+REQUESTS = (
+    "django_http_requests_total_by_view_transport_method_total",
+    "http_requests_total",
+)
+DB_LATENCY = (
+    "django_db_query_duration_seconds_bucket",
+    "db_query_duration_seconds_bucket",
+)
+STATUSES = ("django_http_responses_total_by_status_total", "http_requests_total")
+DB_QUERIES = ("django_db_execute_total", "db_queries_total")
+ALL_REQUESTS = ("django_http_requests_before_middlewares_total", "http_requests_total")
 
 
-def quantile(q: float, bucket: str, by: str = "", selector: str = "") -> str:
-    return f"histogram_quantile({q}, sum by (le{by}) ({rate(bucket, selector)}))"
+def rate_any(metrics: tuple[str, ...], selector: str = "") -> str:
+    return "(" + " or ".join(rate(metric, selector) for metric in metrics) + ")"
+
+
+def any_name(metrics: tuple[str, ...], selector: str = "") -> str:
+    names = '__name__=~"' + "|".join(metrics) + '"'
+    return "{" + ", ".join(part for part in (names, selector) if part) + "}"
+
+
+def quantile(
+    q: float, buckets: tuple[str, ...], by: str = "", selector: str = ""
+) -> str:
+    return f"histogram_quantile({q}, sum by (le{by}) {rate_any(buckets, selector)})"
 
 
 def django_dashboard():
-    db_queries = f"sum by (service) ({rate('django_db_execute_total', SERVICE)})"
-    requests = (
-        "sum by (service) "
-        f"({rate('django_http_requests_before_middlewares_total', SERVICE)})"
-    )
+    db_queries = f"sum by (service) {rate_any(DB_QUERIES, SERVICE)}"
+    requests = f"sum by (service) {rate_any(ALL_REQUESTS, SERVICE)}"
     return dashboard(
         "django",
         "Django",
         [
             panel(
                 "Requests by service",
-                [(f"sum by (service) ({rate(REQUESTS, SERVICE)})", BY_SERVICE)],
+                [(f"sum by (service) {rate_any(REQUESTS, SERVICE)}", BY_SERVICE)],
                 unit="reqps",
             ),
             panel(
@@ -240,7 +262,7 @@ def django_dashboard():
                 "Requests by view",
                 [
                     (
-                        f"sum by (service, view) ({rate(REQUESTS, SERVICE_VIEW)})",
+                        f"sum by (service, view) {rate_any(REQUESTS, SERVICE_VIEW)}",
                         "{{service}} {{view}}",
                     )
                 ],
@@ -250,7 +272,7 @@ def django_dashboard():
                 "Responses by status",
                 [
                     (
-                        f"sum by (service, status) ({rate(STATUSES, SERVICE)})",
+                        f"sum by (service, status) {rate_any(STATUSES, SERVICE)}",
                         "{{service}} {{status}}",
                     )
                 ],
@@ -319,14 +341,17 @@ def django_dashboard():
             ),
         ],
         [
-            query_var("service", f"label_values({REQUESTS}, service)", multi=True),
+            query_var(
+                "service", f"label_values({any_name(REQUESTS)}, service)", multi=True
+            ),
             query_var(
                 "view",
-                f"label_values({REQUESTS}{{{SERVICE}}}, view)",
+                f"label_values({any_name(REQUESTS, SERVICE)}, view)",
                 multi=True,
             ),
         ],
-        "django-prometheus on catalog and instances (/metrics, scraped directly).",
+        "Request and DB metrics from both services (/metrics, scraped directly): "
+        "django-prometheus on instances, the FastAPI catalog's own (#37).",
     )
 
 
@@ -335,7 +360,7 @@ GATEWAY_ETH0 = f'{GATEWAY}, device="eth0"'
 NET_RX_BYTES = "node_network_receive_bytes_total"
 NET_TX_BYTES = "node_network_transmit_bytes_total"
 # /internal/ goes straight from service to service, never through the gateway.
-THROUGH_GATEWAY = 'view!~".*internal_views.*"'
+THROUGH_GATEWAY = 'view!~".*internal.*"'
 
 
 def gateway_dashboard():
@@ -353,7 +378,7 @@ def gateway_dashboard():
                 [
                     (f"sum({rate(REQS)})", "k6 sent"),
                     (
-                        f"sum by (service) ({rate(REQUESTS, THROUGH_GATEWAY)})",
+                        f"sum by (service) {rate_any(REQUESTS, THROUGH_GATEWAY)}",
                         "{{service}} arrived",
                     ),
                 ],

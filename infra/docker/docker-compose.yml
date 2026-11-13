@@ -36,11 +36,12 @@ services:
     volumes:
       - instances_postgres_data:/var/lib/postgresql/data/
 
+  # FastAPI (#35 to #38).
   catalog:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.Dockerfile
-    command: python manage.py runserver 0.0.0.0:8000
+    command: uvicorn catalog.app:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ../../backend:/app
     ports:
@@ -89,7 +90,7 @@ services:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.Dockerfile
-    command: python manage.py relay_outbox
+    command: python -m catalog relay-outbox
     volumes:
       - ../../backend:/app
     depends_on:
@@ -120,7 +121,7 @@ services:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.Dockerfile
-    command: celery -A core worker --loglevel=info --concurrency=2
+    command: celery -A catalog.celery_app worker --loglevel=info --concurrency=2
     volumes:
       - ../../backend:/app
     depends_on:
@@ -135,14 +136,16 @@ services:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       CELERY_BROKER_URL: redis://redis:6379/0
       CACHE_REDIS_URL: redis://redis:6379/1
-      # Results go to the Django DB backend (see CELERY_RESULT_BACKEND in
-      # core/settings/service.py) so the task-status API and admin can read them.
+      # Results go to Postgres through Celery's SQLAlchemy backend
+      # (catalog/celery_app.py), so the task-status API can read them.
 
   celery_beat:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/catalog.Dockerfile
-    command: celery -A core beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    # Schedules are code (beat_schedule in catalog/celery_app.py). The state
+    # file goes outside the bind mount, so it never lands in the repo.
+    command: celery -A catalog.celery_app beat --loglevel=info --schedule /tmp/celerybeat-schedule
     volumes:
       - ../../backend:/app
     depends_on:
@@ -154,8 +157,6 @@ services:
     environment:
       DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
       CELERY_BROKER_URL: redis://redis:6379/0
-      # Results go to the Django DB backend (see CELERY_RESULT_BACKEND in
-      # core/settings/service.py) so the task-status API and admin can read them.
 
   frontend:
     build:

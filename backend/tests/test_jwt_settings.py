@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from common.dev_keys import DEV_SIGNING_KEY, DEV_VERIFYING_KEY
+from common.dev_keys import DEV_VERIFYING_KEY
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -62,14 +62,11 @@ def other_keys() -> dict:
     return {"JWT_SIGNING_KEY": private, "JWT_VERIFYING_KEY": public}
 
 
-@pytest.mark.parametrize("service", ["catalog", "instances"])
-def test_test_settings_ignore_keys_in_the_environment(service, other_keys):
-    keys = jwt_keys(service, "core.settings.test", **other_keys)
+def test_test_settings_ignore_keys_in_the_environment(other_keys):
+    # catalog's own profiles are checked in catalog/tests/test_settings.py.
+    keys = jwt_keys("instances", "core.settings.test", **other_keys)
     assert keys["VERIFYING_KEY"].strip() == DEV_VERIFYING_KEY.strip()
-    if service == "catalog":
-        assert keys["SIGNING_KEY"].strip() == DEV_SIGNING_KEY.strip()
-    else:
-        assert keys["SIGNING_KEY"] == ""
+    assert keys["SIGNING_KEY"] == ""
 
 
 def test_dev_settings_still_read_keys_from_the_environment(other_keys):

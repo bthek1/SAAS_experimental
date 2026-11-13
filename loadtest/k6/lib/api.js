@@ -157,6 +157,72 @@ export function readMostly(s) {
   else health();
 }
 
+// ── catalog alone (#39) ──────────────────────────────────────────────────────
+// Only `catalog`'s endpoints, so its own capacity shows instead of `instances`'.
+// Type writes still send an event to `instances`, and deletes ask it to retire
+// the type: that is part of `catalog`'s work.
+
+let catalogSession = null;
+
+function catalogLogin() {
+  const email = `loadtest-${(__VU - 1) % OWNERS}@example.com`;
+  const res = call('POST', '/api/token/', { name: 'token', body: { email, password: PASSWORD }, keep: true });
+  if (res.status !== 200) {
+    throw new Error(`login as ${email} answered ${res.status}; run seed_loadtest with OWNERS >= ${OWNERS}`);
+  }
+  const token = res.json('access');
+  const list = (path, name) => call('GET', `${path}?page_size=100`, { name, token, keep: true }).json('results');
+  const typeIds = list('/api/questionnaire-types/', 'questionnaire-type-list').map((t) => t.id);
+  if (!typeIds.length) throw new Error(`${email} has no types; run seed_loadtest first`);
+  list('/api/battery-types/', 'battery-type-list');
+  return { token, refresh: res.json('refresh'), at: Date.now(), typeIds };
+}
+
+export function catalogOwner() {
+  if (!catalogSession || Date.now() - catalogSession.at > SESSION_MAX_AGE_MS) catalogSession = catalogLogin();
+  return catalogSession;
+}
+
+// One login as a fresh owner each time: the pbkdf2 path, which nothing else loads.
+export function loginOnly() {
+  const email = `loadtest-${__ITER % OWNERS}@example.com`;
+  call('POST', '/api/token/', { name: 'token', body: { email, password: PASSWORD } });
+}
+
+function typeCrud(s) {
+  const created = call('POST', '/api/questionnaire-types/', {
+    name: 'questionnaire-type-create',
+    token: s.token,
+    body: { title: `k6 ${__VU}-${__ITER}`, questionnaireJson: { pages: [] } },
+    expect: 201,
+    keep: true,
+  });
+  if (created.status !== 201) return;
+  const url = `/api/questionnaire-types/${created.json('id')}/`;
+  call('PATCH', url, { name: 'questionnaire-type-update', token: s.token, body: { title: `k6 ${__VU}-${__ITER} b` } });
+  call('DELETE', url, { name: 'questionnaire-type-delete', token: s.token, expect: 204 });
+}
+
+function refreshToken(s) {
+  const res = call('POST', '/api/token/refresh/', { name: 'token-refresh', body: { refresh: s.refresh }, keep: true });
+  if (res.status === 200) s.token = res.json('access');
+}
+
+// 35 % type list, 15 % type detail, 15 % battery-type list, 10 % /me, 10 % token
+// refresh, 10 % type create, update and delete (3 requests), 5 % health. So 1
+// iteration is about 1.2 requests, and the deletes keep the row count steady.
+export function catalogCrud(s) {
+  const r = Math.random();
+  if (r < 0.35) call('GET', '/api/questionnaire-types/', { name: 'questionnaire-type-list', token: s.token });
+  else if (r < 0.5) {
+    call('GET', `/api/questionnaire-types/${pick(s.typeIds)}/`, { name: 'questionnaire-type-detail', token: s.token });
+  } else if (r < 0.65) call('GET', '/api/battery-types/', { name: 'battery-type-list', token: s.token });
+  else if (r < 0.75) call('GET', '/api/accounts/me/', { name: 'me', token: s.token });
+  else if (r < 0.85) refreshToken(s);
+  else if (r < 0.95) typeCrud(s);
+  else health();
+}
+
 const MIXES = { mixed, read: readMostly };
 
 // The mix for load, stress and soak: MIX=mixed (default) or MIX=read.

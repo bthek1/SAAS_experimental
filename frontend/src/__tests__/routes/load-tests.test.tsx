@@ -29,6 +29,7 @@ describe("/load-tests", () => {
     ["fixes", "What the dashboard fixes did", 11],
     ["split", "What splitting into two services did", 8],
     ["mongo", "Postgres against MongoDB for instances", 5],
+    ["fastapi", "catalog on FastAPI against Django", 5],
   ])("renders the %s tab with its %s section and %i charts", async (tab, heading, charts) => {
     renderRoute(`/load-tests?tab=${tab}`)
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument()

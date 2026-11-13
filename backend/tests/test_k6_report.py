@@ -135,3 +135,10 @@ def test_stacks_send_native_histograms(path):
     text = (REPO_ROOT / path).read_text()
     assert "K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM" in text
     assert "K6_PROMETHEUS_RW_TREND_STATS" not in text
+
+
+def test_server_latency_covers_both_services(report):
+    query = report.server_quantile(0.95)
+    assert "django_http_requests_latency_seconds_by_view_method_bucket" in query
+    assert "http_request_duration_seconds_bucket" in query
+    assert " or " in query

@@ -30,7 +30,12 @@ from pathlib import Path
 RESULTS = Path(__file__).resolve().parent / "results"
 STEP = 60
 
-DJANGO_LATENCY = "django_http_requests_latency_seconds_by_view_method_bucket"
+# Server-side latency of both services: Django's, and the FastAPI catalog's, which has
+# the same buckets so one quantile covers both (#37). Older runs have only Django's.
+SERVER_LATENCY = (
+    "django_http_requests_latency_seconds_by_view_method_bucket",
+    "http_request_duration_seconds_bucket",
+)
 K6_LATENCY = "k6_http_req_duration_seconds"
 CACHE_REQUESTS = "app_cache_requests_total"
 CACHE_GROUPS = ("dashboard", "dashboard-scores", "pdf", "type-list")
@@ -67,8 +72,9 @@ def cache_hit_ratio(group: str) -> str:
     return f"100 * {hits} / {reads}"
 
 
-def django_quantile(q: float) -> str:
-    return f"1000 * histogram_quantile({q}, sum by (le) (rate({DJANGO_LATENCY}[1m])))"
+def server_quantile(q: float) -> str:
+    rates = " or ".join(f"rate({metric}[1m])" for metric in SERVER_LATENCY)
+    return f"1000 * histogram_quantile({q}, sum by (le) ({rates}))"
 
 
 def k6_worst_group_p95(selector: str) -> str:
@@ -146,8 +152,8 @@ def columns(testid: str) -> list[tuple[str, str, str]]:
             f"1000 * max(max_over_time(k6_http_req_duration_p95{{{k6}}}[1m]))",
             "{:.0f}",
         ),
-        ("django p95 ms", django_quantile(0.95), "{:.0f}"),
-        ("django p99 ms", django_quantile(0.99), "{:.0f}"),
+        ("server p95 ms", server_quantile(0.95), "{:.0f}"),
+        ("server p99 ms", server_quantile(0.99), "{:.0f}"),
         *((f"{role} cpu %", cpu_share(role), "{:.0f}") for role in ROLES),
         *(
             (f"{group} hit %", cache_hit_ratio(group), "{:.0f}")
