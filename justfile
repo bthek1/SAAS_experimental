@@ -1,4 +1,4 @@
-# FastAPI + Django + React monorepo justfile
+# FastAPI + ASP.NET Core + React monorepo justfile
 # Only day-to-day commands live here. Run `just` to list them.
 
 set dotenv-load := false
@@ -76,22 +76,23 @@ compose *args:
 
 # --- Backend ---
 
-# Apply database migrations on both services (catalog: Alembic, adopting a Django-built db)
+# Apply database migrations on both services (each adopts a database Django built)
 [group('backend')]
 be-migrate:
     cd backend && uv run python -m catalog migrate
-    cd backend && uv run python instances/manage.py migrate
+    cd backend/instances && dotnet run --project src/Instances.Api -- migrate
 
-# New migration after model changes: just be-makemigrations questionnaires | catalog "<message>"
+# New migration after model changes: just be-makemigrations catalog "<message>" | instances <Name>
 [group('backend')]
 be-makemigrations app message="change":
     #!/usr/bin/env bash
     set -euo pipefail
     cd backend
     case "{{ app }}" in
-        questionnaires) uv run python instances/manage.py makemigrations questionnaires ;;
         catalog) cd catalog && uv run alembic revision --autogenerate -m "{{ message }}" ;;
-        *) echo "unknown app {{ app }}: questionnaires (instances) or catalog (Alembic)" >&2; exit 1 ;;
+        instances) cd instances && dotnet tool restore && dotnet ef migrations add "{{ message }}" \
+            --project src/Instances.Api --output-dir Data/Migrations ;;
+        *) echo "unknown app {{ app }}: catalog (Alembic) or instances (EF Core)" >&2; exit 1 ;;
     esac
 
 # Create a staff superuser for /admin/ from DJANGO_SUPERUSER_* in .env
@@ -104,7 +105,8 @@ be-superuser:
 be-test:
     cd backend && uv run pytest catalog
     cd backend && uv run pytest parity
-    cd backend && uv run pytest instances
+    cd backend/instances && dotnet test
+    cd backend && uv run pytest parity_instances
     cd backend && uv run pytest tests
 
 # Lint backend code (ruff check)
@@ -167,7 +169,7 @@ loadtest-seed *args:
     done
     {{ loadtest_compose }} exec catalog python -m catalog seed-loadtest --owners "$owners"
     {{ loadtest_compose }} exec catalog python -m catalog relay-outbox --once
-    {{ loadtest_compose }} exec instances python manage.py seed_loadtest --questionnaires-per-owner "$per_owner"
+    {{ loadtest_compose }} exec instances dotnet Instances.Api.dll seed-loadtest --questionnaires-per-owner "$per_owner"
 
 # Run a k6 scenario, results to Prometheus/Grafana: smoke load stress soak respondent pdf outage catalog [KEY=VALUE…]
 [group('loadtest')]
@@ -226,13 +228,13 @@ db-reset:
 
 # --- Helpers used by `dev` (hidden from the list, still runnable by name) ---
 
-# Run both dev servers (catalog on FastAPI) and the gateway's dev router on :8005 (migrates first)
+# Run both dev servers (catalog on FastAPI, instances on .NET) and the gateway's dev router on :8005 (migrates first)
 [private]
 be-dev: be-migrate
     #!/usr/bin/env bash
     trap 'kill 0' EXIT
     (cd backend && uv run uvicorn catalog.app:app --host 0.0.0.0 --port 8006 --reload --reload-dir catalog) &
-    (cd backend && uv run python instances/manage.py runserver 0.0.0.0:8007) &
+    (cd backend/instances && ASPNETCORE_URLS=http://0.0.0.0:8007 dotnet watch --project src/Instances.Api run --no-launch-profile --non-interactive) &
     python3 infra/gateway/dev_router.py --port 8005 \
         --service catalog=http://localhost:8006 --service instances=http://localhost:8007 &
     wait

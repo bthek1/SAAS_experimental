@@ -1,14 +1,18 @@
 app_root: /srv/app
 app_backend_dir: "{{ app_root }}/backend"
-# Where the commands and gunicorn run, and the uv workspace package to install.
-# gunicorn reads gunicorn.conf.py from here; Django's `core` and `apps` resolve from here.
-app_package: "{{ app_service }}"
-app_dir: "{{ app_backend_dir }}/{{ app_service }}"
 app_env_file: "/etc/{{ app_unit }}/app.env"
 app_python: "{{ app_backend_dir }}/.venv/bin/python"
-# Each operation, per service: catalog on FastAPI (#35 to #38), instances on Django.
+# Where the published .NET service lives on the container, and its runtime (#44).
+app_dotnet_dir: "{{ app_root }}/instances-dotnet"
+app_dotnet: /opt/dotnet/dotnet
+# Where the commands and the server run. catalog's gunicorn reads gunicorn.conf.py from
+# its folder of the synced backend; instances (.NET) runs from its published build.
+app_dir: "{{ app_backend_dir + '/catalog' if app_service == 'catalog' else app_dotnet_dir }}"
+# Each operation, per service: catalog on FastAPI (#35 to #38), instances on .NET (#44,
+# #45). `exe` runs each command.
 app_commands:
   catalog:
+    exe: "{{ app_python }}"
     migrate: -m catalog migrate
     flush: -m catalog reset-db
     clear_cache: -m catalog clear-cache
@@ -16,23 +20,20 @@ app_commands:
     relay: -m catalog relay-outbox
     wsgi: -k uvicorn_worker.UvicornWorker catalog.app:app
   instances:
-    migrate: manage.py migrate --noinput
-    flush: manage.py flush --noinput
-    clear_cache: manage.py shell -c "from django.core.cache import cache; cache.clear()"
-    wsgi: --worker-class gthread --threads {{ gunicorn_threads }} core.wsgi
+    exe: "{{ app_dotnet }} {{ app_dotnet_dir }}/Instances.Api.dll"
+    migrate: migrate
+    flush: reset-db
+    clear_cache: clear-cache
+    seed: seed-loadtest
 app_cmd: "{{ app_commands[app_service] }}"
-# PEM files on one line: core settings read JWT keys with `\\n` for newlines (`multiline`).
+# PEM files on one line: both services read JWT keys with `\\n` for newlines.
 app_jwt_verifying_key: "{{ jwt_verifying_key | trim | replace('\n', '\\n') }}"
 app_env_shared:
-  # instances (Django) reads the module, catalog (FastAPI) reads SETTINGS.
-  DJANGO_SETTINGS_MODULE: core.settings.loadtest
   SETTINGS: loadtest
   SECRET_KEY: "{{ django_secret_key }}"
   ALLOWED_HOSTS: "{{ guest_ips.gateway }},{{ guest_ip }},localhost,127.0.0.1"
   # Prometheus alone may read /metrics.
   METRICS_ALLOWED_CIDRS: "{{ guest_ips.monitor }}/32"
-  PROMETHEUS_MULTIPROC_DIR: "/run/{{ app_unit }}/prometheus"
-  CONN_MAX_AGE: "{{ conn_max_age }}"
   CACHE_REDIS_URL: "redis://:{{ redis_password }}@{{ guest_ips.cache }}:{{ ports.redis }}/1"
   CACHE_ENABLED: "{{ cache_enabled }}"
   LOADTEST_OWNER_PASSWORD: "{{ loadtest_owner_password }}"
@@ -43,14 +44,26 @@ app_env_shared:
   INSTANCES_TO_CATALOG_TOKEN: "{{ instances_to_catalog_token }}"
 app_env_service:
   catalog:
+    # gunicorn's workers share metrics through it (common/gunicorn_conf.py).
+    PROMETHEUS_MULTIPROC_DIR: "/run/{{ app_unit }}/prometheus"
+    # Rendered on every host (the whole dict is templated), so it needs a default.
+    CONN_MAX_AGE: "{{ conn_max_age | default(60) }}"
     DATABASE_URL: "postgres://{{ db_user }}:{{ db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ db_name }}"
     JWT_SIGNING_KEY: "{{ jwt_signing_key | trim | replace('\n', '\\n') }}"
   # Never the signing key: this service verifies tokens and cannot mint them.
   instances:
     INSTANCES_DATABASE_URL: "postgres://{{ instances_db_user }}:{{ instances_db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ instances_db_name }}"
-# The service's environment. Also passed to migrate and seed_loadtest, so they see
-# exactly what gunicorn sees.
-app_env: "{{ app_env_shared | combine(app_env_service[app_service]) }}"
+# What only instances (.NET) reads: where Kestrel listens, and its tuning knobs.
+app_env_dotnet:
+  ASPNETCORE_URLS: "http://0.0.0.0:{{ ports.gunicorn }}"
+  DB_POOL_SIZE: "{{ dotnet_db_pool_size | default(20) }}"
+  THREADPOOL_MIN_THREADS: "{{ dotnet_min_threads | default(0) }}"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+# The service's environment. Also passed to migrate and the seeders, so they see exactly
+# what the server sees.
+app_env: >-
+  {{ app_env_shared | combine(app_env_service[app_service])
+     | combine(app_env_dotnet if app_service == 'instances' else {}) }}
 app_manage_env: "{{ app_env | combine({'PROMETHEUS_MULTIPROC_DIR': '/tmp/' + app_unit + '-manage'}) }}"
 app_uv_env:
   UV_PYTHON_INSTALL_DIR: "{{ app_root }}/.python"

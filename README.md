@@ -2,7 +2,7 @@
 
 A decoupled web application, created from the `django_react_template` starter:
 
-- **`backend/`**: two services behind one gateway, each with its own database: `catalog` on FastAPI and `instances` on Django REST Framework (Python 3.14, PostgreSQL, Celery)
+- **`backend/`**: two services behind one gateway, each with its own PostgreSQL database: `catalog` on FastAPI (Python 3.14, Celery) and `instances` on ASP.NET Core (.NET 10)
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router, TanStack Query)
 
 ---
@@ -19,9 +19,9 @@ cp .env.example .env
 # 3. Start everything (compose files live in infra/docker/)
 just up
 
-# 4. Run migrations (first time), in a second terminal
+# 4. Run catalog's migrations (first time), in a second terminal. instances (.NET) migrates
+#    itself as it starts, adopting a database the Django version built.
 just compose exec catalog python -m catalog migrate
-just compose exec instances python manage.py migrate
 ```
 
 `just compose <args>` runs any `docker compose` command against `infra/docker/docker-compose.yml`
@@ -33,7 +33,7 @@ compose file's folder, and create a separate set of containers and volumes.
 |---------|-----|
 | Frontend | http://localhost:5174 |
 | API (gateway) | http://localhost:8005/api/ |
-| Admin | http://localhost:8005/admin/ (`catalog`, sqladmin: staff only, create one with `just be-superuser`), http://localhost:8005/instances-admin/ (`instances`' Django admin, its own staff accounts) |
+| Admin | http://localhost:8005/admin/ (`catalog`, sqladmin: staff only, create one with `just be-superuser`) |
 | Health check | http://localhost:8005/api/health/ |
 | Flower (Celery UI) | http://localhost:5555 (`cd backend && uv run celery -A catalog.celery_app flower --port=5555`) |
 
@@ -49,27 +49,41 @@ just dev                # dbs + redis + celery in Docker, services and frontend 
 
 The API is on `:8005` through the gateway's dev router (`catalog` `:8006`, `instances` `:8007`), and the frontend on `:5174`. Run `just --list` for every command.
 
-PDF export (WeasyPrint) needs Pango and a font on the host. The Docker images already include
-them. On Debian/Ubuntu run `sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
-fonts-dejavu-core`; on macOS run `brew install pango`. Without them, everything except
-`GET /api/questionnaires/<id>/pdf/` still works.
+`instances` runs on .NET (`backend/instances/`, #42 to #45), so `just dev` and the tests need
+the .NET 10 SDK. Either Microsoft's apt feed (`sudo apt install dotnet-sdk-10.0` on Ubuntu 24.04), or,
+without sudo, the official tarball in `~/.dotnet` (check its SHA-512 against
+`https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`, then put
+`~/.dotnet` on `PATH` and set `DOTNET_ROOT=~/.dotnet`). `global.json` pins the SDK band. Its tests
+and its parity run need Docker, for a throwaway Postgres. Its PDFs are drawn with
+[QuestPDF](https://www.questpdf.com/license/) under the Community licence (free for this project's
+size), so hosts need no Pango or fonts. Its commands are verbs of the binary: `migrate`,
+`seed-loadtest [--questionnaires-per-owner N] [--seed N]`, `reset-db` and `clear-cache` (the last three
+dev or loadtest only), `reconcile-refs [--dry-run]` and `health`.
+
+The Django version of `instances` was measured against .NET (`loadtest/baselines/2026-11-14-instances-dotnet.md`)
+and removed in #45. It is at `6b47566`, with its admin site and `import_from_monolith`.
 
 ### Tests
 
 ```bash
-just be-test            # backend: pytest for each service, the parity suite, then the repo-level checks
+just be-test            # backend: catalog's pytest, both API suites, instances' xUnit, then the repo-level checks
 just fe-test            # frontend unit and route tests (Vitest)
 just infra-test         # Pulumi program and Ansible role checks, no containers needed
 
 cd backend
 uv run pytest parity    # catalog's API over real HTTP, against a stub instances (what the SPA and instances rely on)
+uv run pytest parity_instances   # instances' API over real HTTP, against a stub catalog (#40); needs Docker
 cd ..
+
+cd backend/instances
+dotnet test             # xUnit, on a throwaway Postgres (Testcontainers)
+cd ../..
 
 cd frontend
 npx playwright install chromium   # first time only: downloads the browser
 npm run e2e             # end-to-end tests (Playwright); starts Vite itself, API is mocked
 npm run e2e:ui          # same, in Playwright's UI mode
-npm run e2e:integration # end-to-end against both real services behind the router (fresh SQLite, ports 8015-8017 / 5184)
+npm run e2e:integration # end-to-end against both real services behind the router (catalog on fresh SQLite, instances on a throwaway Postgres in Docker; ports 8015-8017 / 5184 / 5447)
 ```
 
 The integration suite (`frontend/e2e/integration/questionnaires.spec.ts`) walks the questionnaire
@@ -78,7 +92,7 @@ battery, and check that one user cannot see another's data.
 
 ### Load tests (k6 + Prometheus + Grafana)
 
-A separate Docker stack runs both prod service images (gunicorn, `core.settings.loadtest`) behind the
+A separate Docker stack runs both prod service images (`SETTINGS=loadtest`) behind the
 gateway, with their own Postgres databases, Prometheus and Grafana. It needs `JWT_SIGNING_KEY` and
 `JWT_VERIFYING_KEY` in `.env` (see `.env.example`). It never touches the dev stack. k6 runs in a container.
 
@@ -231,7 +245,7 @@ own copy of each type (#13):
   (see `.env.example`); `dev` needs nothing.
 - Deactivating or deleting a user reaches `instances` as an event, so a token keeps working there
   until it arrives. That is normally immediate. Deleting a user also removes their rows there.
-- `manage.py reconcile_refs [--dry-run]` compares every copy with `catalog` and repairs differences.
+- `instances`' `reconcile-refs [--dry-run]` compares every copy with `catalog` and repairs differences.
   It lists any copy whose type is gone but which instances still use, and leaves those in place.
 
 The app's **Service interface** page (`/service-interface`, login required) explains the same flow
@@ -250,25 +264,29 @@ cd backend && uv run python -m catalog relay-outbox --once   # delivered: N, pen
 - **`delivered: 0` and all events pending:** `instances` is unreachable, or the tokens differ. The event's `last_error`
   (catalog's admin, Outbox Event) says which. They drain by themselves once it is back.
 - **One event keeps failing while others deliver:** `instances` refuses it (`400`). The event's `last_error` has the
-  reason. Fix the cause, or repair the copies with `reconcile_refs`.
-- After any long outage, `uv run python instances/manage.py reconcile_refs --dry-run` shows whether copies differ.
+  reason. Fix the cause, or repair the copies with `reconcile-refs`.
+- After any long outage, `cd backend/instances && dotnet run --project src/Instances.Api -- reconcile-refs --dry-run`
+  shows whether copies differ (on LXC: `dotnet Instances.Api.dll reconcile-refs --dry-run` with the unit's environment).
 
 ### Moving a pre-split database
 
 A database from before #13 holds everything. It stays `catalog`'s, and instance rows are copied out.
-The first two steps need the Django `catalog`, removed in #38: run them from a checkout of `edb8acd`,
-the last commit that has `adopt_monolith_db`. Then, on the current code:
+Each step needs the Django version that did it: `catalog`'s, removed in #38, is at `edb8acd` (the last
+commit with `adopt_monolith_db`), and `instances`', removed in #45, is at `6b47566` (the last with
+`import_from_monolith`). Then, on the current code:
 
 ```bash
 cd backend
 # at edb8acd:
 uv run python catalog/manage.py adopt_monolith_db   # adds the new columns, safe to repeat
 uv run python catalog/manage.py migrate
-# on the current code:
-uv run python -m catalog migrate                     # adopts the Django-built schema (Alembic stamp)
+# at 6b47566:
 uv run python instances/manage.py migrate
 uv run python instances/manage.py import_from_monolith --source "$OLD_DATABASE_URL"
-uv run python instances/manage.py reconcile_refs --dry-run    # expect no differences, with both services up
+# on the current code:
+uv run python -m catalog migrate                     # adopts the Django-built schema (Alembic stamp)
+cd instances && dotnet run --project src/Instances.Api -- migrate             # adopts instances' the same way
+dotnet run --project src/Instances.Api -- reconcile-refs --dry-run            # expect no differences, with both services up
 ```
 
 `import_from_monolith` only reads the source, refuses a destination that already has rows, and fails if a
@@ -282,14 +300,16 @@ their names and belong to `catalog`, so never drop those.
 ```
 /
 ├── backend/          uv workspace: one lock, a package per service
-│   ├── common/       Django infrastructure for instances: settings, cache, metrics, peer calls. No models.
+│   ├── common/       What catalog shares with the tests: the published dev JWT pair, gunicorn settings
 │   ├── catalog/      Service on FastAPI: alembic.ini, gunicorn.conf.py, tests/
 │   │   └── catalog/  app, models, routers/ (accounts, types, internal, health and tasks), outbox,
 │   │                 admin, Celery, CLI (`python -m catalog`), migrations/ (Alembic)
-│   ├── instances/    Service on Django: manage.py, core/, apps/
-│   │   └── apps/     questionnaires (instances, share links, dashboards, PDFs, type copies)
+│   ├── instances/    Service on ASP.NET Core + EF Core (.NET 10, #42 to #45): Instances.slnx
+│   │   ├── src/Instances.Api/     questionnaires, batteries, share links, dashboards, PDFs, type copies
+│   │   └── tests/Instances.Tests/ xUnit, on a throwaway Postgres
 │   ├── contracts/    JSON shapes of /internal/ calls, tested by both services
 │   ├── parity/       catalog's API tested over HTTP only, against a stub instances (#34)
+│   ├── parity_instances/  instances' API tested over HTTP only, against a stub catalog (#40)
 │   └── tests/        Repo-level tests (service boundary, gateway, infra layout, k6 targets)
 ├── frontend/         React SPA
 │   ├── e2e/          Playwright end-to-end specs
@@ -317,13 +337,13 @@ their names and belong to `catalog`, so never drop those.
 
 | Layer | Technology |
 |-------|-----------|
-| Backend language | Python 3.14 |
-| Backend framework | `catalog`: FastAPI + SQLAlchemy 2 + Alembic, sqladmin. `instances`: Django 6 + Django REST Framework |
-| Auth | JWT, RS256: `catalog` signs with PyJWT (simplejwt's claims), `instances` verifies with `djangorestframework-simplejwt` |
+| Backend language | Python 3.14 (`catalog`), C# on .NET 10 (`instances`) |
+| Backend framework | `catalog`: FastAPI + SQLAlchemy 2 + Alembic, sqladmin. `instances`: ASP.NET Core + EF Core + Npgsql, QuestPDF (#42 to #45) |
+| Auth | JWT, RS256: `catalog` signs with PyJWT (simplejwt's claims), `instances` verifies with ASP.NET Core's JwtBearer |
 | Database | PostgreSQL 16 |
 | Async tasks | Celery + Redis (`catalog` only; results in Postgres through Celery's SQLAlchemy backend) |
-| Cache | Redis: `catalog/catalog/cache.py` (JSON values) and `common/cache.py` (Django's cache framework, `instances`) |
-| Dependency manager | [uv](https://github.com/astral-sh/uv) |
+| Cache | Redis, JSON values: `catalog/catalog/cache.py` and `instances`' `Caching/Cache.cs` |
+| Dependency manager | [uv](https://github.com/astral-sh/uv) (`catalog`), NuGet with central versions (`instances`) |
 | Frontend language | TypeScript |
 | Frontend bundler | Vite |
 | UI framework | React 19 |

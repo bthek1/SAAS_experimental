@@ -1,20 +1,19 @@
-"""gunicorn's multiprocess metrics setup (#9), shared by both services (#13)."""
+"""gunicorn's multiprocess metrics setup (#9), for catalog (#13, #45)."""
 
 import re
 from pathlib import Path
 from types import SimpleNamespace
-
-import pytest
 
 from common import gunicorn_conf
 
 BACKEND = Path(__file__).resolve().parent.parent
 
 
-@pytest.mark.parametrize("service", ["catalog", "instances"])
-def test_each_service_uses_the_shared_config(service: str) -> None:
-    """gunicorn reads this file from the working directory, so it has to exist."""
-    config = (BACKEND / service / "gunicorn.conf.py").read_text()
+def test_catalog_uses_the_shared_config() -> None:
+    """gunicorn reads this file from the working directory, so it has to exist.
+
+    instances runs on Kestrel since #44: tests/test_kestrel_keepalive.py."""
+    config = (BACKEND / "catalog" / "gunicorn.conf.py").read_text()
     assert "from common.gunicorn_conf import *" in config
 
 

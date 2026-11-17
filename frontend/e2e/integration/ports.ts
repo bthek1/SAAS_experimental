@@ -5,3 +5,5 @@ export const API_URL = `http://localhost:${API_PORT}`;
 export const WEB_URL = `http://localhost:${WEB_PORT}`;
 export const CATALOG_PORT = API_PORT + 1;
 export const INSTANCES_PORT = API_PORT + 2;
+// instances' throwaway Postgres (#44): the dev instances_db's port + 10.
+export const INSTANCES_DB_PORT = 5447;

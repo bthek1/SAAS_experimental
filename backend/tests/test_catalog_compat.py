@@ -1,36 +1,29 @@
-"""`catalog` stays compatible with what Django made and `instances` reads (#35, #38).
+"""`catalog` stays compatible with what Django made and `instances` reads (#35-#45).
 
 Passwords keep Django's pbkdf2_sha256 format, so users created before FastAPI still log
-in, and `instances` verifies tokens with simplejwt, so it must accept the ones `catalog`
-mints. Django's side runs in `instances`' interpreter (catalog has no Django since
-#38), each in a fresh process, as in test_jwt_settings.py.
+in. Django's side is frozen here: no service has run Django since #45 removed it from
+`instances`, at `6b47566`. Tokens must carry the claims simplejwt did, which
+`instances` (`Auth/OwnerAuth.cs`) checks; `frontend/e2e/integration` sends `catalog`'s
+tokens to it for real.
 """
 
-import json
-import os
-import subprocess
-import sys
-from pathlib import Path
-
+import jwt
 import pytest
+from common.dev_keys import DEV_VERIFYING_KEY
 
 from catalog import auth, seeding
 from catalog.settings import DJANGO_PBKDF2_ITERATIONS, load
 
-BACKEND = Path(__file__).resolve().parent.parent
 PASSWORD = "compat-pass-123"
 
-
-def django(service: str, script: str, **env: str) -> dict:
-    result = subprocess.run(  # noqa: S603 - fixed argv, our own interpreter
-        [sys.executable, "-c", f"import django; django.setup()\n{script}"],
-        cwd=BACKEND / service,
-        env={**os.environ, "DJANGO_SETTINGS_MODULE": "core.settings.test", **env},
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return json.loads(result.stdout.strip().splitlines()[-1])
+# Django 6.0's PBKDF2PasswordHasher, frozen by #45: its iteration count, and
+# `encode(PASSWORD, DJANGO_SALT)`.
+DJANGO_ITERATIONS = 1_200_000
+DJANGO_SALT = "frozensalt0123456789ab"
+DJANGO_HASH = (
+    "pbkdf2_sha256$1200000$frozensalt0123456789ab$"
+    "UbZqRmwtllG9MsBQrvHW7JE+YhzoFvDUXbJIbMDgH3o="
+)
 
 
 @pytest.fixture
@@ -41,52 +34,33 @@ def test_settings(monkeypatch):
 
 
 def test_iterations_match_django():
-    found = django(
-        "instances",
-        "import json\n"
-        "from django.contrib.auth.hashers import PBKDF2PasswordHasher as H\n"
-        "print(json.dumps({'iterations': H.iterations}))",
-    )
-    assert found["iterations"] == DJANGO_PBKDF2_ITERATIONS
+    assert DJANGO_PBKDF2_ITERATIONS == DJANGO_ITERATIONS
 
 
-def test_django_accepts_a_fastapi_hash(test_settings):  # noqa: ARG001
+def test_hashes_like_django():
+    # The same password and salt give Django's hash, so Django would accept ours.
+    digest = auth._pbkdf2(PASSWORD, DJANGO_SALT, DJANGO_ITERATIONS)
+    assert f"pbkdf2_sha256${DJANGO_ITERATIONS}${DJANGO_SALT}${digest}" == DJANGO_HASH
     encoded = auth.make_password(PASSWORD, iterations=DJANGO_PBKDF2_ITERATIONS)
-    found = django(
-        "instances",
-        "import json, sys\n"
-        "from django.contrib.auth.hashers import PBKDF2PasswordHasher as H\n"
-        f"print(json.dumps({{'ok': H().verify({PASSWORD!r}, {encoded!r}),"
-        f" 'update': H().must_update({encoded!r})}}))",
-    )
-    assert found == {"ok": True, "update": False}
+    algorithm, iterations, salt, _ = encoded.split("$")
+    assert (algorithm, int(iterations), len(salt)) == ("pbkdf2_sha256", 1_200_000, 22)
 
 
 def test_fastapi_accepts_a_django_hash(test_settings):  # noqa: ARG001
-    found = django(
-        "instances",
-        "import json\n"
-        "from django.contrib.auth.hashers import PBKDF2PasswordHasher as H\n"
-        f"print(json.dumps({{'hash': H().encode({PASSWORD!r}, H().salt())}}))",
-    )
-    assert auth.check_password(PASSWORD, found["hash"])
-    assert not auth.check_password("wrong-password", found["hash"])
+    assert auth.check_password(PASSWORD, DJANGO_HASH)
+    assert not auth.check_password("wrong-password", DJANGO_HASH)
 
 
-def test_instances_accepts_a_fastapi_token(test_settings):  # noqa: ARG001
+def test_access_tokens_carry_what_instances_checks(test_settings):  # noqa: ARG001
     class Owner:
         id = "6f1c3c62-6f0e-4d8a-9f43-7c1f0a3b2d11"
 
     access = auth.token_pair(Owner)["access"]
-    found = django(
-        "instances",
-        "import json\n"
-        "from rest_framework_simplejwt.authentication import "
-        "JWTStatelessUserAuthentication as A\n"
-        f"token = A().get_validated_token({access.encode()!r})\n"
-        "print(json.dumps({'user_id': token['user_id'], 'type': token['token_type']}))",
-    )
-    assert found == {"user_id": Owner.id, "type": "access"}
+    claims = jwt.decode(access, DEV_VERIFYING_KEY, algorithms=["RS256"])
+    assert jwt.get_unverified_header(access)["alg"] == "RS256"
+    assert claims["token_type"] == "access"
+    assert claims["user_id"] == Owner.id
+    assert {"exp", "iat", "jti"} <= claims.keys()
 
 
 # From Django's `apps.catalog.seeding` for owner 3, frozen when #38 removed it

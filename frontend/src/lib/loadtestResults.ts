@@ -374,3 +374,64 @@ export const catalogAloneTable: ResultTableData = {
     ["Test ids", "catalog-20261111T154447Z, catalog-20261111T133726Z", "catalog-20261111T155205Z, catalog-20261111T143044Z"],
   ],
 }
+
+// #45: `instances` on .NET against Django, loadtest/baselines/2026-11-14-instances-dotnet.md.
+// Fixed-rate runs at 200 iterations/s for 5 minutes, back to back, each from its own reset.
+export const dotnetHoldTable: ResultTableData = {
+  columns: [{ title: "" }, { title: "Mixed, Django", num: true }, { title: "Mixed, .NET", num: true }, { title: "Read, Django", num: true }, { title: "Read, .NET", num: true }],
+  rows: [
+    ["Mean", "4.86 ms", "2.87 ms", "3.94 ms", "2.07 ms"],
+    ["p95", "10.69 ms", "5.45 ms", "8.46 ms", "4.59 ms"],
+    ["instances CPU", "37 %", "24 %", "29 %", "17 %"],
+    ["instances memory, max", "589 MiB", "486 MiB", "878 MiB", "615 MiB"],
+    ["Dropped iterations", 0, 50, 0, 0],
+    ["Test id", "load-20261114T035659Z", "load-20261114T040421Z", "load-20261114T041110Z", "load-20261114T041832Z"],
+  ],
+}
+
+/** Minutes of the 1-hour soaks at ~350 req/s, leaving out the re-login minute. Django's is 2026-11-11's, behind FastAPI `catalog`. */
+export const dotnetSoakMinutesTable: ResultTableData = {
+  columns: [{ title: "Minute", num: true }, { title: "Slowest group p95, Django", num: true }, { title: "Slowest group p95, .NET", num: true }, { title: "instances CPU, Django", num: true }, { title: "instances CPU, .NET", num: true }],
+  rows: [
+    [5, "19 ms", "10 ms", "43 %", "27 %"],
+    [15, "47 ms", "21 ms", "47 %", "27 %"],
+    [25, "97 ms", "35 ms", "55 %", "27 %"],
+    [35, "128 ms", "48 ms", "53 %", "27 %"],
+    [44, "174 ms", "67 ms", "55 %", "27 %"],
+    [55, "190 ms", "85 ms", "52 %", "27 %"],
+  ],
+}
+
+export const dotnetSoakTable: ResultTableData = {
+  columns: [{ title: "1-hour soak at ~350 req/s" }, { title: "Django" }, { title: ".NET" }],
+  rows: [
+    ["Requests, failed", "1,268,223, 0 failed", "1,267,551, 0 failed"],
+    ["Mean, p95", "9.5 ms, 22.1 ms", "3.6 ms, 6.6 ms"],
+    ["Dropped iterations", "1,342", "958"],
+    ["Slowest group (dashboard) p95, minute 5 → 58", "19 → 191 ms", "9 → 88 ms"],
+    ["saas-db CPU, minute 5 → 55", "11 → 30 %", "13 → 22 %"],
+    ["Test id", "soak-20261111T112357Z", "soak-20261114T064208Z"],
+  ],
+}
+
+/**
+ * Django's knees as on the FastAPI comparison. .NET's like-for-like runs (START_RATE 150 or 200, MAX_RATE 500)
+ * reached their maximum without a knee; the ceiling runs started at 500 iterations/s to find one.
+ */
+export const dotnetKneeTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Knee, req/s", num: true }, { title: "Slowest group p95", num: true }, { title: "instances CPU", num: true }, { title: "Failed", num: true }, { title: "Test id", code: true }],
+  rows: [
+    ["Mixed: Django 1", "~575", "90 ms", "73 %", 0, "stress-20261106T212630Z"],
+    ["Mixed: Django 2", "~579", "123 ms", "77 %", 0, "stress-20261106T170912Z"],
+    ["Mixed: Django 3", "~614", "101 ms", "79 %", 0, "stress-20261106T173708Z"],
+    ["Mixed: .NET, to 500 it/s", "≥784, no knee", "63 ms", "46 %", 0, "stress-20261114T042538Z"],
+    ["Mixed: .NET, to 500 it/s", "≥785, no knee", "62 ms", "46 %", 0, "stress-20261114T050228Z"],
+    ["Mixed: .NET, ceiling", "~1,315", "28 ms", "57 %", 0, "stress-20261114T074428Z"],
+    ["Read: Django 1", "~495", "62 ms", "77 %", 0, "stress-20261106T221832Z"],
+    ["Read: Django 2", "~526", "95 ms", "85 %", 0, "stress-20261106T180649Z"],
+    ["Read: Django 3", "~509", "80 ms", "82 %", 0, "stress-20261106T184413Z"],
+    ["Read: .NET, to 500 it/s", "≥546, no knee", "9 ms", "37 %", 0, "stress-20261114T053858Z"],
+    ["Read: .NET, to 500 it/s", "≥539, no knee", "11 ms", "36 %", 0, "stress-20261114T061033Z"],
+    ["Read: .NET, ceiling", "~1,378", "27 ms", "60 %", 0, "stress-20261114T080350Z"],
+  ],
+}

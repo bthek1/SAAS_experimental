@@ -28,11 +28,11 @@ export function baseUrl() {
 
 export const BASE_URL = baseUrl();
 
-// Owners created by `manage.py seed_loadtest` (loadtest-<n>@example.com).
+// Owners created by `just loadtest-seed` (loadtest-<n>@example.com).
 // Each VU logs in as one of them, round robin.
 export const OWNERS = Number(__ENV.OWNERS || 5);
 export const PASSWORD = __ENV.LOADTEST_OWNER_PASSWORD;
-if (!PASSWORD) throw new Error('LOADTEST_OWNER_PASSWORD is not set (the seed_loadtest password)');
+if (!PASSWORD) throw new Error('LOADTEST_OWNER_PASSWORD is not set (the password `just loadtest-seed` set)');
 
 export const thresholdsFor = (p95ms) => ({
   // Real failures: anything but the status each request expects.

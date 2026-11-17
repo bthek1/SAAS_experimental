@@ -3,6 +3,7 @@ import { z } from "zod"
 import {
   CacheTab,
   CapacityTab,
+  DotnetTab,
   FastapiTab,
   FixesTab,
   GrowthTab,
@@ -21,10 +22,11 @@ const TABS = [
   { value: "split", label: "Service split", Panel: SplitTab },
   { value: "mongo", label: "Postgres vs MongoDB", Panel: MongoTab },
   { value: "fastapi", label: "Django vs FastAPI", Panel: FastapiTab },
+  { value: "dotnet", label: "Django vs .NET", Panel: DotnetTab },
   { value: "method", label: "Method & open questions", Panel: MethodTab },
 ] as const
 
-const tabValues = ["capacity", "cache", "growth", "fixes", "split", "mongo", "fastapi", "method"] as const
+const tabValues = ["capacity", "cache", "growth", "fixes", "split", "mongo", "fastapi", "dotnet", "method"] as const
 type TabValue = (typeof tabValues)[number]
 
 const searchSchema = z.object({
@@ -69,7 +71,7 @@ function LoadTestsPage() {
         <h1 className="text-2xl font-semibold">Load test results</h1>
         <p className="text-sm text-muted-foreground">
           How the API's capacity changed with each deploy and code change, measured with k6 on the
-          same small containers from 2 to 4 November 2026.
+          same small containers from 2 to 14 November 2026.
         </p>
       </div>
 

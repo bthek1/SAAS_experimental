@@ -206,8 +206,9 @@ def k6_dashboard():
     )
 
 
-# Each pair: the Django service's metric, then the FastAPI catalog's (#37). FastAPI's
-# carry the same `view` label and django-prometheus's buckets, so a query adds them up
+# Each pair: django-prometheus's metric (instances on Django), then the one catalog (#37)
+# and instances on .NET (#44) both emit. Those carry the same `view` label and
+# django-prometheus's buckets, so a query adds them up
 # with `or` (different `service` labels, so no series hides another).
 LATENCY = (
     "django_http_requests_latency_seconds_by_view_method_bucket",
@@ -351,7 +352,8 @@ def django_dashboard():
             ),
         ],
         "Request and DB metrics from both services (/metrics, scraped directly): "
-        "django-prometheus on instances, the FastAPI catalog's own (#37).",
+        "catalog's and .NET instances' own (#37, #44), and django-prometheus's for "
+        "runs from before #45 removed Django.",
     )
 
 

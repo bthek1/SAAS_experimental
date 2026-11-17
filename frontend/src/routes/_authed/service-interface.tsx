@@ -247,8 +247,8 @@ const RULES: { title: string; body: ReactNode }[] = [
     title: "No shared code or tables",
     body: (
       <>
-        Neither service imports the other, even in tests. <Code>common</Code> holds infrastructure and no
-        models.
+        <Code>catalog</Code> is Python (FastAPI) and <Code>instances</Code> is .NET, so neither can import the
+        other. They share only the contract files and, in tests, the published development keypair.
       </>
     ),
   },
@@ -269,8 +269,8 @@ const RULES: { title: string; body: ReactNode }[] = [
     title: "A way to repair",
     body: (
       <>
-        After a data move or a long outage, <Code>reconcile_refs</Code> rebuilds the copies from{" "}
-        <Code>catalog</Code> and reports what differed. <Code>--dry-run</Code> only reports.
+        After a data move or a long outage, <Code>instances</Code>' <Code>reconcile-refs</Code> command rebuilds
+        the copies from <Code>catalog</Code> and reports what differed. <Code>--dry-run</Code> only reports.
       </>
     ),
   },

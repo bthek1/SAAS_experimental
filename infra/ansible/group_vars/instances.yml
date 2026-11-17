@@ -5,10 +5,10 @@ nft_rules:
 
 app_service: instances
 app_unit: saas-instances
-# The same as the monolith had, on the same core count: this side takes the hot path.
-gunicorn_workers: 5
-gunicorn_threads: 4
-conn_max_age: 60
+# instances runs on .NET (#44, #45). Tuning: database connections in Npgsql's pool,
+# and threads the pool keeps ready (0: the runtime's default, one per core).
+dotnet_db_pool_size: 20
+dotnet_min_threads: 0
 cache_enabled: true
 loadtest_questionnaires_per_owner: 200
 app_reset_db: false

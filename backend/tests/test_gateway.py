@@ -25,7 +25,6 @@ PUBLIC = {
     "/api/batteries/": "instances",
     "/api/dashboard/": "instances",
     "/api/dashboard/scores/": "instances",
-    "/instances-admin/": "instances",
 }
 
 
@@ -50,7 +49,16 @@ def test_every_public_route_has_one_owner():
 
 @pytest.mark.parametrize(
     "path",
-    ["/internal/events/", "/internal/health/", "/metrics", "/", "/api/", "/api/other/"],
+    [
+        "/internal/events/",
+        "/internal/health/",
+        "/metrics",
+        "/",
+        "/api/",
+        "/api/other/",
+        # Django's admin went with the Django version (#43, #44).
+        "/instances-admin/",
+    ],
 )
 def test_internal_and_metrics_are_not_routed(path):
     assert load("dev_router").service_for(path) is None
@@ -77,7 +85,8 @@ def test_a_stopped_service_fails_fast_and_a_restart_is_found():
 
 @pytest.mark.parametrize("addresses", [None, {"catalog": "a:1", "instances": "b:1"}])
 def test_every_upstream_states_its_idle_timeout(addresses):
-    # The Docker and LXC configs alike: gunicorn's keepalive is checked against it (#24).
+    # Docker and LXC configs alike: gunicorn's and Kestrel's keep-alive are checked
+    # against it (#24, #44).
     build = load("build_nginx")
     conf = build.render(TABLE, addresses)
 

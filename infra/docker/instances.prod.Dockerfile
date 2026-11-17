@@ -1,40 +1,22 @@
-# Build context is backend/ — from the repo root run:
+# Build context is backend/. instances on .NET (#42, #44). From the repo root:
 #   docker build -f infra/docker/instances.prod.Dockerfile backend
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_LINK_MODE=copy
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src/instances
+COPY instances/global.json instances/Directory.Build.props instances/Directory.Packages.props ./
+COPY instances/src/Instances.Api/Instances.Api.csproj src/Instances.Api/
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    dotnet restore src/Instances.Api
+COPY instances/src src
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    dotnet publish src/Instances.Api -c Release -o /out --no-restore
+
+# The ASP.NET runtime only. No Pango or fonts: PDFs are QuestPDF, which brings its own.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
-COPY pyproject.toml uv.lock .python-version ./
-COPY common/pyproject.toml common/pyproject.toml
-COPY catalog/pyproject.toml catalog/pyproject.toml
-COPY instances/pyproject.toml instances/pyproject.toml
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-workspace --no-dev --package instances
-ADD . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package instances
-
-# Then, use a final image without uv
-FROM python:3.14-slim-bookworm
-
-# System libraries for WeasyPrint (PDF export) and a font, since slim images ship none
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy the application from the builder
-COPY --from=builder --chown=app:app /app /app
-
-WORKDIR /app/instances
-
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Expose port 8000
+COPY --from=build /out .
+ENV ASPNETCORE_URLS=http://+:8000 \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1
+USER app
 EXPOSE 8000
-
-# Use gunicorn on port 8000
-CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "core.wsgi"]
+# `dotnet Instances.Api.dll migrate` and `seed-loadtest` run in the same image.
+CMD ["dotnet", "Instances.Api.dll"]

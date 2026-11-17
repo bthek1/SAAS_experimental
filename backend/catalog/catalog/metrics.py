@@ -1,4 +1,4 @@
-"""Prometheus `/metrics`, for the scraper only, as `common/metrics.py` (#9, #35).
+"""Prometheus `/metrics`, for the scraper only, as `instances` serves it too (#9, #35).
 
 Answered by middleware ahead of everything else, and only to a direct peer inside
 METRICS_ALLOWED_CIDRS. A request carrying any forwarding header came through a

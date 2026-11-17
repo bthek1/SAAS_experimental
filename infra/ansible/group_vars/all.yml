@@ -27,6 +27,13 @@ redis_exporter_url: "https://github.com/oliver006/redis_exporter/releases/downlo
 uv_version: "0.9.7"
 uv_sha256: b26fcc8dfa1c39b5a5613445af3be3eefda45d9a39359bee271eafe34913583e
 uv_url: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+# The ASP.NET Core runtime for instances on .NET (#44). Microsoft publishes SHA-512; this
+# sha256 is of the tarball whose SHA-512 matched the 10.0 release metadata.
+dotnet_runtime_version: "10.0.15"
+dotnet_runtime_sha256: 029d600b47d8e1676fbb652b8d1564bc76167bbbac5b8c3004a2bd3c33e55ee5
+dotnet_runtime_url: "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/{{ dotnet_runtime_version }}/aspnetcore-runtime-{{ dotnet_runtime_version }}-linux-x64.tar.gz"
+# The SDK on the control host, which publishes the service (README: .NET SDK).
+control_dotnet: "{{ lookup('env', 'DOTNET_ROOT') | default(lookup('env', 'HOME') + '/.dotnet', true) }}/dotnet"
 
 ports:
   ssh: 22

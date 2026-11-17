@@ -35,6 +35,12 @@ services:
       - "5437:5432"
     volumes:
       - instances_postgres_data:/var/lib/postgresql/data/
+    # instances migrates as it starts, so it waits for this.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "appuser", "-d", "instancesdb"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   # FastAPI (#35 to #38).
   catalog:
@@ -60,28 +66,36 @@ services:
       CATALOG_INTERNAL_URL: http://catalog:8000
       INSTANCES_INTERNAL_URL: http://instances:8000
 
+  # instances on .NET (#44): migrates, then `dotnet watch` rebuilds on every edit.
   instances:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/instances.Dockerfile
-    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ../../backend:/app
+      # The host's build output is for host paths: the container keeps its own.
+      - /app/instances/src/Instances.Api/bin
+      - /app/instances/src/Instances.Api/obj
+      - /app/instances/tests/Instances.Tests/bin
+      - /app/instances/tests/Instances.Tests/obj
     ports:
       - "8007:8000"
     depends_on:
-      - instances_db
-      - redis
+      instances_db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     env_file:
       - path: ../../.env
         required: false
     environment:
-      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      SETTINGS: dev
       INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
-      CELERY_BROKER_URL: redis://redis:6379/0
       CACHE_REDIS_URL: redis://redis:6379/1
       CATALOG_INTERNAL_URL: http://catalog:8000
       INSTANCES_INTERNAL_URL: http://instances:8000
+      # catalog reaches it as `instances` on this network.
+      ALLOWED_HOSTS: localhost,127.0.0.1,instances
       # Withheld even if .env sets it: this service verifies tokens and never mints them.
       JWT_SIGNING_KEY: ""
 

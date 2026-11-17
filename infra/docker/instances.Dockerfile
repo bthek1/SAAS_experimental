@@ -1,39 +1,22 @@
-# Build context is backend/.
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+# Build context is backend/. instances on .NET (#42, #44), for the dev stack: `dotnet watch`
+# against the bind-mounted source, so edits rebuild and restart it.
+FROM mcr.microsoft.com/dotnet/sdk:10.0
 
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_LINK_MODE=copy
-ENV UV_PROJECT_ENVIRONMENT=/venv
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-WORKDIR /app
-
-# System libraries for WeasyPrint (PDF export) and a font, since slim images ship none
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install dependencies first for layer caching
-COPY pyproject.toml uv.lock .python-version ./
-COPY common/pyproject.toml common/pyproject.toml
-COPY catalog/pyproject.toml catalog/pyproject.toml
-COPY instances/pyproject.toml instances/pyproject.toml
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-workspace --no-dev --package instances
-
-# Copy project source
-COPY . /app
-
-# Install the shared package
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package instances
-
-ENV PATH="/venv/bin:$PATH"
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_USE_POLLING_FILE_WATCHER=1 \
+    ASPNETCORE_URLS=http://+:8000
 
 WORKDIR /app/instances
 
+# Restore first, for layer caching.
+COPY instances/global.json instances/Directory.Build.props instances/Directory.Packages.props ./
+COPY instances/src/Instances.Api/Instances.Api.csproj src/Instances.Api/
+RUN dotnet restore src/Instances.Api
+
+COPY instances/ ./
+
 EXPOSE 8000
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Migrate (adopting a database Django built), then serve and rebuild on change.
+CMD ["sh", "-c", "dotnet run --project src/Instances.Api -- migrate && exec dotnet watch --project src/Instances.Api run --no-launch-profile --non-interactive"]

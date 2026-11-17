@@ -33,7 +33,7 @@ function login() {
   const email = `loadtest-${(__VU - 1) % OWNERS}@example.com`;
   const res = call('POST', '/api/token/', { name: 'token', body: { email, password: PASSWORD }, keep: true });
   if (res.status !== 200) {
-    throw new Error(`login as ${email} answered ${res.status}; run seed_loadtest with OWNERS >= ${OWNERS}`);
+    throw new Error(`login as ${email} answered ${res.status}; run just loadtest-seed with OWNERS >= ${OWNERS}`);
   }
   const token = res.json('access');
   // Lists are paginated (#10): the largest page is enough to pick ids from.
@@ -46,7 +46,7 @@ function login() {
   const rows = list('/api/questionnaires/', 'questionnaire-list');
   const batteryTypes = list('/api/battery-types/', 'battery-type-list');
   if (!types.length || !rows.length || !batteryTypes.length) {
-    throw new Error(`${email} has no data; run seed_loadtest first`);
+    throw new Error(`${email} has no data; run just loadtest-seed first`);
   }
   return {
     token,
@@ -168,12 +168,12 @@ function catalogLogin() {
   const email = `loadtest-${(__VU - 1) % OWNERS}@example.com`;
   const res = call('POST', '/api/token/', { name: 'token', body: { email, password: PASSWORD }, keep: true });
   if (res.status !== 200) {
-    throw new Error(`login as ${email} answered ${res.status}; run seed_loadtest with OWNERS >= ${OWNERS}`);
+    throw new Error(`login as ${email} answered ${res.status}; run just loadtest-seed with OWNERS >= ${OWNERS}`);
   }
   const token = res.json('access');
   const list = (path, name) => call('GET', `${path}?page_size=100`, { name, token, keep: true }).json('results');
   const typeIds = list('/api/questionnaire-types/', 'questionnaire-type-list').map((t) => t.id);
-  if (!typeIds.length) throw new Error(`${email} has no types; run seed_loadtest first`);
+  if (!typeIds.length) throw new Error(`${email} has no types; run just loadtest-seed first`);
   list('/api/battery-types/', 'battery-type-list');
   return { token, refresh: res.json('refresh'), at: Date.now(), typeIds };
 }

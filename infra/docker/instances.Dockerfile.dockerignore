@@ -4,3 +4,7 @@
 *.pyc
 **/*.sqlite3
 .env
+**/bin
+**/obj
+**/TestResults
+instances/publish

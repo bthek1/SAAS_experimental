@@ -4,7 +4,7 @@ Revision 0001 is the schema Django's migrations left. Until #38 removed Django, 
 test built both and compared them line for line. That comparison is now frozen in
 `catalog_django_schema.txt`, taken from 0001 while the two still matched. Then: a
 database Django built is adopted, and `alembic check` finds nothing for the models.
-Runs in a throwaway Postgres, like test_import_from_monolith.py. Skips without
+Runs in a throwaway Postgres, like test_instances_schema.py. Skips without
 Docker.
 """
 

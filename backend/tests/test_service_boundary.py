@@ -1,4 +1,9 @@
-"""The boundaries between the services and `common` (#13)."""
+"""The boundaries between the services and `common` (#13, #45).
+
+catalog is the one Python service (FastAPI, #38). instances is .NET (#42 to #45) and
+shares no code with Python: it reads `backend/contracts/` and, in tests,
+`common/dev_keys.py` as files.
+"""
 
 import ast
 from pathlib import Path
@@ -10,9 +15,8 @@ CATALOG = BACKEND / "catalog"
 INSTANCES = BACKEND / "instances"
 COMMON = BACKEND / "common" / "common"
 
-# catalog is one package (FastAPI, #38); instances is a Django project.
 CATALOG_ONLY = ("catalog",)
-INSTANCES_ONLY = ("apps", "core")
+DJANGO = ("django", "rest_framework", "apps", "core")
 
 
 def imported_modules(source: str) -> set[str]:
@@ -51,21 +55,25 @@ def offenders(root: Path, targets: tuple[str, ...]) -> list[str]:
     ]
 
 
-def test_no_import_between_services():
-    # Tests too: the services only ever talk over HTTP.
-    assert offenders(INSTANCES, CATALOG_ONLY) == []
-    assert offenders(CATALOG, INSTANCES_ONLY) == []
+def test_instances_has_no_python():
+    found = [str(p.relative_to(BACKEND)) for p in python_files(INSTANCES)]
+    assert found == []
 
 
 def test_common_imports_no_service():
-    assert offenders(COMMON, (*CATALOG_ONLY, *INSTANCES_ONLY)) == []
+    assert offenders(COMMON, (*CATALOG_ONLY, *DJANGO)) == []
+
+
+def test_common_holds_only_what_catalog_and_the_tests_share():
+    # The Django infrastructure went with Django's instances (#45).
+    modules = {p.stem for p in python_files(COMMON)}
+    assert modules == {"__init__", "dev_keys", "gunicorn_conf"}
 
 
 def test_parity_suite_imports_no_service_code():
     # It tests catalog over HTTP only, which let it check two implementations (#34).
     # The dev keypair is the one shared module it may read.
-    targets = ("django", "rest_framework", "apps", "core", "catalog")
-    assert offenders(BACKEND / "parity", targets) == []
+    assert offenders(BACKEND / "parity", (*DJANGO, *CATALOG_ONLY)) == []
     common = {
         module
         for path in python_files(BACKEND / "parity")
@@ -75,38 +83,42 @@ def test_parity_suite_imports_no_service_code():
     assert common <= {"common.dev_keys", "common.dev_keys.DEV_VERIFYING_KEY"}
 
 
-def test_catalog_imports_no_django():
-    # FastAPI, on the tables Django made (#35 to #38). Of `common`, which is
-    # Django-based, it reads only the shared dev keypair and gunicorn rules.
-    package = BACKEND / "catalog"
-    targets = ("django", "rest_framework", "apps", "core")
-    assert offenders(package, targets) == []
+def test_instances_parity_suite_imports_no_service_code():
+    # It tests instances over HTTP only, which let it check Django and .NET (#40, #42).
+    assert offenders(BACKEND / "parity_instances", (*DJANGO, *CATALOG_ONLY)) == []
     common = {
         module
-        for path in python_files(package)
+        for path in python_files(BACKEND / "parity_instances")
+        for module in imported_modules(path.read_text())
+        if module.startswith("common")
+    }
+    assert common <= {"common.dev_keys", "common.dev_keys.DEV_SIGNING_KEY"}
+
+
+def test_no_python_package_reaches_into_instances():
+    # Only the test harnesses that start it (parity_instances, tests/) know where it
+    # lives or what it is called.
+    found = [
+        str(path.relative_to(BACKEND))
+        for root in (CATALOG, BACKEND / "common")
+        for path in python_files(root)
+        if "Instances.Api" in path.read_text()
+    ]
+    assert found == []
+
+
+def test_catalog_imports_no_django():
+    # FastAPI, on the tables Django made (#35 to #38). Of `common` it reads only the
+    # shared dev keypair and gunicorn rules.
+    assert offenders(CATALOG, DJANGO) == []
+    common = {
+        module
+        for path in python_files(CATALOG)
         for module in imported_modules(path.read_text())
         if module == "common" or module.startswith("common.")
     }
     allowed = ("common.dev_keys", "common.gunicorn_conf")
     assert all(module.startswith(allowed) for module in common), common
-
-
-def test_common_has_no_models():
-    assert not (COMMON / "models.py").exists()
-    for path in python_files(COMMON):
-        for node in ast.walk(ast.parse(path.read_text())):
-            if isinstance(node, ast.ClassDef):
-                bases = [ast.unparse(base) for base in node.bases]
-                assert "models.Model" not in bases, f"{path}: {node.name}"
-
-
-def test_instances_never_call_get_user_model():
-    found = []
-    for path in python_files(INSTANCES):
-        source = path.read_text()
-        if "get_user_model" in source or "AUTH_USER_MODEL" in source:
-            found.append(str(path.relative_to(BACKEND)))
-    assert found == []
 
 
 @pytest.mark.parametrize(
@@ -122,4 +134,4 @@ def test_the_check_catches_a_forbidden_import(source):
 
 
 def test_the_check_allows_unrelated_imports():
-    assert not imports_any("from common.cache import cached", CATALOG_ONLY)
+    assert not imports_any("from common.dev_keys import DEV_SIGNING_KEY", CATALOG_ONLY)

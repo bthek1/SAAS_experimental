@@ -14,6 +14,11 @@ import {
   changesOption,
   changesTable,
   dbCpuOption,
+  dotnetCpuOption,
+  dotnetKneeOption,
+  dotnetHoldOption,
+  dotnetSoakCpuOption,
+  dotnetSoakLatencyOption,
   endpointMixedOption,
   endpointReadOption,
   fastapiHoldOption,
@@ -60,6 +65,10 @@ import {
 import {
   CHANGES,
   catalogAloneTable,
+  dotnetHoldTable,
+  dotnetKneeTable,
+  dotnetSoakMinutesTable,
+  dotnetSoakTable,
   catalogTuningRunsTable,
   catalogTuningTable,
   catalogGroupTable,
@@ -668,6 +677,75 @@ export function FastapiTab() {
         <li>
           <strong>Logins are slower in a burst.</strong> When k6 logs every user in again, FastAPI runs up
           to 15 hashes per worker at once against Django's 4, on the same 2 cores, so each login waits longer.
+        </li>
+      </Findings>
+    </Section>
+  )
+}
+
+export function DotnetTab() {
+  const palette = useSeriesPalette()
+  return (
+    <Section title="instances on .NET against Django">
+      <Prose>
+        <code>instances</code> was rewritten on ASP.NET Core with the same API, tables and events, checked by
+        the same black-box suite, and ran on the same container as Django did. <strong>.NET is faster and
+        uses less CPU in every run</strong>, with 0 failed requests in all of them. Its
+        knee is ~1,315 req/s mixed and ~1,378 read, against Django's ~575 to ~614 and ~495 to ~526, and even there{" "}
+        <code>instances</code> had CPU to spare. <code>instances</code> stays on .NET.
+      </Prose>
+
+      <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>
+      <Prose>
+        200 iterations per second, back to back, each from the same reset data. At the same rate .NET's p95
+        is about half Django's, on about two thirds of the CPU. The .NET mixed run dropped 50 iterations,
+        all in its first minute: the service had just started and was still compiling its code while every
+        user logged in.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Latency, ms" option={dotnetHoldOption(palette)} height={barsHeight(4, 2)} />
+        <ChartCard title="saas-instances CPU, %" option={dotnetCpuOption(palette)} height={barsHeight(2, 2)} />
+      </div>
+      <TableDetails table={dotnetHoldTable} />
+
+      <h3 className="font-medium">Stress</h3>
+      <Prose>
+        Run with Django's settings, which stop at 500 iterations per second, .NET never reached a knee: it
+        passed ~784 req/s mixed and ~539 to ~546 read with <code>instances</code> under half busy. One more run per mix,
+        starting at 500, found where it does break. Like Django's, each run broke when k6 added users and they
+        all logged in at once on <code>catalog</code>, with <code>instances</code> at 57 to 60 % CPU. The higher
+        start leaves fewer rows at a given rate, so those two knees are rough.
+      </Prose>
+      <ChartCard title="Knee per stress run, req/s" option={dotnetKneeOption(palette)} height={barsHeight(8, 1)} />
+      <TableDetails table={dotnetKneeTable} />
+
+      <h3 className="font-medium">1-hour soak</h3>
+      <Prose>
+        The same command as Django's soak, to about 478,000 rows. The slowest group is the dashboard on
+        both, and it slows as rows grow on both, since a cache miss reads every row in its window. .NET does
+        that in less than half the time, and its CPU stayed level.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Slowest group p95 by minute, ms" option={dotnetSoakLatencyOption(palette)} />
+        <ChartCard title="saas-instances CPU by minute, %" option={dotnetSoakCpuOption(palette)} />
+      </div>
+      <TableDetails table={dotnetSoakMinutesTable} />
+      <TableCard title="1-hour soak" table={dotnetSoakTable} />
+
+      <Findings>
+        <li>
+          <strong>Cold start.</strong> A freshly started .NET process is slow for its first seconds, so
+          a restart under a burst of logins drops iterations: 51 in the mixed run, 770 in the soak's
+          first minute. Publishing ahead-of-time compiled code, or a warm-up before reporting healthy,
+          would shorten it.
+        </li>
+        <li>
+          <strong>Dropped iterations otherwise come from k6's logins,</strong> as on Django: minute 45
+          of the soak, when every user logs in again, dropped 188.
+        </li>
+        <li>
+          <strong>The dashboard still grows with rows.</strong> Rewriting it made each miss cheaper, not
+          bounded.
         </li>
       </Findings>
     </Section>

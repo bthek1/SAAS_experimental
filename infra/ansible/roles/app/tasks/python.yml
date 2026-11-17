@@ -1,0 +1,64 @@
+# catalog runs from the synced backend, under uv's Python 3.14 (#9, #38).
+- name: Install uv
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: release.yml
+  vars:
+    common_release_name: uv
+    common_release_url: "{{ uv_url }}"
+    common_release_sha256: "{{ uv_sha256 }}"
+    common_release_binaries: [uv-x86_64-unknown-linux-gnu/uv]
+
+- name: Backend directory
+  ansible.builtin.file:
+    path: "{{ app_backend_dir }}"
+    state: directory
+    owner: app
+    group: app
+    mode: "0755"
+
+# Excluded below, so --delete would keep what the Django version left there (#45).
+- name: Remove instances' folder from catalog's backend
+  ansible.builtin.file:
+    path: "{{ app_backend_dir }}/instances"
+    state: absent
+
+# The working tree, not a commit: what you test is what you have checked out.
+# Excluded paths on the container (.venv) are kept despite --delete.
+- name: Sync the backend source
+  ansible.posix.synchronize:
+    src: "{{ repo_root }}/backend/"
+    dest: "{{ app_backend_dir }}/"
+    delete: true
+    rsync_opts:
+      - --chown=app:app
+      # The checkout is 0775/0664; on the container nothing but app may write.
+      - --chmod=Dgo-w,Fgo-w
+      - --exclude=.venv
+      # .NET: published, and synced to saas-instances alone (#44, #45).
+      - --exclude=instances/
+      # Perishable: never stops rsync deleting a directory that is otherwise gone.
+      - --filter=-p___pycache__  # "-p", "_" for the space, then the name
+      # uv builds common's on the container, and --delete would remove it each run.
+      - --exclude=*.egg-info
+      - --exclude=.pytest_cache
+      - --exclude=.ruff_cache
+      - --exclude=.mypy_cache
+      - --exclude=.coverage
+      - --exclude=htmlcov
+      - --exclude=*.sqlite3
+      - --exclude=staticfiles
+      - --exclude=media
+      - --exclude=.env
+  notify: Restart the service
+
+- name: Install the backend's dependencies (Python 3.14 managed by uv)
+  ansible.builtin.command: "uv sync --frozen --no-dev --package catalog --python 3.14"
+  args:
+    chdir: "{{ app_backend_dir }}"
+  environment: "{{ app_uv_env }}"
+  become: true
+  become_user: app
+  register: app_uv_sync
+  changed_when: "'Installed' in app_uv_sync.stderr or 'Uninstalled' in app_uv_sync.stderr"
+  notify: Restart the service

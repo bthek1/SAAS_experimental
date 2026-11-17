@@ -393,3 +393,47 @@ describe("catalog alone (#39)", () => {
     }
   })
 })
+
+describe("instances on .NET against Django (#45)", () => {
+  const ariaOf = (option: object) =>
+    (option as { aria: { label: { description: string } } }).aria.label.description
+
+  it("fixed-rate mean and p95, Django then .NET, with the label's figures in the table", () => {
+    const [django, dotnet] = seriesOf(charts.dotnetHoldOption(palette))
+    expect(django.data).toEqual([4.86, 10.69, 3.94, 8.46])
+    expect(dotnet.data).toEqual([2.87, 5.45, 2.07, 4.59])
+    for (const value of ["4.86", "2.87", "10.69", "5.45", "3.94", "2.07", "8.46", "4.59"]) {
+      expect(ariaOf(charts.dotnetHoldOption(palette))).toContain(value)
+    }
+  })
+
+  it("instances CPU, Django then .NET", () => {
+    const [django, dotnet] = seriesOf(charts.dotnetCpuOption(palette))
+    expect(django.data).toEqual([37, 29])
+    expect(dotnet.data).toEqual([24, 17])
+  })
+
+  it("charts only real knees, .NET in the series colour", () => {
+    const [knees] = seriesOf(charts.dotnetKneeOption(palette)) as unknown as {
+      data: { value: number; itemStyle: { color: string } }[]
+    }[]
+    const values = [575, 579, 614, 1315, 495, 526, 509, 1378]
+    expect(knees.data.map((d) => d.value)).toEqual(values)
+    expect(knees.data[3].itemStyle.color).toBe("#1")
+    expect(knees.data[0].itemStyle.color).toBe("#off")
+    for (const knee of values) {
+      expect(ariaOf(charts.dotnetKneeOption(palette))).toContain(knee.toLocaleString("en-US"))
+    }
+  })
+
+  it("soak lines end on the figures their end labels show", () => {
+    for (const [option, ends] of [
+      [charts.dotnetSoakLatencyOption(palette), [190, 85]],
+      [charts.dotnetSoakCpuOption(palette), [52, 27]],
+    ] as const) {
+      const series = seriesOf(option) as unknown as { data: [number, number][] }[]
+      expect(series.map((s) => s.data[s.data.length - 1][1])).toEqual(ends)
+      for (const end of ends) expect(ariaOf(option)).toContain(String(end))
+    }
+  })
+})

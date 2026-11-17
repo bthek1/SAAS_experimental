@@ -1,15 +1,20 @@
+import { existsSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 import {
   API_PORT,
   API_URL,
   CATALOG_PORT,
+  INSTANCES_DB_PORT,
   INSTANCES_PORT,
   WEB_PORT,
   WEB_URL,
 } from "./e2e/integration/ports";
 
-// Full-stack suite: both real services (catalog on FastAPI, instances on Django) behind the
-// gateway's dev router, each with a fresh SQLite database per run.
+// Full-stack suite: both real services (catalog on FastAPI, instances on .NET) behind the
+// gateway's dev router, each on a fresh database per run: catalog on SQLite, instances on a
+// throwaway Postgres in Docker (it is Postgres only, #44).
 
 function catalog(port: number) {
   return {
@@ -23,15 +28,50 @@ function catalog(port: number) {
   };
 }
 
-function service(name: string, port: number) {
+const INSTANCES_DB = "e2e-instances-db";
+const INSTANCES_DB_URL = `postgres://postgres:e2e@127.0.0.1:${INSTANCES_DB_PORT}/instances`;
+const INSTANCES_BUILD = join(tmpdir(), "e2e-instances-dotnet");
+// The SDK on PATH, or where README's no-sudo install puts it.
+const DOTNET =
+  process.env.DOTNET_ROOT ? join(process.env.DOTNET_ROOT, "dotnet")
+  : existsSync(join(homedir(), ".dotnet", "dotnet")) ? join(homedir(), ".dotnet", "dotnet")
+  : "dotnet";
+
+// Gone when the run ends: SIGTERM reaches `docker run`, which passes it to the container,
+// and --rm removes it. Playwright's default, SIGKILL, would leave the container running.
+function instancesDatabase() {
   return {
     command:
-      `rm -f ${name}/e2e.sqlite3 && uv run python ${name}/manage.py migrate --noinput` +
-      ` && uv run python ${name}/manage.py runserver ${port} --noreload`,
+      `docker rm -f ${INSTANCES_DB} >/dev/null 2>&1; exec docker run --rm --name ${INSTANCES_DB}` +
+      ` --tmpfs /var/lib/postgresql/data -e POSTGRES_PASSWORD=e2e -e POSTGRES_DB=instances` +
+      ` -p 127.0.0.1:${INSTANCES_DB_PORT}:5432 postgres:16-alpine`,
+    port: INSTANCES_DB_PORT,
+    reuseExistingServer: false,
+    timeout: 120_000,
+    gracefulShutdown: { signal: "SIGTERM" as const, timeout: 15_000 },
+  };
+}
+
+// Built once per run, then migrated as soon as the database answers.
+function instances(port: number) {
+  const dll = join(INSTANCES_BUILD, "Instances.Api.dll");
+  return {
+    command:
+      `${DOTNET} build instances/src/Instances.Api -c Release -o ${INSTANCES_BUILD} --nologo -v q` +
+      ` && until ${DOTNET} ${dll} migrate; do sleep 1; done` +
+      ` && exec ${DOTNET} ${dll}`,
     cwd: "../backend",
-    env: { DJANGO_SETTINGS_MODULE: "core.settings.e2e" },
+    env: {
+      SETTINGS: "e2e",
+      INSTANCES_DATABASE_URL: INSTANCES_DB_URL,
+      ASPNETCORE_URLS: `http://localhost:${port}`,
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1",
+      DOTNET_NOLOGO: "1",
+      Logging__LogLevel__Default: "Warning",
+    },
     url: `http://localhost:${port}/internal/health/`,
     reuseExistingServer: false,
+    timeout: 240_000,
   };
 }
 
@@ -51,7 +91,8 @@ export default defineConfig({
   // Never reuse servers: a reused backend would carry data over from an earlier run.
   webServer: [
     catalog(CATALOG_PORT),
-    service("instances", INSTANCES_PORT),
+    instancesDatabase(),
+    instances(INSTANCES_PORT),
     {
       // The gateway, from the same route table as nginx.
       command:

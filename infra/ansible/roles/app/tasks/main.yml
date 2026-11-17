@@ -1,6 +1,6 @@
-- name: Packages (instances also needs WeasyPrint's libraries, for PDF export, and a font)
+- name: Packages
   ansible.builtin.apt:
-    name: "{{ ['acl'] + (['libpango-1.0-0', 'libpangoft2-1.0-0', 'libharfbuzz0b', 'fonts-dejavu-core'] if app_service == 'instances' else []) }}"
+    name: [acl]
 
 - name: Create the app user
   ansible.builtin.user:
@@ -9,61 +9,89 @@
     home: "{{ app_root }}"
     shell: /usr/sbin/nologin
 
-- name: Install uv
-  ansible.builtin.include_role:
-    name: common
-    tasks_from: release.yml
-  vars:
-    common_release_name: uv
-    common_release_url: "{{ uv_url }}"
-    common_release_sha256: "{{ uv_sha256 }}"
-    common_release_binaries: [uv-x86_64-unknown-linux-gnu/uv]
+# catalog is Python, run from the synced backend. instances is .NET (#44, #45): it gets
+# only its published build, below.
+- name: Source and Python (catalog only)
+  when: app_service == 'catalog'
+  ansible.builtin.include_tasks: python.yml
 
-- name: Backend directory
+# What Django's instances left on saas-instances (#45): its source, venv and Python.
+- name: Remove the Django version's files
+  when: app_service == 'instances'
   ansible.builtin.file:
-    path: "{{ app_backend_dir }}"
-    state: directory
-    owner: app
-    group: app
-    mode: "0755"
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ app_backend_dir }}"
+    - "{{ app_root }}/.python"
+    - "{{ app_root }}/.cache/uv"
 
-# The working tree, not a commit: what you test is what you have checked out.
-# Excluded paths on the container (.venv) are kept despite --delete.
-- name: Sync the backend source
-  ansible.posix.synchronize:
-    src: "{{ repo_root }}/backend/"
-    dest: "{{ app_backend_dir }}/"
-    delete: true
-    rsync_opts:
-      - --chown=app:app
-      # The checkout is 0775/0664; on the container nothing but app may write.
-      - --chmod=Dgo-w,Fgo-w
-      - --exclude=.venv
-      # Perishable: never stops rsync deleting a directory that is otherwise gone.
-      - --filter=-p___pycache__  # "-p", "_" for the space, then the name
-      # uv builds common's on the container, and --delete would remove it each run.
-      - --exclude=*.egg-info
-      - --exclude=.pytest_cache
-      - --exclude=.ruff_cache
-      - --exclude=.mypy_cache
-      - --exclude=.coverage
-      - --exclude=htmlcov
-      - --exclude=*.sqlite3
-      - --exclude=staticfiles
-      - --exclude=media
-      - --exclude=.env
-  notify: Restart the service
+# instances on .NET (#44): the ASP.NET runtime, and the service published on the control host.
+- name: .NET runtime
+  when: app_service == 'instances'
+  block:
+    - name: Download the ASP.NET Core runtime
+      ansible.builtin.get_url:
+        url: "{{ dotnet_runtime_url }}"
+        dest: "/opt/{{ dotnet_runtime_url | basename }}"
+        checksum: "sha256:{{ dotnet_runtime_sha256 }}"
+        mode: "0644"
 
-- name: Install the backend's dependencies (Python 3.14 managed by uv)
-  ansible.builtin.command: "uv sync --frozen --no-dev --package {{ app_package }} --python 3.14"
-  args:
-    chdir: "{{ app_backend_dir }}"
-  environment: "{{ app_uv_env }}"
-  become: true
-  become_user: app
-  register: app_uv_sync
-  changed_when: "'Installed' in app_uv_sync.stderr or 'Uninstalled' in app_uv_sync.stderr"
-  notify: Restart the service
+    - name: Runtime directory
+      ansible.builtin.file:
+        path: "/opt/dotnet-{{ dotnet_runtime_version }}"
+        state: directory
+        mode: "0755"
+
+    # A first --check downloads nothing, so there is nothing to unpack or link yet.
+    - name: Unpack the runtime
+      ansible.builtin.unarchive:
+        src: "/opt/{{ dotnet_runtime_url | basename }}"
+        dest: "/opt/dotnet-{{ dotnet_runtime_version }}"
+        remote_src: true
+        creates: "/opt/dotnet-{{ dotnet_runtime_version }}/dotnet"
+      ignore_errors: "{{ ansible_check_mode }}"
+
+    - name: Point /opt/dotnet at it
+      ansible.builtin.file:
+        src: "/opt/dotnet-{{ dotnet_runtime_version }}"
+        dest: /opt/dotnet
+        state: link
+      ignore_errors: "{{ ansible_check_mode }}"
+      notify: Restart the service
+
+    # On the control host, into the gitignored publish/ folder. Only a changed build
+    # changes what the sync below copies.
+    - name: Publish the service (control host)
+      ansible.builtin.command: >-
+        {{ control_dotnet }} publish {{ repo_root }}/backend/instances/src/Instances.Api
+        -c Release -o {{ repo_root }}/backend/instances/publish --nologo
+      delegate_to: localhost
+      run_once: true
+      become: false
+      check_mode: false  # a local build, so --check compares against the real output
+      changed_when: false
+
+    - name: Published service directory
+      ansible.builtin.file:
+        path: "{{ app_dotnet_dir }}"
+        state: directory
+        owner: app
+        group: app
+        mode: "0755"
+
+    - name: Sync the published service
+      ansible.posix.synchronize:
+        src: "{{ repo_root }}/backend/instances/publish/"
+        dest: "{{ app_dotnet_dir }}/"
+        delete: true
+        checksum: true
+        rsync_opts:
+          - --chown=app:app
+          - --chmod=Dgo-w,Fgo-w
+          # A publish touches its folder; only file contents matter.
+          - --omit-dir-times
+      notify: Restart the service
 
 - name: Environment file directory
   ansible.builtin.file:
@@ -86,10 +114,10 @@
 
 # migrate and seed run outside gunicorn, so their metrics go to a scratch
 # directory, never the one gunicorn's on_starting hook owns.
-# FastAPI: Alembic logs "Running upgrade" only when it applies one, and migrate prints
-# "adopted" when it stamps a database Django built.
+# catalog: Alembic logs "Running upgrade" only when it applies one. Both print "adopted"
+# when they take over a database Django built; .NET prints "applied <migration>".
 - name: Migrate
-  ansible.builtin.command: "{{ app_python }} {{ app_cmd.migrate }}"
+  ansible.builtin.command: "{{ app_cmd.exe }} {{ app_cmd.migrate }}"
   args:
     chdir: "{{ app_dir }}"
   environment: "{{ app_manage_env }}"
@@ -97,15 +125,15 @@
   become_user: app
   register: app_migrate
   changed_when: >-
-    (app_service == 'catalog' and ('Running upgrade' in app_migrate.stderr
-    or 'adopted' in app_migrate.stdout))
-    or (app_service != 'catalog' and 'No migrations to apply' not in app_migrate.stdout)
+    'adopted' in app_migrate.stdout
+    or (app_service == 'catalog' and 'Running upgrade' in app_migrate.stderr)
+    or (app_service == 'instances' and 'applied ' in app_migrate.stdout)
 
 # `just loadtest-reset`: every run starts from the same data. Runs add rows (the
 # respondent flow creates questionnaires), and the unpaginated list got slower
 # as they grew, so two runs were not comparable (#9, Phase 5).
 - name: Wipe the load-test database (only with -e app_reset_db=true)
-  ansible.builtin.command: "{{ app_python }} {{ app_cmd.flush }}"
+  ansible.builtin.command: "{{ app_cmd.exe }} {{ app_cmd.flush }}"
   args:
     chdir: "{{ app_dir }}"
   environment: "{{ app_manage_env }}"
@@ -116,7 +144,7 @@
 
 # Runs must start from the same state, and the owners get new ids below.
 - name: Empty the cache (only with -e app_reset_db=true)
-  ansible.builtin.command: "{{ app_python }} {{ app_cmd.clear_cache }}"
+  ansible.builtin.command: "{{ app_cmd.exe }} {{ app_cmd.clear_cache }}"
   args:
     chdir: "{{ app_dir }}"
   environment: "{{ app_manage_env }}"
@@ -125,7 +153,7 @@
   when: app_reset_db | bool
   changed_when: true
 
-- name: Write the service's unit (gunicorn)
+- name: Write the service's unit (gunicorn, or Kestrel for .NET)
   ansible.builtin.template:
     src: saas-app.service.j2
     dest: "/etc/systemd/system/{{ app_unit }}.service"

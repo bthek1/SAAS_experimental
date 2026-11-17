@@ -201,18 +201,23 @@ def test_loadtest_host_ports_match_docs_and_stay_on_loopback() -> None:
 
 
 @requires_docker
-@pytest.mark.parametrize("name", ["catalog", "instances"])
-def test_loadtest_services_run_the_loadtest_settings_under_gunicorn(name: str) -> None:
+@pytest.mark.parametrize(
+    ("name", "server"), [("catalog", "gunicorn"), ("instances", "Instances.Api.dll")]
+)
+def test_loadtest_services_run_the_loadtest_settings(name: str, server: str) -> None:
+    # catalog is FastAPI under gunicorn (#37), instances .NET on Kestrel (#44). Both
+    # pick their profile from SETTINGS.
     service = _compose_config(LOADTEST_COMPOSE)["services"][name]
     assert service["build"]["dockerfile"].endswith(f"{name}.prod.Dockerfile")
-    # catalog is FastAPI (#37), which picks its profile from SETTINGS.
-    profile = {"catalog": ("SETTINGS", "loadtest")}.get(
-        name, ("DJANGO_SETTINGS_MODULE", "core.settings.loadtest")
-    )
-    assert service["environment"][profile[0]] == profile[1]
-    assert "gunicorn" in " ".join(service["command"])
-    assert service["environment"]["PROMETHEUS_MULTIPROC_DIR"]
+    assert service["environment"]["SETTINGS"] == "loadtest"
+    assert server in " ".join(service["command"])
     assert service["environment"]["METRICS_ALLOWED_CIDRS"].endswith("/32")
+
+
+@requires_docker
+def test_gunicorn_metrics_are_shared_between_workers() -> None:
+    catalog = _compose_config(LOADTEST_COMPOSE)["services"]["catalog"]
+    assert catalog["environment"]["PROMETHEUS_MULTIPROC_DIR"]
 
 
 @requires_docker
@@ -269,16 +274,32 @@ WEASYPRINT_PACKAGES = (
 @pytest.mark.parametrize(
     "dockerfile", ["instances.Dockerfile", "instances.prod.Dockerfile"]
 )
-def test_instances_images_install_weasyprint_libs(dockerfile: str) -> None:
-    # PDF export (apps/questionnaires/pdf.py) needs Pango and a font at runtime.
+def test_instances_images_are_dotnet(dockerfile: str) -> None:
+    # instances runs on .NET (#44). Its PDFs are QuestPDF: no host libraries needed.
     text = (DOCKER_DIR / dockerfile).read_text()
-    for package in WEASYPRINT_PACKAGES:
-        assert package in text, f"{dockerfile} does not install {package}"
+    assert "FROM mcr.microsoft.com/dotnet/" in text
+    assert "COPY instances/src" in text
 
 
 @pytest.mark.parametrize(
-    "dockerfile", ["catalog.Dockerfile", "catalog.prod.Dockerfile"]
+    "dockerfile",
+    [
+        "catalog.Dockerfile",
+        "catalog.prod.Dockerfile",
+        "instances.Dockerfile",
+        "instances.prod.Dockerfile",
+    ],
 )
-def test_catalog_images_leave_weasyprint_out(dockerfile: str) -> None:
+def test_no_image_installs_weasyprint_libs(dockerfile: str) -> None:
+    # Only the Django instances used WeasyPrint, and no image runs it any more (#44).
     text = (DOCKER_DIR / dockerfile).read_text()
     assert not any(package in text for package in WEASYPRINT_PACKAGES)
+
+
+@pytest.mark.parametrize(
+    "dockerfile", ["instances.Dockerfile", "instances.prod.Dockerfile"]
+)
+def test_instances_images_leave_build_output_out(dockerfile: str) -> None:
+    # The host's bin/ and obj/ hold paths of the host, and would break a restore.
+    patterns = (DOCKER_DIR / f"{dockerfile}.dockerignore").read_text().split()
+    assert {"**/bin", "**/obj"} <= set(patterns)
