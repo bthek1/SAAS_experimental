@@ -34,6 +34,8 @@ dotnet_runtime_sha256: 029d600b47d8e1676fbb652b8d1564bc76167bbbac5b8c3004a2bd3c3
 dotnet_runtime_url: "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/{{ dotnet_runtime_version }}/aspnetcore-runtime-{{ dotnet_runtime_version }}-linux-x64.tar.gz"
 # The SDK on the control host, which publishes the service (README: .NET SDK).
 control_dotnet: "{{ lookup('env', 'DOTNET_ROOT') | default(lookup('env', 'HOME') + '/.dotnet', true) }}/dotnet"
+# Go on the control host, which builds instances_GO (#52; README: Go). go.mod pins the toolchain.
+control_go: "{{ lookup('env', 'HOME') }}/.go/bin/go"
 
 ports:
   ssh: 22

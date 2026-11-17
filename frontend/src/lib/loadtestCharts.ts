@@ -10,6 +10,9 @@ import {
   dotnetSoakMinutesTable,
   fastapiHoldTable,
   fastapiKneeTable,
+  goHoldTable,
+  goKneeTable,
+  goSoakMinutesTable,
   matchingTable,
   mongoHoldTable,
   mongoSoakTable,
@@ -1271,6 +1274,91 @@ export function dotnetSoakCpuOption(palette: SeriesPalette): EChartsOption {
       series: [
         { ...tableLine(dotnetSoakMinutesTable, "Django", 3, palette.off), endLabel: "52 %" },
         { ...tableLine(dotnetSoakMinutesTable, ".NET", 4, palette.series[0]), endLabel: "27 %" },
+      ],
+      yMax: 100,
+      format: formatPct,
+    },
+    palette,
+  )
+}
+
+export function goHoldOption(palette: SeriesPalette): EChartsOption {
+  return engineHoldBars(
+    goHoldTable,
+    [".NET", "Go"],
+    [
+      { row: "Mean", name: "mean" },
+      { row: "p95", name: "p95" },
+    ],
+    "Latency over 5 minutes at a fixed 200 iterations per second, with instances on .NET and in Go. Mixed: mean 2.47 against 1.43 milliseconds, p95 5.50 against 2.97. Read: mean 2.10 against 1.17, p95 4.52 against 2.84.",
+    formatMs,
+    palette,
+  )
+}
+
+export function goCpuOption(palette: SeriesPalette): EChartsOption {
+  return engineHoldBars(
+    goHoldTable,
+    [".NET", "Go"],
+    [
+      { row: "instances CPU", name: "instances" },
+      { row: "saas-db CPU", name: "saas-db" },
+    ],
+    "CPU of saas-instances and saas-db in the same runs, as a share of each container's 2 cores. Mixed: instances 25 against 6 percent, saas-db 11 against 5. Read: instances 18 against 4, saas-db 7 against 3.",
+    formatPct,
+    palette,
+  )
+}
+
+export function goKneeOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label:
+        "Where each ceiling search broke, with owners logged in before the traffic. Mixed: .NET about 1,387 requests per second, Go about 1,567. Read-mostly: .NET about 1,525; Go reached the run's maximum, about 1,630, without breaking. The host was busier during .NET's runs. The table below has the same values.",
+      categories: goKneeTable.rows.map((r) => String(r[0])),
+      format: (value) => `~${value.toLocaleString("en-US")}`,
+      labelWidth: 100,
+      series: [
+        {
+          name: "Knee",
+          color: palette.off,
+          data: goKneeTable.rows.map((r) => ({
+            value: cellNumber(String(r[1]).replace(/[~≥]/g, "")),
+            itemStyle: { color: String(r[0]).includes("Go") ? palette.series[0] : palette.off },
+          })),
+        },
+      ],
+    },
+    palette,
+  )
+}
+
+export function goSoakLatencyOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...dotnetSoakChart,
+      label:
+        "Slowest endpoint group's p95 by minute in the 1-hour soaks at about 350 requests per second, leaving out minute 45 when k6 logs every user in again. .NET rises from 10 to 85 milliseconds, Go from 7 to 65. The table below has the same values.",
+      series: [
+        { ...tableLine(goSoakMinutesTable, ".NET", 1, palette.off), endLabel: "85 ms" },
+        { ...tableLine(goSoakMinutesTable, "Go", 2, palette.series[0]), endLabel: "65 ms" },
+      ],
+      yMax: 100,
+      format: formatMs,
+    },
+    palette,
+  )
+}
+
+export function goSoakCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...dotnetSoakChart,
+      label:
+        "CPU of saas-instances by minute in the same soaks. .NET stays at 27 percent. Go rises from 6 to 8. The table below has the same values.",
+      series: [
+        { ...tableLine(goSoakMinutesTable, ".NET", 3, palette.off), endLabel: "27 %" },
+        { ...tableLine(goSoakMinutesTable, "Go", 4, palette.series[0]), endLabel: "8 %" },
       ],
       yMax: 100,
       format: formatPct,

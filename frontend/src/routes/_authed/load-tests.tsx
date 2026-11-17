@@ -6,6 +6,7 @@ import {
   DotnetTab,
   FastapiTab,
   FixesTab,
+  GoTab,
   GrowthTab,
   MethodTab,
   MongoTab,
@@ -23,10 +24,11 @@ const TABS = [
   { value: "mongo", label: "Postgres vs MongoDB", Panel: MongoTab },
   { value: "fastapi", label: "Django vs FastAPI", Panel: FastapiTab },
   { value: "dotnet", label: "Django vs .NET", Panel: DotnetTab },
+  { value: "go", label: ".NET vs Go", Panel: GoTab },
   { value: "method", label: "Method & open questions", Panel: MethodTab },
 ] as const
 
-const tabValues = ["capacity", "cache", "growth", "fixes", "split", "mongo", "fastapi", "dotnet", "method"] as const
+const tabValues = ["capacity", "cache", "growth", "fixes", "split", "mongo", "fastapi", "dotnet", "go", "method"] as const
 type TabValue = (typeof tabValues)[number]
 
 const searchSchema = z.object({

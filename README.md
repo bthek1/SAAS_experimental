@@ -66,10 +66,17 @@ The Django version of `instances` was measured against .NET (`loadtest/baselines
 and removed in #45. It is back in `backend/instances_Django/` (#51), with its admin site and `import_from_monolith`,
 for comparison only: nothing deploys it. `cd backend/instances_Django && uv run pytest` runs its tests.
 
+A Go version of `instances` is in `backend/instances_GO/` (#52), on the same API, schema and env vars, and
+passes the same API suite (`INSTANCES_IMPL=go`). Nothing deploys it yet. It needs Go only to build and test it: without sudo, the official tarball in `~/.go`
+(`curl -sSLO https://go.dev/dl/go<version>.linux-amd64.tar.gz`, check its sha256 against
+`https://go.dev/dl/?mode=json`, then `mkdir ~/.go && tar -xzf go<version>.linux-amd64.tar.gz -C ~/.go
+--strip-components=1`). `just` recipes find `~/.go/bin` themselves; put it on `PATH` to run `go` yourself.
+`go.mod` pins the toolchain.
+
 ### Tests
 
 ```bash
-just be-test            # backend: catalog's pytest, both API suites, instances' xUnit and Django tests, then the repo-level checks
+just be-test            # backend: catalog's pytest, both API suites (instances on .NET and on Go), instances' xUnit, Django and Go tests, then the repo-level checks
 just fe-test            # frontend unit and route tests (Vitest)
 just infra-test         # Pulumi program and Ansible role checks, no containers needed
 
@@ -77,6 +84,7 @@ cd backend
 uv run pytest parity    # catalog's API over real HTTP, against a stub instances (what the SPA and instances rely on)
 uv run pytest parity_instances   # instances' API over real HTTP, against a stub catalog (#40); needs Docker
 INSTANCES_IMPL=django uv run pytest parity_instances   # the same suite against instances_Django (#51)
+INSTANCES_IMPL=go uv run pytest parity_instances       # the same suite against instances_GO (#52)
 cd ..
 
 cd backend/instances_NET
@@ -311,6 +319,7 @@ their names and belong to `catalog`, so never drop those.
 │   │   ├── src/Instances.Api/     questionnaires, batteries, share links, dashboards, PDFs, type copies
 │   │   └── tests/Instances.Tests/ xUnit, on a throwaway Postgres
 │   ├── instances_Django/  The same service on Django REST Framework (#51), kept to compare, never deployed
+│   ├── instances_GO/      The same service in Go (#52): cmd/, internal/; not deployed
 │   ├── contracts/    JSON shapes of /internal/ calls, tested by both services
 │   ├── parity/       catalog's API tested over HTTP only, against a stub instances (#34)
 │   ├── parity_instances/  instances' API tested over HTTP only, against a stub catalog (#40)

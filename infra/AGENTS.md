@@ -74,6 +74,12 @@ in the repo.
     Kestrel. No Python. Its commands are verbs of the binary (`migrate`, `reset-db`, `clear-cache`,
     `seed-loadtest`). `app_commands` in `roles/app/defaults/main.yml` holds each service's commands, and env
     is in `/etc/<unit>/app.env`;
+  - `instances` in Go instead (#52), with `-e app_instances_impl=go` on any converge or reset (default
+    `dotnet`; never set it in `group_vars`): one static binary built on the control host (`go build` into the
+    gitignored `backend/instances_GO/publish/`, needing Go in `~/.go`), rsynced by content to
+    `/srv/app/instances-go`, run by the same unit, env file and verbs. `just loadtest-reset` takes no arguments,
+    so a Go reset is `cd infra/ansible && ansible-playbook site.yml --tags app --limit app,instances
+    -e app_reset_db=true -e app_instances_impl=go`. Converge without it to go back to .NET;
   - nginx from apt on saas-gateway, its config from `infra/gateway/build_nginx.py --address ...`;
   - saas-db holds `catalogdb` and `instancesdb` with separate login roles. The monolith's `appdb` is still
     there, unused, as a way back;

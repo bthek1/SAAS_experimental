@@ -274,3 +274,5 @@ backend/instances_NET/**/bin/
 backend/instances_NET/**/obj/
 backend/instances_NET/**/TestResults/
 backend/instances_NET/publish/
+# Go (backend/instances_GO, #52): the binary Ansible builds for saas-instances.
+backend/instances_GO/publish/

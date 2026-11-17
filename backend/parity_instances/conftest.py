@@ -6,9 +6,11 @@ both only over HTTP. It imports no service code, so it checks either implementat
 
     cd backend && uv run pytest parity_instances                        # .NET
     cd backend && INSTANCES_IMPL=django uv run pytest parity_instances  # Django
+    cd backend && INSTANCES_IMPL=go uv run pytest parity_instances      # Go
 
 .NET is built from `backend/instances_NET`; Django runs from `backend/instances_Django`
-under gunicorn. Either runs on a throwaway Postgres in Docker. The one thing the suite
+under gunicorn; Go is built from `backend/instances_GO` (#52). Each runs on a throwaway
+Postgres in Docker. The one thing the suite
 does outside HTTP is move rows in time for the dashboard tests (`support.Clock`).
 """
 
@@ -41,7 +43,8 @@ from .support import (
 BACKEND = Path(__file__).resolve().parent.parent
 DOTNET_PROJECT = BACKEND / "instances_NET" / "src" / "Instances.Api"
 DJANGO_PROJECT = BACKEND / "instances_Django"
-IMPLEMENTATIONS = ("dotnet", "django")
+GO_MODULE = BACKEND / "instances_GO"
+IMPLEMENTATIONS = ("dotnet", "django", "go")
 # One gthread worker; `--bind` is added per run.
 GUNICORN = ("--config", "/dev/null", "--worker-class", "gthread", "--threads", "4")
 POSTGRES_IMAGE = "postgres:16-alpine"
@@ -142,6 +145,36 @@ def _django(port: int, tmp: Path, catalog_url: str) -> Iterator[Server]:
         )
 
 
+def _go_cli() -> str:
+    found = shutil.which("go") or str(Path.home() / ".go" / "bin" / "go")
+    if not Path(found).exists():
+        raise pytest.UsageError("instances_GO needs Go (see README)")
+    return found
+
+
+@contextlib.contextmanager
+def _go(port: int, tmp: Path, catalog_url: str) -> Iterator[Server]:
+    binary = str(tmp / "instances")
+    with _postgres() as database:
+        yield Server(
+            commands=[
+                [_go_cli(), "build", "-o", binary, "./cmd/instances"],
+                [binary, "migrate"],
+                [binary],
+            ],
+            cwd=GO_MODULE,
+            env={
+                "SETTINGS": "test",
+                "INSTANCES_DATABASE_URL": database,
+                "CATALOG_INTERNAL_URL": catalog_url,
+                "CORS_ALLOWED_ORIGINS": SPA_ORIGIN,
+                "ASPNETCORE_URLS": f"http://127.0.0.1:{port}",
+                "GOTOOLCHAIN": "local",
+            },
+            database=database,
+        )
+
+
 def _implementation() -> str:
     impl = os.environ.get("INSTANCES_IMPL", "dotnet")
     if impl not in IMPLEMENTATIONS:
@@ -187,7 +220,7 @@ def server(stub) -> Iterator[tuple[str, str]]:
     port = free_port()
     with (
         tempfile.TemporaryDirectory(prefix="parity-instances-") as tmp,
-        {"dotnet": _dotnet, "django": _django}[_implementation()](
+        {"dotnet": _dotnet, "django": _django, "go": _go}[_implementation()](
             port, Path(tmp), stub.url
         ) as spec,
     ):

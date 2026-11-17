@@ -8,10 +8,16 @@ set dotenv-load := false
 
 export VIRTUAL_ENV := ""
 
-# The .NET SDK (instances, #42, #48): README's no-sudo install puts it in ~/.dotnet, off PATH.
-# Added only if that folder exists, so an apt-installed SDK is used as it is.
+# The .NET SDK (instances, #42, #48) and Go (instances_GO, #52): README's no-sudo installs put
+# them in ~/.dotnet and ~/.go, off PATH. Each is added only if its folder exists, so an
+# apt-installed toolchain is used as it is.
 dotnet_home := home_directory() / ".dotnet"
-export PATH := if path_exists(dotnet_home) == "true" { dotnet_home + ":" + env_var("PATH") } else { env_var("PATH") }
+go_home := home_directory() / ".go" / "bin"
+dotnet_path := if path_exists(dotnet_home) == "true" { dotnet_home + ":" } else { "" }
+go_path := if path_exists(go_home) == "true" { go_home + ":" } else { "" }
+export PATH := dotnet_path + go_path + env_var("PATH")
+# go.mod pins the toolchain: use the installed one, never download another.
+export GOTOOLCHAIN := "local"
 
 # Compose files live in infra/docker/. The project name is pinned to the repo folder name
 # so containers and the postgres_data volume keep the same names as before the move.
@@ -112,7 +118,9 @@ be-test:
     cd backend && uv run pytest parity
     cd backend/instances_NET && dotnet test
     cd backend/instances_Django && uv run pytest
+    cd backend/instances_GO && go test ./...
     cd backend && uv run pytest parity_instances
+    cd backend && INSTANCES_IMPL=go uv run pytest parity_instances
     cd backend && uv run pytest tests
 
 # Lint backend code (ruff check)

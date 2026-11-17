@@ -227,6 +227,10 @@ DB_QUERIES = ("django_db_execute_total", "db_queries_total")
 ALL_REQUESTS = ("django_http_requests_before_middlewares_total", "http_requests_total")
 
 
+def peak(gauge: str) -> str:
+    return f"max(max_over_time({gauge}[$__interval]))"
+
+
 def rate_any(metrics: tuple[str, ...], selector: str = "") -> str:
     return "(" + " or ".join(rate(metric, selector) for metric in metrics) + ")"
 
@@ -340,6 +344,17 @@ def django_dashboard():
                 unit="s",
                 width=8,
             ),
+            # Gauges sampled at scrape time: the max over the interval keeps a short
+            # queue visible. Work queued while threads stay flat is .NET's hill
+            # climbing declining to add threads, as at the 2026-11-17 knee (#53).
+            panel(
+                "instances (.NET) thread pool",
+                [
+                    (peak("system_runtime_dotnet_thread_pool_queue_length"), "queued"),
+                    (peak("system_runtime_dotnet_thread_pool_thread_count"), "threads"),
+                ],
+                width=24,
+            ),
         ],
         [
             query_var(
@@ -448,6 +463,13 @@ MEM_USED = f"max by (instance) (container_memory_usage_bytes{{{INSTANCE}}})"
 # What the limit bites: usage minus inactive page cache (cAdvisor's working set).
 MEM_WORKING = f"max by (instance) (container_memory_working_set_bytes{{{INSTANCE}}})"
 MEM_LIMIT = f"max by (instance) (container_memory_limit_bytes{{{INSTANCE}}})"
+# Per container: node_exporter reads the container's own PSI (pressure) file.
+CPU_WAIT = (
+    f"sum by (instance) ({rate('node_pressure_cpu_waiting_seconds_total', INSTANCE)})"
+)
+CPU_THROTTLED = (
+    f"sum by (instance) ({rate('container_cpu_throttled_seconds_total', INSTANCE)})"
+)
 NET_RX = f"sum by (instance) ({rate('node_network_receive_bytes_total', ETH0)})"
 NET_TX = f"sum by (instance) ({rate('node_network_transmit_bytes_total', ETH0)})"
 BY_INSTANCE = "{{instance}}"
@@ -485,6 +507,25 @@ def containers_dashboard():
                     (MEM_USED, "{{instance}} total"),
                 ],
                 unit="bytes",
+            ),
+            # CPU used below the limit does not mean a core was free: on a shared
+            # Proxmox host, tasks wait for one while the host runs other guests (#53).
+            panel(
+                "CPU wait: runnable, no core free (s/s)",
+                [(CPU_WAIT, BY_INSTANCE)],
+                unit="s",
+                width=8,
+            ),
+            panel(
+                "Throttled by own CPU limit (s/s)",
+                [(CPU_THROTTLED, BY_INSTANCE)],
+                unit="s",
+                width=8,
+            ),
+            panel(
+                "Proxmox host load, 1 min (every guest, 24 cores)",
+                [("max(node_load1)", "host load")],
+                width=8,
             ),
             panel("Network received", [(NET_RX, BY_INSTANCE)], unit="Bps"),
             panel("Network sent", [(NET_TX, BY_INSTANCE)], unit="Bps"),

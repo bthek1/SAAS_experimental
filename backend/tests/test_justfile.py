@@ -1,4 +1,6 @@
-"""The justfile finds the .NET SDK where README's no-sudo install puts it (#48).
+"""The justfile finds the .NET SDK and Go where README's no-sudo installs put them.
+
+#48 for .NET, #52 for Go.
 
 `instances` is .NET (#42 to #45). With the SDK in `~/.dotnet` and off `PATH`, `just dev`
 once failed with `dotnet: not found`. These run `just` itself, with a throwaway `HOME`,
@@ -33,14 +35,33 @@ def recipe_path(home: Path, path: str) -> list[str]:
 
 
 def shell_path() -> str:
-    # `just` itself must stay reachable; drop any real ~/.dotnet from the test's PATH.
-    return ":".join(p for p in os.environ["PATH"].split(":") if ".dotnet" not in p)
+    # `just` itself must stay reachable; drop any real ~/.dotnet or ~/.go from the PATH.
+    parts = os.environ["PATH"].split(":")
+    return ":".join(p for p in parts if ".dotnet" not in p and "/.go/" not in p)
 
 
 def test_recipes_find_the_sdk_in_home_dotnet(tmp_path: Path) -> None:
     (tmp_path / ".dotnet").mkdir()
     path = shell_path()
     assert recipe_path(tmp_path, path) == [str(tmp_path / ".dotnet"), *path.split(":")]
+
+
+def test_recipes_find_go_in_home_go(tmp_path: Path) -> None:
+    (tmp_path / ".go" / "bin").mkdir(parents=True)
+    path = shell_path()
+    go_bin = str(tmp_path / ".go" / "bin")
+    assert recipe_path(tmp_path, path) == [go_bin, *path.split(":")]
+
+
+def test_both_toolchains_in_home(tmp_path: Path) -> None:
+    (tmp_path / ".dotnet").mkdir()
+    (tmp_path / ".go" / "bin").mkdir(parents=True)
+    path = shell_path()
+    assert recipe_path(tmp_path, path) == [
+        str(tmp_path / ".dotnet"),
+        str(tmp_path / ".go" / "bin"),
+        *path.split(":"),
+    ]
 
 
 def test_path_is_untouched_without_home_dotnet(tmp_path: Path) -> None:
