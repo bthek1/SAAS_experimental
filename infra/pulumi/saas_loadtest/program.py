@@ -88,7 +88,7 @@ def container(
         # keyctl stays off, so Docker cannot run inside (Phase 4 installs natively).
         unprivileged=True,
         features={"nesting": True, "keyctl": False},
-        cpu={"cores": guest.cores},
+        cpu={"cores": guest.cores, "units": guest.cpu_units},
         memory={"dedicated": guest.memory_mb, "swap": 512},
         disk={"datastore_id": datastore, "size": guest.disk_gb},
         operating_system={"template_file_id": template, "type": "ubuntu"},

@@ -723,7 +723,9 @@ export function DotnetTab() {
         passed ~784 req/s mixed and ~539 to ~546 read with <code>instances</code> under half busy. One more run per mix,
         starting at 500, found where it does break. Like Django's, each run broke when k6 added users and they
         all logged in at once on <code>catalog</code>, with <code>instances</code> at 57 to 60 % CPU. The higher
-        start leaves fewer rows at a given rate, so those two knees are rough.
+        start leaves fewer rows at a given rate, so those two knees are rough. With owners logged in before
+        the traffic, the knees rose only to ~1,387 and ~1,525 (see “.NET vs Go”): the shared host's CPU, not
+        the logins, is the limit.
       </Prose>
       <ChartCard title="Knee per stress run, req/s" option={dotnetKneeOption(palette)} height={barsHeight(8, 1)} />
       <TableDetails table={dotnetKneeTable} />
@@ -856,14 +858,12 @@ export function MethodTab() {
               still reads every row in the window for its totals.
             </li>
             <li>
-              <strong>Pre-allocate k6's VUs.</strong> New VUs log in during a slowdown, and on the
-              split those logins on <code>catalog</code> are what break every stress run. The knee
-              is partly a test artefact until this is tried.
-            </li>
-            <li>
-              <strong>Keep the host quiet.</strong> Other work on the same host matched the slowest
-              runs, but this was never proven. A run on a quiet host, or one with its own cores,
-              would settle how much of the variation it causes.
+              <strong>Give the containers their own cores.</strong> With owners logged in before the
+              traffic (<code>LOGIN=setup</code>), the .NET knees rose only 5 to 11 %, to ~1,387 req/s
+              mixed and ~1,525 read: k6's login burst was how those runs ended, not what limited them.
+              At every break since, no container was near its CPU limit, yet each one waited longer for
+              a CPU as the rate rose. The shared Proxmox host is the limit, and a run with pinned
+              cores or a quiet host is the next step.
             </li>
           </Findings>
         </CardContent>
@@ -893,7 +893,9 @@ export function MethodTab() {
             <li>
               <strong>Stress:</strong> the rate rises every minute until p95 passes 1 s, failures
               pass 1 %, or k6 drops 1,000 iterations. <strong>Slowest group</strong> is the worst
-              p95 among the endpoint groups.
+              p95 among the endpoint groups. From 17 November, ceiling searches log owners in once
+              before the traffic (<code>LOGIN=setup</code>), so new users logging in no longer end
+              them; earlier knees compare only with each other.
             </li>
             <li>
               <strong>Dropped iterations:</strong> every soak drops some in its first 30 seconds

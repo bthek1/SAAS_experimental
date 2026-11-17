@@ -33,22 +33,33 @@ ROLES = tuple(GUEST_IDS)
 ID_RANGE = range(241, 250)
 RESERVED = range(220, 241)  # ~/kubernates_project's VMs
 
+# CPU weight (Proxmox `cpuunits`, cgroup v2 `cpu.weight`, #56): the share of a contended core.
+# The request path, and k6 that times it, outweigh other guests (Proxmox's default is 100);
+# monitor keeps the provider's 1024. A weight never reserves a core: it only orders a queue.
+PRIORITY_UNITS = 4096
+CPU_UNITS_RANGE = range(1, 10001)
+
 # The host had ~24 GB available on 2026-11-02 (63 GB total). About 8 GB here.
 DEFAULT_SIZES = {
     # catalog keeps 2 cores although it is mostly idle: logins hash passwords, and on
     # 1 core they were ~10x slower under load (1.4 s -> 14 s), for a hot-path gain on
     # instances (1 + 3) that was within run-to-run variation (#24, Phase 3).
-    "app": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
-    "db": {"cores": 2, "memoryMb": 1024, "diskGb": 10},
+    "app": {"cores": 2, "cpuUnits": PRIORITY_UNITS, "memoryMb": 2048, "diskGb": 8},
+    "db": {"cores": 2, "cpuUnits": PRIORITY_UNITS, "memoryMb": 1024, "diskGb": 10},
     # Prometheus keeps 30 days and filled 10 GB with load-test runs (2026-11-17).
-    "monitor": {"cores": 1, "memoryMb": 1024, "diskGb": 20},
+    "monitor": {"cores": 1, "cpuUnits": 1024, "memoryMb": 1024, "diskGb": 20},
     # k6 holds about 1 MB per VU; stress tops out at 300 VUs.
-    "loadgen": {"cores": 2, "memoryMb": 1024, "diskGb": 4},
+    "loadgen": {"cores": 2, "cpuUnits": PRIORITY_UNITS, "memoryMb": 1024, "diskGb": 4},
     # Redis holds up to 256 MB (maxmemory) and writes nothing to disk (#11).
-    "cache": {"cores": 1, "memoryMb": 512, "diskGb": 4},
-    "instances": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
+    "cache": {"cores": 1, "cpuUnits": PRIORITY_UNITS, "memoryMb": 512, "diskGb": 4},
+    "instances": {
+        "cores": 2,
+        "cpuUnits": PRIORITY_UNITS,
+        "memoryMb": 2048,
+        "diskGb": 8,
+    },
     # nginx only.
-    "gateway": {"cores": 1, "memoryMb": 512, "diskGb": 4},
+    "gateway": {"cores": 1, "cpuUnits": PRIORITY_UNITS, "memoryMb": 512, "diskGb": 4},
 }
 
 
@@ -71,6 +82,7 @@ class Guest:
     vmid: int
     ip: str
     cores: int
+    cpu_units: int
     memory_mb: int
     disk_gb: int
     prefix: int
@@ -111,11 +123,14 @@ def build(network: Network, sizes: dict | None = None) -> dict[str, Guest]:
     for role, vmid in GUEST_IDS.items():
         check_vmid(vmid)
         size = {**DEFAULT_SIZES[role], **(sizes or {}).get(role, {})}
+        if int(size["cpuUnits"]) not in CPU_UNITS_RANGE:
+            raise ValueError(f"{role}: cpuUnits {size['cpuUnits']} is outside 1-10000")
         guests[role] = Guest(
             role=role,
             vmid=vmid,
             ip=ip_for(network, vmid),
             cores=int(size["cores"]),
+            cpu_units=int(size["cpuUnits"]),
             memory_mb=int(size["memoryMb"]),
             disk_gb=int(size["diskGb"]),
             prefix=network.prefix,

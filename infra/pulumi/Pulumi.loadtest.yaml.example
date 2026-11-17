@@ -40,4 +40,4 @@ config:
   saas:sshPublicKeys:
     - ssh-ed25519 AAAA... you@workstation
   # saas:sizes:                     # override per role; defaults in saas_loadtest/topology.py
-  #   app: {cores: 4, memoryMb: 4096, diskGb: 8}
+  #   app: {cores: 4, cpuUnits: 4096, memoryMb: 4096, diskGb: 8}

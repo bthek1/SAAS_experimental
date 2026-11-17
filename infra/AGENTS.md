@@ -98,6 +98,10 @@ in the repo.
   busy). `roles/common/files/container-metrics.sh` writes `container_*` metrics to node_exporter's
   textfile collector every 5 s. Read memory as the working set: `memory.current` includes page
   cache.
+- **CPU weight** (`cpuUnits` per role in `topology.py`, Proxmox `cpuunits`, #56): 4096 on the request path and
+  saas-loadgen, 1024 on saas-monitor. It only orders a contended core's queue against other guests; it reserves
+  nothing, and Pulumi cannot pin cores (the provider has no cpuset). Read CPU-pressure wait, not CPU used, to see
+  contention.
 - The Grafana datasource URL is `${PROMETHEUS_URL}` (compose: `http://prometheus:9090`,
   saas-monitor: `http://localhost:9090`). Rules, provisioning and dashboards are the same files
   as the local stack's.

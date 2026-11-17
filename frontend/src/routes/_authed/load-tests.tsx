@@ -38,8 +38,8 @@ const searchSchema = z.object({
 const KPIS = [
   {
     label: "Capacity on the latest code, mixed traffic",
-    value: "~430–581 req/s",
-    hint: "Up from ~86 req/s at the start. Three runs before the split into two services and one after gave this range, so read any single knee as rough. The earlier runs also used different ramps.",
+    value: "~1,387 req/s",
+    hint: "Up from ~86 req/s at the start. instances on .NET, owners logged in before the traffic; one run, so read it as rough. The shared host's CPU, not a container, set the limit.",
   },
   {
     label: "p95, 10 minutes at ~215 req/s",

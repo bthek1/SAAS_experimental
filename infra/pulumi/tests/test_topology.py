@@ -72,6 +72,19 @@ def test_sizes_override_per_role():
     assert guests["db"].cores == topology.DEFAULT_SIZES["db"]["cores"]
 
 
+def test_cpu_units_default_and_override():
+    guests = build(NETWORK, {"db": {"cpuUnits": 2048}})
+    assert guests["db"].cpu_units == 2048
+    assert guests["instances"].cpu_units == topology.PRIORITY_UNITS
+    assert guests["monitor"].cpu_units == 1024
+
+
+@pytest.mark.parametrize("units", [0, 10001])
+def test_cpu_units_out_of_range_is_refused(units):
+    with pytest.raises(ValueError, match="outside 1-10000"):
+        build(NETWORK, {"app": {"cpuUnits": units}})
+
+
 def test_sizes_for_an_unknown_role_are_refused():
     with pytest.raises(ValueError, match="unknown roles"):
         build(NETWORK, {"web": {"cores": 1}})

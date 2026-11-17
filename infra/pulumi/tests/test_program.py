@@ -149,7 +149,7 @@ def test_sizes_follow_the_topology():
         cts = MOCKS.containers()
         for role, guest in STACK.guests.items():
             ct = cts[guest.name]
-            assert ct["cpu"] == {"cores": guest.cores}
+            assert ct["cpu"] == {"cores": guest.cores, "units": guest.cpu_units}
             assert ct["memory"]["dedicated"] == guest.memory_mb
             assert ct["disk"] == {"datastoreId": "local-lvm", "size": guest.disk_gb}, (
                 role
