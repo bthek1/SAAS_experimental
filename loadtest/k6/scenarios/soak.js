@@ -1,7 +1,8 @@
 // soak: a moderate, steady rate of mixed traffic for a long time. Watch for
 // drift: latency creeping up, memory, Postgres connections.
-//   RATE (iterations/s, default 5), DURATION (default 30m), MIX (mixed or read)
-import { owner, traffic } from '../lib/api.js';
+//   RATE (iterations/s, default 5), DURATION (default 30m), MIX (mixed or read),
+//   LOGIN (vu or setup, default vu: see lib/api.js)
+import { ownerFrom, ownerSetup, traffic } from '../lib/api.js';
 import { thresholdsFor } from '../lib/config.js';
 
 export const options = {
@@ -19,6 +20,10 @@ export const options = {
   thresholds: thresholdsFor(500),
 };
 
-export default function () {
-  traffic(owner());
+export function setup() {
+  return ownerSetup();
+}
+
+export default function (sessions) {
+  traffic(ownerFrom(sessions));
 }

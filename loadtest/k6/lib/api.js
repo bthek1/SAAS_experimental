@@ -29,8 +29,8 @@ function call(method, path, { name, body = null, token = null, expect = 200, kee
 
 let session = null;
 
-function login() {
-  const email = `loadtest-${(__VU - 1) % OWNERS}@example.com`;
+function login(n = (__VU - 1) % OWNERS) {
+  const email = `loadtest-${n}@example.com`;
   const res = call('POST', '/api/token/', { name: 'token', body: { email, password: PASSWORD }, keep: true });
   if (res.status !== 200) {
     throw new Error(`login as ${email} answered ${res.status}; run just loadtest-seed with OWNERS >= ${OWNERS}`);
@@ -50,6 +50,7 @@ function login() {
   }
   return {
     token,
+    refresh: res.json('refresh'),
     at: Date.now(),
     typeIds: types.map((t) => t.id),
     batteryTypeIds: batteryTypes.map((t) => t.id),
@@ -60,6 +61,39 @@ function login() {
 
 export function owner() {
   if (!session || Date.now() - session.at > SESSION_MAX_AGE_MS) session = login();
+  return session;
+}
+
+// ── LOGIN=setup (#50) ────────────────────────────────────────────────────────
+// LOGIN=vu (default): each VU logs in on its first iteration, as above. When
+// latency rises, k6 starts VUs that all log in at once, and that pbkdf2 burst
+// on `catalog` is what ended every stress run so far.
+// LOGIN=setup: k6's setup() logs each owner in once, before the traffic, and
+// the VUs share those sessions. A stale access token is renewed by refresh,
+// which hashes no password. Use it to measure past the login burst; only
+// compare runs with the same LOGIN.
+const LOGIN = __ENV.LOGIN || 'vu';
+if (LOGIN !== 'vu' && LOGIN !== 'setup') throw new Error(`unknown LOGIN=${LOGIN}: use vu or setup`);
+
+// The scenarios' setup(): every owner's session under LOGIN=setup, else null.
+export function ownerSetup() {
+  if (LOGIN !== 'setup') return null;
+  const sessions = [];
+  for (let n = 0; n < OWNERS; n++) sessions.push(login(n));
+  return sessions;
+}
+
+function refreshed(s) {
+  const res = call('POST', '/api/token/refresh/', { name: 'token-refresh', body: { refresh: s.refresh }, keep: true });
+  if (res.status !== 200) throw new Error(`token refresh answered ${res.status}`);
+  return { ...s, token: res.json('access'), refresh: res.json('refresh'), at: Date.now() };
+}
+
+// The session a VU uses: setup()'s data under LOGIN=setup, else its own login.
+export function ownerFrom(data) {
+  if (!data) return owner();
+  if (!session) session = data[(__VU - 1) % data.length];
+  if (Date.now() - session.at > SESSION_MAX_AGE_MS) session = refreshed(session);
   return session;
 }
 

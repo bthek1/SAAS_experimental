@@ -1,11 +1,13 @@
 // stress: keep raising the rate of mixed traffic until p95 latency or errors
 // cross the line, then stop. The rate it reached is the ceiling.
 //   MAX_RATE (iterations/s, default 200), STEP (default 5), STEP_TIME (default 1m),
-//   MIX (mixed or read, default mixed), START_RATE (first target, default STEP)
+//   MIX (mixed or read, default mixed), START_RATE (first target, default STEP),
+//   LOGIN (vu or setup, default vu). LOGIN=setup logs owners in before the ramp, so the
+//   knee is not k6's login burst on `catalog` (#50); see lib/api.js.
 //
 // START_RATE skips the rates that show nothing: the first step ramps up to it. Only compare
 // runs with the same value, because a longer run adds more rows and slows later steps.
-import { owner, traffic } from '../lib/api.js';
+import { ownerFrom, ownerSetup, traffic } from '../lib/api.js';
 
 const MAX = Number(__ENV.MAX_RATE || 200);
 const STEP = Number(__ENV.STEP || 5);
@@ -37,6 +39,10 @@ export const options = {
   },
 };
 
-export default function () {
-  traffic(owner());
+export function setup() {
+  return ownerSetup();
+}
+
+export default function (sessions) {
+  traffic(ownerFrom(sessions));
 }
