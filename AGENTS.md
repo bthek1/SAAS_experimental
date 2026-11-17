@@ -7,12 +7,13 @@ Rules for AI coding agents working in this repository. This is the only agent in
 
 ## What this repo is
 
-**SAAS_experimental**, a Django + DRF + React project created from the `django_react_template` starter,
-as a decoupled monorepo:
+**SAAS_experimental**, a FastAPI + ASP.NET Core + React project created from the `django_react_template`
+starter, as a decoupled monorepo:
 
-- **`backend/`**: two services, each with its own PostgreSQL database: `catalog` on FastAPI and
-  `instances` on Django REST Framework, plus `common`, Django infrastructure for `instances`
-  (Python 3.14, Celery + Redis, a uv workspace)
+- **`backend/`**: two services, each with its own PostgreSQL database: `catalog` on FastAPI (Python 3.14,
+  Celery + Redis, a uv workspace with `common`) and `instances` on ASP.NET Core (.NET 10, `backend/instances/`).
+  Both began as Django and keep the tables and API Django left: `catalog` moved in #34 to #38, `instances`
+  in #40 to #45
 - **`infra/gateway/`**: nginx route table that gives both services one public origin
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router + Query)
 - **`infra/docker/`**: Dockerfiles and compose files for both halves
@@ -31,7 +32,7 @@ Prefer documented conventions over one-off solutions.
 | Setup, endpoints and request/response shapes | [`README.md`](README.md) (Quick Start, API) |
 | Env vars | [`.env.example`](.env.example) |
 | Day-to-day commands | [`justfile`](justfile) (`just`) and the Commands section below |
-| JWT handling | `frontend/src/api/client.ts`, `backend/catalog/catalog/auth.py` (signs), `jwt_settings` in `backend/common/common/settings/base.py` (`instances` verifies) |
+| JWT handling | `frontend/src/api/client.ts`, `backend/catalog/catalog/auth.py` (signs), `backend/instances/src/Instances.Api/Auth/OwnerAuth.cs` (`instances` verifies) |
 | Celery wiring | `backend/catalog/catalog/celery_app.py`, `frontend/src/hooks/useTaskPoller.ts` |
 | Load test results page | `frontend/src/routes/_authed/load-tests.tsx`, `frontend/src/lib/loadtestResults.ts` (figures), `frontend/src/lib/loadtestCharts.ts` (charts) |
 | How the services talk, in the app | `frontend/src/routes/_authed/service-interface.tsx` (`/service-interface`, hand-written, #27) |
@@ -57,7 +58,7 @@ just compose <args> # any docker compose command against the dev stack
 just be-migrate
 just be-makemigrations <app>
 just be-superuser   # from DJANGO_SUPERUSER_* in .env
-just be-test        # pytest
+just be-test        # catalog's pytest, both API suites, instances' xUnit, repo checks
 just be-lint        # ruff check (note: pyproject sets fix = true, so this rewrites files)
 just be-fmt         # ruff format
 
@@ -90,9 +91,13 @@ Rarer tasks have no recipe. Run them directly:
 | Backend dev servers only | `just be-dev` (private helper: gateway router :8005, catalog :8006, instances :8007) |
 | Frontend dev server only | `just fe-dev` (private helper, :5174) |
 | catalog parity suite (#34) | `cd backend && uv run pytest parity` (starts `catalog` and a stub `instances` itself) |
-| Backend coverage | `cd backend && uv run pytest catalog --cov=catalog --cov-report=term-missing`, `uv run pytest instances --cov=apps` |
-| Type check backend | `cd backend && uv run mypy .` |
-| New Django app (`instances`) | `cd backend/instances && mkdir apps/<name> && uv run python manage.py startapp <name> apps/<name>` |
+| instances API suite (#40) | `cd backend && uv run pytest parity_instances` (builds `instances`, a throwaway Postgres in Docker and a stub `catalog`) |
+| instances tests | `cd backend/instances && dotnet test` (one category: `dotnet test -- --filter-trait "Category=Refs"`) |
+| instances lint / format | `cd backend/instances && dotnet format --verify-no-changes` / `dotnet format` |
+| instances migration | `just be-makemigrations instances <Name>` (`dotnet ef migrations add`; read it) |
+| .NET service by hand | `dotnet build src/Instances.Api -c Release -o <dir>`, then `dotnet <dir>/Instances.Api.dll migrate` and `dotnet <dir>/Instances.Api.dll` (`ASPNETCORE_URLS`, env as below) |
+| catalog coverage | `cd backend && uv run pytest catalog --cov=catalog --cov-report=term-missing` |
+| Type check catalog | `cd backend && uv run mypy catalog common` (`instances` is type-checked by its build) |
 | catalog migration | `just be-makemigrations catalog "<message>"` (Alembic autogenerate against the dev db; read the result) |
 | Celery worker outside Docker | `cd backend && uv run celery -A catalog.celery_app worker --loglevel=info` |
 | Flower UI on :5555 | `cd backend && uv run celery -A catalog.celery_app flower --port=5555` |
@@ -101,13 +106,12 @@ Rarer tasks have no recipe. Run them directly:
 | psql shell | `just compose exec db psql -U appuser -d appdb` |
 | Prod service image | `docker build -f infra/docker/<catalog\|instances>.prod.Dockerfile backend` |
 | Staff account for `/admin/` (catalog) | `just be-superuser` (`python -m catalog create-superuser`, from `DJANGO_SUPERUSER_*`) |
-| Staff account for `/instances-admin/` | `cd backend && uv run python instances/manage.py createsuperuser` |
 | Regenerate the gateway config | `python3 infra/gateway/build_nginx.py` (after editing `routes.json`) |
 | Move data from a database from before the split | See "Moving a pre-split database" in `README.md` |
 | Vitest UI | `cd frontend && npm run test:ui` |
 | Frontend e2e (Playwright) | `cd frontend && npm run e2e` (first time: `npx playwright install chromium`) |
 | Playwright UI / report | `cd frontend && npm run e2e:ui` / `npx playwright show-report` |
-| Frontend e2e against a real backend | `cd frontend && npm run e2e:integration` (needs `uv sync` in `backend/`, no Docker) |
+| Frontend e2e against a real backend | `cd frontend && npm run e2e:integration` (needs `uv sync` in `backend/`, the .NET SDK and Docker) |
 
 ### Local services and ports
 
@@ -118,9 +122,10 @@ Host ports are offset so they do not clash with a locally installed Postgres or 
 | `db` | `5435` -> 5432 | Postgres 16 (`appuser` / `apppassword` / `appdb`) |
 | `redis` | `127.0.0.1:6380` -> 6379 | Celery broker (db 0) and cache (db 1). Loopback only: see Cache |
 | `db` (`instances_db`) | `5437` -> 5432 | The `instances` database (`instancesdb`). `db` above is `catalog`'s |
+| e2e `instances` database | `127.0.0.1:5447` | Throwaway Postgres in Docker, `npm run e2e:integration` only (#44) |
 | `gateway` | `8005` | One public origin, so `VITE_API_BASE_URL` stays valid |
 | `catalog` | `8006` | uvicorn `--reload` |
-| `instances` | `8007` | Django dev server |
+| `instances` | `8007` | `dotnet watch` (rebuilds on every edit) |
 | `relay_outbox` | none | Retries undelivered events |
 | `celery_worker`, `celery_beat` | none | `catalog.celery_app`; beat's schedule is code (`beat_schedule`) |
 | `frontend` | `5174` | Vite dev server |
@@ -146,142 +151,107 @@ values in the root `.env`.
 
 ## Backend (`backend/`)
 
-**Stack:** Python 3.14, PostgreSQL (psycopg3), Celery + Redis, uv, ruff, mypy, pytest, freezegun,
-pytest-mock. `catalog`: FastAPI, Pydantic v2, pydantic-settings, SQLAlchemy 2 (sync), Alembic, PyJWT,
-sqladmin, gunicorn with uvicorn workers. `instances`: Django 6.0, DRF, simplejwt, django-environ,
-pytest-django, factory-boy, faker. Its own section below covers `catalog`; the rest of this section
-is about `instances` (and `common`) unless it says otherwise.
+**Stack.** `catalog`: Python 3.14, FastAPI, Pydantic v2, pydantic-settings, SQLAlchemy 2 (sync), Alembic,
+PyJWT, sqladmin, Celery + Redis, gunicorn with uvicorn workers; uv, ruff, mypy, pytest, pytest-mock.
+`instances`: .NET 10, ASP.NET Core controllers, EF Core + Npgsql, JwtBearer, StackExchange.Redis,
+prometheus-net, QuestPDF; xUnit v3 with Testcontainers. Both on PostgreSQL 16. Each has its own section below.
 
-`catalog` moved from Django to FastAPI in #34 to #38, on the same schema. The Django version is in
-git history at `edb8acd`. The comparison is in `loadtest/baselines/` and on `/load-tests`.
+Both services began as Django and kept the tables and the API it left. `catalog` moved to FastAPI in #34 to
+#38 (the Django version is at `edb8acd`), and `instances` to .NET in #40 to #45 (at `6b47566`). Both
+comparisons are in `loadtest/baselines/` and on `/load-tests`. `instances` on MongoDB was tried and removed
+(#29, #30): it was slower and got slower as rows grew (`loadtest/baselines/2026-11-06-instances-mongodb.md`).
 
-`instances` on MongoDB was tried and removed (#29, #30): it was slower and got slower as rows grew.
-The k6 results are in `loadtest/baselines/2026-11-06-instances-mongodb.md` and on `/load-tests`.
+Upgrade Python dependencies with `uv lock --upgrade` from `backend/` (the workspace root: `catalog` and
+`common`). .NET package versions live in `backend/instances/Directory.Packages.props` only.
 
-Upgrade dependencies with `uv lock --upgrade` from `backend/` (the workspace root, one lock for all services).
+**Layout.** `catalog/` (Python package `catalog/catalog/`), `instances/` (`Instances.slnx`: `src/Instances.Api/`
+and `tests/Instances.Tests/`), `common/` (the published dev JWT pair and gunicorn settings, used by `catalog`
+and the tests), `contracts/` (JSON shapes of `/internal/`), `parity/` and `parity_instances/` (each service's
+API over HTTP), `tests/` (repo-level checks). Run Python commands from `backend/`: `uv run python -m catalog
+<cmd>`, `uv run pytest catalog`, `uv run pytest parity`, `uv run pytest parity_instances`, `uv run pytest
+tests`; .NET ones from `backend/instances/`.
 
-WeasyPrint (questionnaire PDF export) needs Pango, HarfBuzz and a font at runtime. Both `instances`
-Dockerfiles install them (`catalog`'s do not), and `tests/test_infra_docker.py` checks that they still do. Hosts need
-them too (see README). `apps/questionnaires/pdf.py` imports `weasyprint` inside the function, so
-the rest of the backend runs without those libraries. File downloads return `HttpResponse`, not
-DRF `Response`. Expose any response header the SPA must read through `CORS_EXPOSE_HEADERS` in
-`base.py`.
+The services never import each other, including in tests: `catalog` is Python and `instances` is .NET, and
+`tests/test_service_boundary.py` checks that no Python reaches into `instances` and that `common` holds only
+`dev_keys` and `gunicorn_conf` (#13, #45).
 
-**Layout:** `instances` has a project package `core/` (settings, `urls.py`) and one app,
-`apps/questionnaires/` (instances made from types, public share-link completion, dashboards, PDFs,
-type copies). Shared Django infrastructure, such as the cache and owner-scoping helpers, is in
-`common/`. `catalog` is the package `backend/catalog/catalog/` (see its section).
-
-The services never import each other, including in tests, and `common` holds infrastructure only, with
-no models (#13, `tests/test_service_boundary.py`). `catalog` imports no Django, and of `common` only
-`dev_keys` and `gunicorn_conf`. Run commands from `backend/`: `uv run python -m catalog <cmd>`,
-`uv run python instances/manage.py <cmd>`, `uv run pytest catalog`, `uv run pytest instances`,
-`uv run pytest parity`, `uv run pytest tests`.
-
-**Service boundary (#13).** `questionnaires` reads only its own copies of types (`QuestionnaireTypeRef`,
-`BatteryTypeRef`), written only by `apps/questionnaires/refs.py`. Every write to a type must call
+**Service boundary (#13).** `instances` reads only its own copies of types (`QuestionnaireTypeRef`,
+`BatteryTypeRef`), written only by `Refs/RefService.cs`. Every write to a type must call
 `events.record_change()` in `catalog` in the same transaction, including admin and seeding, and a delete
 goes through `services.delete_type()`. Peers are reached only through clients: `instances` uses
-`common/peers.py` (real class HTTP, `catalog_client.py`; test class in `testing.py`), `catalog` uses
-`catalog/peers.py` (`HttpInstances`; tests swap in `RecordingInstances` from `tests/conftest.py`). `/internal/` is never routed by the gateway. Its shapes are
-`backend/contracts/`, tested by both services: change those files together with both sides. The subtle rules (versions, tombstones, why read-through is authoritative) are
-at the top of `refs.py`. `questionnaires` factories create only copies, since `catalog` is another process.
-`frontend/src/routes/_authed/service-interface.tsx` explains all this in the app and is hand-written, so a change
-to `/internal/`, an event or an outage behaviour updates it too (#27).
+`Peers/CatalogClient.cs` (`ICatalogClient`; tests swap in a fake), `catalog` uses `catalog/peers.py`
+(`HttpInstances`; tests swap in `RecordingInstances` from `tests/conftest.py`). `/internal/` is never routed by
+the gateway. Its shapes are `backend/contracts/`, tested by both services: change those files together with
+both sides. The subtle rules (versions, tombstones, why read-through is authoritative) are at the top of
+`RefService.cs`. `frontend/src/routes/_authed/service-interface.tsx` explains all this in the app and is
+hand-written, so a change to `/internal/`, an event or an outage behaviour updates it too (#27).
 
-**Views and URLs**
-- All endpoints are under `/api/`.
-- Use class-based views (`APIView`, `generics.*`, `ViewSet`).
-- Serializers go in `serializers.py`. Business logic goes in `services.py`, never in views or
-  serializers.
-- Use `get_object_or_404` and DRF exception handling, not try/except for HTTP errors.
-- **Every list endpoint is paginated** (#10): `DEFAULT_PAGINATION_CLASS` is
-  `common.pagination.StandardPagination` (`?page=`, `?page_size=` default 25, max 100;
-  `{count, next, previous, results}`). Give list querysets a total order (`-created_at`, `-id`),
-  or pages repeat and skip rows. Filters that a page needs go on the server (query serializer in
-  `get_queryset`, as `QuestionnaireViewSet` does), never in the browser.
-- Return DRF `Response`, never `JsonResponse`.
-- Default permission is `IsAuthenticated` (set in `REST_FRAMEWORK`). Mark public views explicitly.
+**API rules, both services**
+- All public endpoints are under `/api/`. Every endpoint needs a JWT unless it is marked public.
+- **The wire format is DRF's, kept on purpose**, because the SPA and the other service read it: validation
+  errors are `400 {field: [messages]}`, other errors `{detail}`, timestamps `...123456Z`. The parity suites
+  pin it; change it only with a parity test.
+- Business logic goes in services (`catalog/services.py`; `instances`' `*Service` classes), never in routers
+  or controllers.
+- **Every list endpoint is paginated** (#10): `?page=`, `?page_size=` (default 25, max 100), DRF's
+  `{count, next, previous, results}` with absolute links (`catalog/pagination.py`, `Http/Pagination.cs`). Give
+  list queries a total order (`-created_at`, `-id`), or pages repeat and skip rows. Filters that a page needs go
+  on the server, never in the browser.
+- Primary keys are UUIDs. Owners live in `catalog`; rows in `instances` hold a plain `owner_id`.
+- Avoid N+1 queries; batch writes. Raw SQL only when unavoidable, and always parameterised.
+- Never edit an applied migration (Alembic revision or EF migration), and read every generated one.
+- Datetimes are UTC and timezone-aware: `datetime.now(UTC)` in Python, never naive `datetime.now()` or
+  `utcnow()`; `ApiJson.UtcNow()` in `instances`, which keeps Python's microsecond precision.
+- File downloads (PDFs) set `Content-Disposition`; any response header the SPA must read is exposed through
+  CORS (`.WithExposedHeaders(...)` in `Program.cs`).
 
-**Models and data**
-- UUID primary keys: `models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)`.
-- `AUTH_USER_MODEL = "accounts.CustomUser"` (email is `USERNAME_FIELD`, no `username`). Always
-  use `get_user_model()`, never import `User` directly.
-- Avoid N+1 with `select_related` / `prefetch_related`. Use `bulk_create` / `bulk_update` for
-  batches. Add indexes for frequently queried fields.
-- All DB access goes through the ORM. Raw SQL only when unavoidable, and always parameterised.
-- Run `makemigrations` with an explicit app name after model changes. Never edit or delete
-  migration files by hand.
-- Datetimes are timezone-aware (`USE_TZ = True`, `TIME_ZONE = "UTC"`). Use
-  `django.utils.timezone.now()`, or `datetime.now(UTC)` outside the ORM. Never naive
-  `datetime.now()` or `datetime.utcnow()`. Freeze time in tests with `freezegun`.
+**Settings.** Both read `SETTINGS` (`dev`, `test`, `e2e`, `prod`, `loadtest`; `catalog` also `parity`) and the
+root `.env`, with the same rules: the test profiles never read `JWT_*` from `.env` and always use the dev JWT
+pair in `common/dev_keys.py` (#33); `prod` and `loadtest` require their secrets and refuse the dev key;
+`loadtest` (#9) is `prod` over plain HTTP for k6 on a private network, and refuses any public `ALLOWED_HOSTS`
+entry. If throttles are ever added, raise them there for k6 (every VU shares one IP). `instances` reads
+`INSTANCES_DATABASE_URL`, never `DATABASE_URL`, which is `catalog`'s. Never hardcode secrets or credentials.
 
-**Settings:** shared ones are in `common/common/settings/`. Each service adds `core/settings/service.py`,
-and `core/settings/{dev,prod,test,e2e,loadtest}.py` that import both. Anything a profile changes, such as
-`CACHES`, must be set after `from .service import *`, or `service.py` overwrites it: that once pointed tests
-at the dev Redis. `instances` reads `INSTANCES_DATABASE_URL`, never `DATABASE_URL`, which `.env` sets for
-`catalog`. `manage.py` defaults
-`DJANGO_SETTINGS_MODULE` to `core.settings`, whose `__init__.py` picks `dev`, `test`, `prod` or
-`loadtest` from the `SETTINGS` env var (default `dev`). `loadtest` (#9) is `prod` over plain HTTP
-for k6 on a private network: it refuses to load if any `ALLOWED_HOSTS` entry is public. If DRF
-throttles are ever added, raise them there for k6 (every VU shares one IP), never in `base.py`. pytest always uses `core.settings.test`: `addopts` passes
-`--ds`, which beats the `DJANGO_SETTINGS_MODULE=core.settings.dev` that direnv or VS Code load from
-`.env` (the env var would otherwise override the ini key). `e2e` extends
-`test` with its own `e2e.sqlite3` and CORS for :5184; only the Playwright integration config
-selects it (via `DJANGO_SETTINGS_MODULE`). All config comes from env vars via `django-environ`, loaded from the
-repo-root `.env` (`base.py` reads `BASE_DIR.parent / ".env"`). Never hardcode secrets or
-credentials. `DATABASE_URL` configures `catalog`'s database.
-
-**Auth:** JWT via simplejwt, RS256 (#13). `POST /api/token/` and `POST /api/token/refresh/`. `dev`
-falls back to the published pair in `common/dev_keys.py`; `test` and `e2e` always use it, ignoring
-`JWT_*` in `.env`, since tests sign with it (#33); `prod` and `loadtest`
-need `JWT_SIGNING_KEY` and `JWT_VERIFYING_KEY`, and refuse the dev key. Instance views authenticate with
-`apps/questionnaires/auth.py`: no user table, so `request.user` there has only `pk`, and rows hold a plain
-`owner_id`. Deactivation and deletion arrive as events (`services.set_active` and `delete_user` in `catalog`) into `BlockedOwner`.
-Change settings dicts by building a new one: `core/settings/__init__.py` imports `dev` first, so
-mutating `base`'s in place would leak into `prod`.
+**Auth.** JWT, RS256 (#13). `catalog` signs (`POST /api/token/`, `POST /api/token/refresh/`) and holds the
+users; `instances` verifies with the public key only (`Auth/OwnerAuth.cs`): it has no user table, so a request's
+owner is just the token's `user_id`. Deactivation and deletion arrive as events (`services.set_active` and
+`delete_user` in `catalog`) into `BlockedOwner`, which `OwnerAuth` checks.
 
 **Metrics and load tests (#9)** (the k6 side is under "Load tests" below)
-- `django-prometheus` records request, view and DB metrics. `/metrics` is served by
-  `common/metrics.py`, the first middleware, so Prometheus can scrape by IP over plain HTTP.
-  It is deliberately not under `/api/`. It answers only peers in `METRICS_ALLOWED_CIDRS`, and
-  returns 404 to any request carrying a forwarding header, so a proxy can never make it public.
-- Under gunicorn with several workers, set `PROMETHEUS_MULTIPROC_DIR`, or each scrape sees one
+- Both export `http_requests_total`, `http_request_duration_seconds` and `db_query*` series, labelled by route
+  template (`view`), with django-prometheus's buckets, so runs from before #44 still line up
+  (`tests/test_observability.py`). `/metrics` is answered ahead of routing, so Prometheus can scrape by IP over
+  plain HTTP. It is deliberately not under `/api/`. It answers only peers in `METRICS_ALLOWED_CIDRS`, and returns
+  404 to any request carrying a forwarding header, so a proxy can never make it public.
+- Under gunicorn with several workers, `catalog` needs `PROMETHEUS_MULTIPROC_DIR`, or each scrape sees one
   worker. `common/gunicorn_conf.py` empties it on start and marks dead workers.
-- gunicorn's `keepalive` must outlast the gateway's upstream `keepalive_timeout`
-  (`common/gunicorn_conf.py`, `infra/gateway/build_nginx.py`; `tests/test_gunicorn_conf.py` checks
-  it). Otherwise gunicorn can close a connection as nginx reuses it, and a POST or PATCH gets a 502 (#24).
-  `loadtest/keepalive_repro.py` reproduces this.
-- Seeding exists in both services (`python -m catalog seed-loadtest`, `manage.py seed_loadtest`), and `just loadtest-seed` runs them in order: `catalog`'s creates
-  owners and types, then `instances`' creates rows from the copies, using ids derived from the email so
-  repeated runs match. It creates deterministic
-  `loadtest-<n>@example.com` owners with data spread over 90 days. It runs only under `DEBUG` or
-  `loadtest`. `apps/questionnaires/test_query_counts.py` fails if a hot path's query count grows
-  with rows; add new k6-loaded endpoints to it.
+- Both servers' keep-alive must outlast the gateway's upstream `keepalive_timeout` (`common/gunicorn_conf.py`,
+  `Program.KeepAliveSeconds`, `infra/gateway/build_nginx.py`; `tests/test_gunicorn_conf.py` and
+  `tests/test_kestrel_keepalive.py` check it). Otherwise a server can close a connection as nginx reuses it, and a
+  POST or PATCH gets a 502 (#24). `loadtest/keepalive_repro.py` reproduces this.
+- Seeding exists in both services (`python -m catalog seed-loadtest`, `Instances.Api.dll seed-loadtest`), and
+  `just loadtest-seed` runs them in order: `catalog`'s creates owners and types, then `instances`' creates rows
+  from the copies, using ids derived from the email so repeated runs match. It creates deterministic
+  `loadtest-<n>@example.com` owners with data spread over 90 days. It runs only under `dev` or `loadtest`.
+  `tests/Instances.Tests/HttpTests.cs` fails if a hot path's query count grows with rows; add new k6-loaded
+  endpoints to it.
 
-**Dashboard (#19)** (`apps/questionnaires/dashboard.py`)
-- Keep work on a miss, and the size of what is cached, bounded by the page rather than the owner's
-  rows. A cache hit still unpickles and renders the whole value, so a large response costs on every
-  request. `dashboard/scores/` returns only the latest `SCORE_POINT_LIMIT` rows as `points`, while
-  `count`, `mean` and `distribution` cover the whole window. In the SPA, read counts from those
-  fields, never `points.length`.
-- Let the database sort or aggregate instead of loading rows into Python, as `_median_hours` does:
-  parsing timestamps was the largest Python cost of a miss. Use what both databases support, since
-  tests run on SQLite (so no `PERCENTILE_CONT`).
-- `tz` is validated to a `ZoneInfo` by the query serializer, and is part of the cache key. Windows
-  use `timezone.now().astimezone(tz)`, and `TruncDate` takes `tzinfo`. Stored datetimes stay UTC.
-  `tzdata` is a direct dependency, so zone names resolve on hosts and images without system data.
-- SQLite tests say nothing about query plans. Check a dashboard query with `EXPLAIN` on Postgres
-  with realistic rows, and with stale statistics too: a fast-growing table is where a plan turns
-  into a full scan. `battery_rows` keeps the owner on the join for this reason, and `by_qtype`
-  does not, because there it measured slower and never scanned.
-- To profile or compare without touching the dev or load-test stacks, start a throwaway Postgres
-  with its own port (`docker run --rm --tmpfs /var/lib/postgresql/data -p 127.0.0.1:5499:5432 ...`),
-  point `DATABASE_URL` at it (it overrides `.env`), then run `migrate` and `seed_loadtest --password
-  <any>`. Run `VACUUM (PARALLEL 0, ANALYZE)` first: plain `VACUUM ANALYZE` can run out of Docker's
-  small `/dev/shm`, and without statistics the plans are not realistic. Time outside freezegun,
-  whose fake datetimes show up in the profile. `seed_loadtest` clamps many `submitted_at` to one
-  instant, so don't compare those rows by order.
+**Dashboard (#19)** (`instances`' `Dashboard/DashboardService.cs`)
+- Keep work on a miss, and the size of what is cached, bounded by the page rather than the owner's rows. A
+  cache hit still deserializes and sends the whole value, so a large response costs on every request.
+  `dashboard/scores/` returns only the latest `ScorePointLimit` rows as `points`, while `count`, `mean` and
+  `distribution` cover the whole window. In the SPA, read counts from those fields, never `points.length`.
+- Let the database sort or aggregate instead of loading rows into the service.
+- `tz` must be an IANA zone name, and is part of the cache key. Windows are the owner's local days; stored
+  datetimes stay UTC. Rounding is Python's `round()` (`Dashboard/Python.cs`), and a local midnight in a DST change
+  is read as `zoneinfo` reads it.
+- Check a dashboard query with `EXPLAIN` on Postgres with realistic rows, and with stale statistics too: a
+  fast-growing table is where a plan turns into a full scan.
+- To profile or compare without touching the dev or load-test stacks, start a throwaway Postgres with its own
+  port (`docker run --rm --tmpfs /var/lib/postgresql/data -p 127.0.0.1:5499:5432 ...`), point
+  `INSTANCES_DATABASE_URL` at it (it overrides `.env`), then run `migrate`, add copies and `seed-loadtest`. Run
+  `VACUUM (PARALLEL 0, ANALYZE)` first: plain `VACUUM ANALYZE` can run out of Docker's small `/dev/shm`, and
+  without statistics the plans are not realistic.
 
 **Celery**
 - `catalog` only. App and tasks in `catalog/celery_app.py` (`@app.task`).
@@ -290,45 +260,42 @@ mutating `base`'s in place would leak into `prod`.
 - The test profiles run tasks eagerly, with an in-memory broker, so tests need no Redis.
 
 **Cache (#11)**
-- Redis through Django's native backend. Every cached read goes through `cached()` in
-  `common/cache.py`; never call `cache.get` or `cache.set` from a view. It requires `owner_id`,
-  so a key cannot be built without a tenant. `params` come from validated data, never a raw query
-  string. `group` is one of the service's fixed `CACHE_GROUPS`: it is a Prometheus label, like k6's `name` tag.
-- It fails open. A Redis error is logged and counted (`app_cache_requests_total`), then the value
-  is computed. `CACHE_ENABLED=false` bypasses the cache without a code change.
-- Run auth and validation before reading the cache, so a deactivated user or a foreign id is
-  still refused on a hit.
-- Anything that changes a cached value goes in `params`, including `tz` on the dashboards. Bump
-  `version` when the value's shape changes (`dashboard-scores` is on 2).
-- `bump_owner_generation()` makes all of an owner's entries unreachable, after the commit. Do not
-  delete keys or scan for them. Views call it on type writes and on any delete, not on questionnaire
-  or battery creation or on submit: those are too frequent, so dashboards lag them by up to the TTL.
-  A new write to something a cached response reads needs a bump, or its staleness in `README.md`.
-- Cached today: dashboards (30 s), type lists (5 min), PDFs (24 h). PDFs pass
-  `use_generation=False`, because their key holds `updated_at`: bump `PDF_CACHE_VERSION` when
-  `response_pdf.html` changes. Lists and details are not cached, since owners expect to see a row
-  they just created. A new cached endpoint gets a test that two owners never share a value, and an
-  off-versus-on k6 run. Paginated bodies hold absolute URLs, so their key includes scheme and host.
-- ⚠️ `instances` deserializes with pickle (Django's cache), so writing to Redis runs code in it. Never
-  publish it: loopback on dev, no port on the other Compose stacks, firewall and password on LXC.
-  `catalog`'s cache (`catalog/cache.py`) stores JSON under its own key prefix, with the same rules.
-- A cache Redis runs `allkeys-lru`, which could drop a broker's queued tasks. If a stack with a
-  cache Redis gains Celery, its broker gets a second instance. Only the dev stack shares one, with
-  no `maxmemory`.
+- Redis, JSON values, each service under its own key prefix (`catalog/cache.py`, `instances`' `Caching/Cache.cs`
+  with prefix `instances-net:`). Every cached read goes through `cached()` / `Cache.Cached`. It requires an
+  owner id, so a key cannot be built without a tenant. Parameters come from validated data, never a raw query
+  string. The group is one of the service's fixed groups: it is a Prometheus label, like k6's `name` tag.
+- It fails open. A Redis error is logged and counted (`app_cache_requests_total`), then the value is
+  computed. `CACHE_ENABLED=false` bypasses the cache without a code change.
+- Run auth and validation before reading the cache, so a deactivated user or a foreign id is still refused on
+  a hit.
+- Anything that changes a cached value goes in its parameters, including `tz` on the dashboards. Bump the
+  version when the value's shape changes.
+- Bumping an owner's generation makes all their entries unreachable, after the commit (`UnitOfWork` in
+  `instances`). Do not delete keys or scan for them. Type writes and any delete bump it; questionnaire or battery
+  creation and submit do not, since they are too frequent, so dashboards lag them by up to the TTL. A new write
+  to something a cached response reads needs a bump, or its staleness in `README.md`.
+- Cached today: dashboards (30 s) and PDFs (24 h) in `instances`, type lists (5 min) in `catalog`. PDFs skip the
+  generation, because their key holds `updated_at`: bump `PdfCacheVersion` when the drawing changes. Lists and
+  details are not cached, since owners expect to see a row they just created. A new cached endpoint gets a test
+  that two owners never share a value, and an off-versus-on k6 run. Paginated bodies hold absolute URLs, so
+  their key includes scheme and host.
+- Never publish the cache Redis: loopback on dev, no port on the other Compose stacks, firewall and password
+  on LXC. It holds every owner's cached responses.
+- A cache Redis runs `allkeys-lru`, which could drop a broker's queued tasks. If a stack with a cache Redis
+  gains Celery, its broker gets a second instance. Only the dev stack shares one, with no `maxmemory`.
 
-**Testing:** `instances`' `core.settings.test` uses SQLite and a fast password hasher. It also sets
-`CACHE_ENABLED = False` (`e2e` inherits this), so tests see fresh data. Cache tests opt in with the
-`cache_on` fixture, and need `django_capture_on_commit_callbacks(execute=True)` for a bump to run. Fixtures go in
-`conftest.py` (app-level or `backend/<service>/conftest.py`). App tests live in `apps/<name>/`. `catalog`'s
-tests are in `backend/catalog/tests/` (see its section).
+**Testing.** `catalog/tests/` (see its section) and `instances/tests/Instances.Tests/` (see its section).
 `backend/parity/` tests `catalog` over HTTP only: it starts the service on a free port, with a fresh SQLite
 database and a stub `instances` that records events and answers retire. It imports no service code, so it
 outlived the Django version it was written against (#34). Pin there anything the SPA or `instances` relies on.
-Repo-level checks that are not tied to an app live in `backend/tests/`, run with
-`uv run pytest tests`, since each service only collects its own `apps/`. `tests/test_infra_docker.py` checks the `infra/docker/` layout. Its
-`docker compose config` tests skip when Docker is not installed. `tests/test_import_from_monolith.py` runs the
-data move in a throwaway Postgres container (COPY needs Postgres), and skips the same way. Its source schema is
-frozen on purpose: it is what `main` left before the split. Markers: `slow`, `integration`, `development`.
+`backend/parity_instances/` does the same for `instances` (#40), and checked Django against .NET until #45: it
+builds the service and runs it on a throwaway Postgres in Docker, with a stub `catalog` serving `/internal/`
+(switchable to 404, 500 or no answer). It plays `catalog` itself: tokens signed with the dev key, types sent as
+events. The dashboard tests move rows in time with a plain `UPDATE` (`support.Clock`), so it runs with the cache
+off. Pin there anything the SPA, respondents or `catalog` rely on from `instances`. Repo-level checks that are not
+tied to a service live in `backend/tests/`, run with `uv run pytest tests`. `tests/test_infra_docker.py` checks
+the `infra/docker/` layout; its `docker compose config` tests skip when Docker is not installed, as do the
+throwaway-Postgres tests. Markers: `slow`, `integration`, `development`.
 
 **API docs:** the API table in `README.md` is the hand-written contract. `catalog` serves its
 OpenAPI schema at `/api/docs/` under `debug` only; it does not replace the table.
@@ -338,11 +305,8 @@ OpenAPI schema at `/api/docs/` under `debug` only; it does not replace the table
 The package is `backend/catalog/catalog/`; tests are in `backend/catalog/tests/`, Alembic config in
 `backend/catalog/alembic.ini`.
 
-- **Same contract as the Django version had.** DRF's shapes are kept on purpose, because the SPA and
-  `instances` read them: validation errors are `400 {field: [messages]}` (never FastAPI's 422; bodies go
-  through `errors.parse()`), other errors `{detail}`, pages are DRF's (`pagination.py`), timestamps are
-  `...123456Z` in responses and `+00:00` in events. The parity suite pins all of it; change it only with
-  a parity test.
+- **Same contract as the Django version had** (see "API rules" above). Never FastAPI's 422: bodies go
+  through `errors.parse()`. Timestamps are `...123456Z` in responses and `+00:00` in events.
 - **Layout.** `routers/` (thin), `schemas.py` (Pydantic bodies and response dicts), `services.py` (all
   writes), `events.py` (outbox), `models.py`, `auth.py`, `cache.py`, `metrics.py`, `admin.py`
   (sqladmin), `celery_app.py`, `__main__.py` (commands). Business logic goes in `services.py`.
@@ -367,16 +331,12 @@ The package is `backend/catalog/catalog/`; tests are in `backend/catalog/tests/`
   Django-built database at 0001 by itself, then upgrades. New revision: `just be-makemigrations catalog
   "<message>"`, then read it. Never edit an applied revision. `tests/catalog_django_schema.txt` is 0001's
   schema, frozen from Django's while both existed: never regenerate it to make a test pass.
-- **Settings.** `settings.py` (pydantic-settings) reads the env and the root `.env`. `SETTINGS` picks
-  `dev`, `test`, `e2e`, `parity`, `prod` or `loadtest`, with the same rules as Django's profiles: the
-  test profiles never read `.env` and always use the dev JWT pair (#33); `prod` and `loadtest` require
-  their secrets and refuse the dev key; `loadtest` refuses public `ALLOWED_HOSTS`.
+- **Settings.** `settings.py` (pydantic-settings) reads the env and the root `.env`, with the rules under
+  "Settings" above.
 - **Auth.** `auth.py` signs RS256 tokens with simplejwt's claims and lifetimes, and stores passwords
   in Django's `pbkdf2_sha256` format at Django 6.0's iteration count, so `instances` and old hashes
-  keep working. `tests/test_catalog_compat.py` checks both against Django.
-- **Metrics.** Request and DB metrics are `http_requests_total`, `http_request_duration_seconds` and
-  `db_query_*`, labelled by route template (`view`), with django-prometheus's buckets, so Grafana and
-  `k6-report` add them to `instances`' Django series. `/metrics` follows the same rules as `common/metrics.py`.
+  keep working. `tests/test_catalog_compat.py` checks both against values frozen from Django.
+- **Metrics.** As under "Metrics and load tests" above (`metrics.py`, `db.py`).
 - **Server.** gunicorn with `-k uvicorn_worker.UvicornWorker`, which passes gunicorn's `keepalive` on to
   uvicorn (#24). `gunicorn_threads` does not apply: sync endpoints run in uvicorn's thread pool, and
   SQLAlchemy pools 5 connections (15 under load) per worker.
@@ -385,9 +345,58 @@ The package is `backend/catalog/catalog/`; tests are in `backend/catalog/tests/`
   settings (HTTPS redirect, hosts, CORS); the parity suite covers the API itself. Postgres checks
   (0001 against Django's frozen schema, adopting a Django-built database, Alembic against the models,
   concurrent writers, a `SQL_ASCII` database) are in `tests/test_catalog_schema.py`; Django compatibility
-  (hashes and tokens through `instances`' Django, frozen seed ids) in `tests/test_catalog_compat.py`. `tests/test_observability.py` checks the dashboards read both metric
+  (hashes, token claims, seed ids, all frozen) in `tests/test_catalog_compat.py`. `tests/test_observability.py` checks the dashboards read both metric
   families and that the latency buckets match django-prometheus's. `infra/ansible/tests/test_app_role.py`
   checks every command the app role runs is defined.
+
+### `instances` (.NET, #42 to #45)
+
+`backend/instances/`: ASP.NET Core with EF Core + Npgsql. It replaced the Django version (measured in
+`loadtest/baselines/2026-11-14-instances-dotnet.md`) on the same API, the same `instancesdb` schema and the same
+env var names. `backend/parity_instances/` pins its API; its `xUnit` tests are in `tests/Instances.Tests/`
+(Testcontainers Postgres, so they need Docker).
+
+- **Layout** (`src/Instances.Api/`). `Api/` (controllers and response shapes), `Refs/` (copies of types),
+  `Dashboard/`, `Pdf/`, `Caching/`, `Auth/`, `Peers/`, `Http/` (wire format, pagination, metrics),
+  `Data/` (EF model, migrations, `UnitOfWork`), `Config/` (settings), `Commands/`, `Program.cs`.
+
+- **Toolchain.** .NET 10 SDK, pinned in `global.json` (with `"test": {"runner": "Microsoft.Testing.Platform"}`:
+  .NET 10's `dotnet test` no longer runs VSTest). Package versions live in `Directory.Packages.props` only.
+  `TreatWarningsAsErrors` and nullable are on. `InvariantGlobalization` is on, so only IANA zone names resolve,
+  as with Python's `zoneinfo`. It shares no code with Python: it reads `backend/contracts/` and, in tests,
+  `common/dev_keys.py` as files (`tests/test_service_boundary.py`).
+- **DRF's wire format, kept on purpose.** Errors are `Http/ApiErrors.cs`, pages `Http/Pagination.cs` (absolute
+  links from the request's `Host`, sorted query keys), timestamps Python's `isoformat()` with `Z`
+  (`Http/ApiJson.cs`), and JSON columns are passed through as stored text (`RawJson`), never typed classes.
+  Change any of it only with a parity test.
+- **Schema.** The tables Django created, unchanged. EF entities map onto them by name (`Data/InstancesDb.cs`);
+  the baseline migration is Django's own DDL, and the model snapshot is generated from the model, so later
+  migrations diff against the real schema. `Instances.Api.dll migrate` adopts a database Django built (marks the
+  baseline applied) instead of rebuilding it. `tests/instances_django_schema.txt` is the reference and
+  `tests/instances_django_built.sql` a database Django's migrations built, both checked by
+  `tests/test_instances_schema.py`; never regenerate either to make a test pass. Django's `on_delete` was never
+  in the database: RESTRICT, CASCADE and SET NULL are done in code, as Django's ORM did. Django's own tables
+  (`django_*`, `auth_*`) are still in `instancesdb`, unused; dropping them is a migration of its own.
+- **Copies and events** (`Refs/RefService.cs`) follow the rules at its top. An upsert is `INSERT ... ON CONFLICT DO
+  NOTHING` then `SELECT ... FOR UPDATE`, so two events for one type serialize and the higher version wins. Owner
+  generations are bumped only after the commit (`Data/UnitOfWork.cs`).
+- **Cache** (`Caching/Cache.cs`): the rules under "Cache" above, under the key prefix `instances-net:`.
+- **Settings** (`Config/Settings.cs`): the rules under "Settings" above. Postgres only, so even `test` needs
+  `INSTANCES_DATABASE_URL` (a throwaway database).
+- **Metrics** carry `catalog`'s names, labels and buckets (`Http/RequestMetrics.cs`), so Grafana and
+  `k6-report` need no query of their own (`tests/test_observability.py`). Kestrel's keep-alive (75 s) outlasts
+  the gateway's (`tests/test_kestrel_keepalive.py`).
+- **Query counts.** `tests/Instances.Tests/HttpTests.cs` fails if a hot path's query count grows with rows; add
+  new k6-loaded endpoints to it.
+- **PDFs** (#43) are QuestPDF (Community licence), drawn in `Pdf/ResponsePdf.cs` from `Pdf/ResponseContent.cs`
+  (Django's `pdf.py` resolution, ported). Kerning is off so text extraction reads words whole; the parity suite compares
+  text, never bytes. Bump `PdfCacheVersion` in `QuestionnairesController` when the drawing changes.
+- **Commands** are verbs of the binary (`Program.cs`, `Cli`): `migrate`, `seed-loadtest`, `reset-db` and
+  `clear-cache` (the last three dev or loadtest only), `reconcile-refs`, and `health` (the runtime image has no
+  curl, so Compose's health check asks the binary). `tests/test_instances_commands.py` checks the seeder's shape
+  (the shape Django's gave) and runs `reconcile-refs` against the parity stub.
+- **Cold start.** A freshly started process compiles as it goes, so its first minute under a login burst is
+  slow (#45 baseline). Keep that in mind when a run starts right after a converge.
 
 ---
 
@@ -487,8 +496,9 @@ for shadcn, `charts/`, `layout/`, one folder per feature), `hooks/`, `lib/`, `ro
   can test belongs in Vitest, not Playwright.
 - Full-stack specs live in `frontend/e2e/integration/` and run only with `npm run e2e:integration`
   (`playwright.integration.config.ts`; the mocked config ignores that folder). That config starts
-  its own gateway router on :8015, `catalog` on :8016 and `instances` on :8017 (`core.settings.e2e`,
-  databases deleted and re-migrated every run) and Vite on :5184 pointed at the router, and never reuses running servers, because a reused backend would carry data over from an earlier run. It stops them when the run ends, and never touches the dev stack.
+  its own gateway router on :8015, `catalog` on :8016 (SQLite, deleted and re-migrated every run),
+  `instances` on .NET on :8017 (`SETTINGS=e2e`, on a throwaway Postgres in Docker on 127.0.0.1:5447 that
+  stops with the run, #44) and Vite on :5184 pointed at the router, and never reuses running servers, because a reused backend would carry data over from an earlier run. It stops them when the run ends, and never touches the dev stack.
   Each test registers its own user with a unique email, so tests do not share state. Use them for
   the API contract (auth, real responses); keep UI-only checks in the mocked suite.
   `e2e/integration/helpers.ts` has `registerUser` / `loginAs` (log in by storing the JWT, skipping
@@ -510,7 +520,7 @@ The summary JSON goes to `loadtest/results/` (gitignored). Plan: #9.
   `loadtest/`. Load-testing a site you do not own is a denial-of-service attack.
 - Every request carries a `name` tag (endpoint group, such as `questionnaire-detail`). Never
   tag by URL: UUIDs would create one Prometheus series per row.
-- Scenarios read from the `seed_loadtest` owners. Each VU logs in as `loadtest-<n>@example.com`
+- Scenarios read from the `just loadtest-seed` owners. Each VU logs in as `loadtest-<n>@example.com`
   (`OWNERS`, default 5), so seed at least that many. The respondent flow creates a fresh
   questionnaire per submit, so a 409 is a real failure.
 - Run one scenario at a time. `run.sh` stops a k6 left behind by an interrupted run.
@@ -579,8 +589,9 @@ it to the `/load-tests` page, which is copied by hand: figures in `frontend/src/
 figures reads them from that table (`cellNumber`), so there is one copy, and the table goes behind `TableDetails`. Check any
 figure written in a chart's end label or aria text against the data. The page needs a login but its JS chunk does not, so keep
 LAN addresses and secrets out of it.
-Tuning knobs: `gunicorn_workers`, `gunicorn_threads` (`instances` only), `conn_max_age` and `cache_enabled` in
-`infra/ansible/group_vars/{app,instances}.yml`. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
+Tuning knobs: `gunicorn_workers`, `gunicorn_threads` and `conn_max_age` for `catalog` (`infra/ansible/group_vars/app.yml`);
+`dotnet_db_pool_size` (Npgsql's pool) and `dotnet_min_threads` (the thread pool's minimum) for `instances`
+(`group_vars/instances.yml`); `cache_enabled` in both. For a cache-off run: `just converge --tags app -e cache_enabled=false`.
 `just loadtest-reset` rsyncs the working tree, so it deploys whatever is checked out.
 
 **Ansible (`infra/ansible/`, `just converge`)** configures the containers. Roles are `common`
@@ -590,10 +601,15 @@ Tuning knobs: `gunicorn_workers`, `gunicorn_threads` (`instances` only), `conn_m
 included, and refuses any non-private address. Nothing secret is stored in the repo.
 
 - Everything is installed natively, with no Docker:
-  - each service is the working tree rsynced to `/srv/app/backend`, `uv sync --package <service>` (Python
-    3.14), gunicorn under systemd (`saas-app.service` for catalog, with uvicorn workers;
-    `saas-instances.service`; env in `/etc/<unit>/app.env`), and `saas-relay.service` on saas-catalog
-    retries events. `app_commands` in `roles/app/defaults/main.yml` holds each service's commands;
+  - `catalog`: the working tree rsynced to `/srv/app/backend` (without `instances/`), `uv sync --package
+    catalog` (Python 3.14), gunicorn with uvicorn workers under systemd (`saas-app.service`), and
+    `saas-relay.service`, which retries events (`roles/app/tasks/python.yml`);
+  - `instances` (#44, #45): the ASP.NET Core runtime in `/opt/dotnet` (pinned by version and sha256), the
+    service published on the control host (`dotnet publish` into the gitignored `backend/instances/publish/`,
+    needing the SDK there) and rsynced to `/srv/app/instances-dotnet`, run by `saas-instances.service` on
+    Kestrel. No Python. Its commands are verbs of the binary (`migrate`, `reset-db`, `clear-cache`,
+    `seed-loadtest`). `app_commands` in `roles/app/defaults/main.yml` holds each service's commands, and env
+    is in `/etc/<unit>/app.env`;
   - nginx from apt on saas-gateway, its config from `infra/gateway/build_nginx.py --address ...`;
   - saas-db holds `catalogdb` and `instancesdb` with separate login roles. The monolith's `appdb` is still
     there, unused, as a way back;
@@ -681,7 +697,7 @@ Any change touching more than one file needs a plan issue before implementation.
 - Backend and frontend communicate only through the API contract. Never mix their concerns.
 - Never commit `.env` files. `.env.example` is the source of truth for required vars.
 - There is exactly one env file: `.env` in the repo root, from `.env.example` (`cp .env.example .env`).
-  Django, Vite, docker-compose (`env_file`), direnv (a local, gitignored `.envrc`) and VS Code all read it.
+  Both services, Vite, docker-compose (`env_file`), direnv (a local, gitignored `.envrc`) and VS Code all read it.
   Do not add per-folder `.env` files. Add new vars to the root `.env.example`, grouped under the
   backend or frontend heading.
 - There is exactly one `.gitignore`, in the repo root. Do not add per-folder `.gitignore` files.
@@ -707,6 +723,7 @@ Other agents may edit this working tree at the same time.
 
   ```bash
   cd backend && uv run ruff check <paths> && uv run ruff format <paths>
+  cd backend/instances && dotnet format --include <paths>
   cd frontend && npx eslint <paths>
   ```
 
@@ -718,6 +735,7 @@ Other agents may edit this working tree at the same time.
 
   ```bash
   cd backend && flock -o /tmp/agent-tests.lock uv run pytest -q -x <service>/<path>[::<test>]
+  cd backend/instances && flock -o /tmp/agent-tests.lock dotnet test   # counts as backend
   cd frontend && flock -o /tmp/agent-tests.lock npx vitest run --reporter=dot <paths>
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e -- --workers=1
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e:integration -- --workers=1

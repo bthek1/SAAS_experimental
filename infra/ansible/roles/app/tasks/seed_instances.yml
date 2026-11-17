@@ -1,7 +1,7 @@
-# After catalog: this reads the copies its events created.
+# After catalog: this reads the copies its events created (#13, #43).
 - name: Seed the load-test questionnaires and batteries
   ansible.builtin.command: >-
-    {{ app_python }} manage.py seed_loadtest --questionnaires-per-owner {{ loadtest_questionnaires_per_owner }}
+    {{ app_cmd.exe }} {{ app_cmd.seed }} --questionnaires-per-owner {{ loadtest_questionnaires_per_owner }}
   args:
     chdir: "{{ app_dir }}"
   environment: "{{ app_manage_env }}"

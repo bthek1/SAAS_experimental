@@ -1,4 +1,4 @@
-"""Calls between the services, as `common/peers.py` (#13, #35).
+"""Calls from catalog to instances (#13, #35).
 
 Each direction has its own bearer token. The real client is HTTP. Tests swap it
 for `testing.RecordingInstances` with `set_instances_client()`.

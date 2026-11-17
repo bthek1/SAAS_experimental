@@ -5,6 +5,9 @@ import {
   catalogGroupTable,
   catalogTuningTable,
   catalogKneeTable,
+  dotnetHoldTable,
+  dotnetKneeTable,
+  dotnetSoakMinutesTable,
   fastapiHoldTable,
   fastapiKneeTable,
   matchingTable,
@@ -1184,6 +1187,93 @@ export function fastapiKneeOption(palette: SeriesPalette): EChartsOption {
           })),
         },
       ],
+    },
+    palette,
+  )
+}
+
+export function dotnetHoldOption(palette: SeriesPalette): EChartsOption {
+  return engineHoldBars(
+    dotnetHoldTable,
+    ["Django", ".NET"],
+    [
+      { row: "Mean", name: "mean" },
+      { row: "p95", name: "p95" },
+    ],
+    "Latency over 5 minutes at a fixed 200 iterations per second, with instances on Django and on .NET. Mixed: mean 4.86 against 2.87 milliseconds, p95 10.69 against 5.45. Read: mean 3.94 against 2.07, p95 8.46 against 4.59.",
+    formatMs,
+    palette,
+  )
+}
+
+export function dotnetCpuOption(palette: SeriesPalette): EChartsOption {
+  return engineHoldBars(
+    dotnetHoldTable,
+    ["Django", ".NET"],
+    [{ row: "instances CPU", name: "instances" }],
+    "CPU of saas-instances in the same runs, as a share of its 2 cores. Mixed: 37 against 24 percent. Read: 29 against 17.",
+    formatPct,
+    palette,
+  )
+}
+
+/** Knees only: .NET's runs stopped at 500 iterations/s found none, so they stay in the table. */
+const DOTNET_KNEES = dotnetKneeTable.rows.filter((r) => !String(r[1]).includes("no knee"))
+
+export function dotnetKneeOption(palette: SeriesPalette): EChartsOption {
+  return barsOption(
+    {
+      label:
+        "Knee of each stress run. Mixed traffic: Django about 575, 579 and 614 requests per second, .NET about 1,315. Read-mostly: Django about 495, 526 and 509, .NET about 1,378. .NET's runs stopped at 500 iterations per second found no knee and are only in the table below, which has the same values.",
+      categories: DOTNET_KNEES.map((r) => String(r[0])),
+      format: (value) => `~${value.toLocaleString("en-US")}`,
+      labelWidth: 130,
+      series: [
+        {
+          name: "Knee",
+          color: palette.off,
+          data: DOTNET_KNEES.map((r) => ({
+            value: cellNumber(String(r[1]).replace("~", "")),
+            itemStyle: { color: String(r[0]).includes(".NET") ? palette.series[0] : palette.off },
+          })),
+        },
+      ],
+    },
+    palette,
+  )
+}
+
+const dotnetSoakChart = { ...minuteChart, xMin: 0, xMax: 60, xStep: 10 }
+
+export function dotnetSoakLatencyOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...dotnetSoakChart,
+      label:
+        "Slowest endpoint group's p95 by minute in the 1-hour soaks at about 350 requests per second, leaving out minute 45 when k6 logs every user in again. Django rises from 19 to 190 milliseconds, .NET from 10 to 85. The table below has the same values.",
+      series: [
+        { ...tableLine(dotnetSoakMinutesTable, "Django", 1, palette.off), endLabel: "190 ms" },
+        { ...tableLine(dotnetSoakMinutesTable, ".NET", 2, palette.series[0]), endLabel: "85 ms" },
+      ],
+      yMax: 200,
+      format: formatMs,
+    },
+    palette,
+  )
+}
+
+export function dotnetSoakCpuOption(palette: SeriesPalette): EChartsOption {
+  return lineChartOption(
+    {
+      ...dotnetSoakChart,
+      label:
+        "CPU of saas-instances by minute in the same soaks. Django rises from 43 to 55 percent and ends at 52. .NET stays at 27. The table below has the same values.",
+      series: [
+        { ...tableLine(dotnetSoakMinutesTable, "Django", 3, palette.off), endLabel: "52 %" },
+        { ...tableLine(dotnetSoakMinutesTable, ".NET", 4, palette.series[0]), endLabel: "27 %" },
+      ],
+      yMax: 100,
+      format: formatPct,
     },
     palette,
   )

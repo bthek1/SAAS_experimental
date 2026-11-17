@@ -8,7 +8,7 @@ export function HeroBanner() {
         Welcome to <span className="text-primary">SAAS_experimental</span>
       </h1>
       <p className="max-w-md text-lg text-muted-foreground">
-        A modern full-stack web application built with Django and React.
+        A modern full-stack web application built with FastAPI, ASP.NET Core and React.
       </p>
       <div className="flex flex-wrap justify-center gap-4">
         <Button size="lg" render={<Link to="/login">Sign in</Link>} />

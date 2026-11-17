@@ -13,8 +13,6 @@
     { "prefix": "/admin/", "service": "catalog" },
     { "prefix": "/api/questionnaires/", "service": "instances" },
     { "prefix": "/api/batteries/", "service": "instances" },
-    { "prefix": "/api/dashboard/", "service": "instances" },
-    { "prefix": "/instances-admin/", "service": "instances" },
-    { "prefix": "/instances-static/", "service": "instances" }
+    { "prefix": "/api/dashboard/", "service": "instances" }
   ]
 }

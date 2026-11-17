@@ -1,5 +1,5 @@
 {
-  "description": "Request and DB metrics from both services (/metrics, scraped directly): django-prometheus on instances, the FastAPI catalog's own (#37).",
+  "description": "Request and DB metrics from both services (/metrics, scraped directly): catalog's and .NET instances' own (#37, #44), and django-prometheus's for runs from before #45 removed Django.",
   "editable": false,
   "panels": [
     {

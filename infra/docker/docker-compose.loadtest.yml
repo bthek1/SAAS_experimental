@@ -2,8 +2,8 @@
 # `just k6 <scenario>` and `just loadtest-down`, which pass `--env-file .env` and
 # `-p <repo-dir-name>-loadtest`, so nothing here touches the dev stack's containers or volumes.
 #
-# catalog (FastAPI, SETTINGS=loadtest, #37) and instances (Django, core.settings.loadtest): the
-# prod images under gunicorn, behind the gateway, so k6 measures production code, not a dev server. Prometheus scrapes each service's
+# catalog (FastAPI under gunicorn, SETTINGS=loadtest, #37) and instances (.NET on Kestrel, #44):
+# the prod images, behind the gateway, so k6 measures production code, not a dev server. Prometheus scrapes each service's
 # /metrics directly and receives k6's results by remote write. Grafana shows both. Every host
 # port is bound to 127.0.0.1. Needs JWT_SIGNING_KEY and JWT_VERIFYING_KEY in .env.
 services:
@@ -100,13 +100,12 @@ services:
         aliases:
           - catalog.loadtest.internal
 
+  # .NET (#44): the published service on the ASP.NET runtime, loadtest settings.
   instances:
     build:
       context: ../../backend
       dockerfile: ../infra/docker/instances.prod.Dockerfile
-    command: >-
-      sh -c "python manage.py migrate --noinput
-      && exec gunicorn --bind :8000 --workers ${LOADTEST_WORKERS:-2} core.wsgi"
+    command: ["sh", "-c", "dotnet Instances.Api.dll migrate && exec dotnet Instances.Api.dll"]
     depends_on:
       instances_db:
         condition: service_healthy
@@ -116,8 +115,7 @@ services:
       - path: ../../.env
         required: false
     environment:
-      DJANGO_SETTINGS_MODULE: core.settings.loadtest
-      DATABASE_URL: postgres://appuser:apppassword@db:5432/appdb
+      SETTINGS: loadtest
       INSTANCES_DATABASE_URL: postgres://appuser:apppassword@instances_db:5432/instancesdb
       CACHE_REDIS_URL: redis://redis:6379/1
       # The names here are private by suffix, which the loadtest settings require of every entry.
@@ -129,16 +127,11 @@ services:
       # Prometheus alone (its fixed address below), not the whole subnet: published ports
       # arrive from the subnet's gateway, so a subnet-wide rule would admit the host too.
       METRICS_ALLOWED_CIDRS: 10.95.0.10/32
-      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus-multiproc
-      LOADTEST_OWNER_PASSWORD: ${LOADTEST_OWNER_PASSWORD:-loadtest-local-only}
       # Withheld even if .env sets it: this service verifies tokens and never mints them.
       JWT_SIGNING_KEY: ""
     healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/internal/health/')"
+      # The runtime image has no curl or Python: the binary asks itself.
+      test: ["CMD", "dotnet", "Instances.Api.dll", "health"]
       interval: 5s
       timeout: 3s
       retries: 20

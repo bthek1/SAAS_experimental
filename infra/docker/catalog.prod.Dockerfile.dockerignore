@@ -4,3 +4,5 @@
 *.pyc
 **/*.sqlite3
 .env
+# instances is .NET (#45), built by its own image.
+instances/

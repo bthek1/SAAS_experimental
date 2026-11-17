@@ -1,4 +1,4 @@
-"""Server-side cache for expensive reads, as `common/cache.py` (#11, #35).
+"""Server-side cache for expensive reads, with the rules `instances` keeps (#11, #35).
 
 The same rules: `owner_id` is required, `group` is from a fixed list (it is a
 Prometheus label), Redis errors are counted and the value computed (fail open), and

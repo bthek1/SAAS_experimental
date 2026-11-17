@@ -36,7 +36,7 @@ packages = ["catalog", "catalog.routers"]
 common = { workspace = true }
 
 [tool.pytest.ini_options]
-addopts = "--tb=short --show-capture=no -ra -p no:django"
+addopts = "--tb=short --show-capture=no -ra"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 filterwarnings = ["ignore::DeprecationWarning"]

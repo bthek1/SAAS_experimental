@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,6 +13,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OBS = REPO_ROOT / "infra" / "observability"
 GRAFANA = OBS / "grafana"
 PROMETHEUS_IMAGE = "prom/prometheus:v3.15.0"
+# django-prometheus's PROMETHEUS_LATENCY_BUCKETS, frozen when #45 removed the last
+# service that ran it. Runs recorded before then carry these edges.
+DJANGO_PROMETHEUS_BUCKETS = (
+    0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0,
+    2.5, 5.0, 7.5, 10.0, 25.0, 50.0, 75.0, float("inf"),
+)  # fmt: skip
 
 pytestmark = pytest.mark.skipif(
     not OBS.is_dir(), reason="infra/observability not present"
@@ -95,7 +102,8 @@ def test_promtool(args):
 
 
 def test_service_panels_read_both_frameworks():
-    # instances exports django-prometheus names, catalog its own (#37). A panel that
+    # Django's instances exported django-prometheus names until #44, catalog and .NET
+    # their own (#37); panels keep both, so earlier runs still show. A panel that
     # read only one would show half the traffic.
     dashboard = (
         REPO_ROOT / "infra/observability/grafana/dashboards/django.json"
@@ -118,8 +126,23 @@ def test_service_panels_read_both_frameworks():
 
 def test_fastapi_latency_buckets_match_django_prometheus():
     # histogram_quantile over both families is only valid with the same bucket edges.
-    from django_prometheus.conf import PROMETHEUS_LATENCY_BUCKETS
-
     from catalog.db import LATENCY_BUCKETS
 
-    assert tuple(LATENCY_BUCKETS) == tuple(PROMETHEUS_LATENCY_BUCKETS)
+    assert tuple(LATENCY_BUCKETS) == DJANGO_PROMETHEUS_BUCKETS
+
+
+def test_dotnet_instances_emits_catalogs_names_and_buckets():
+    # instances on .NET (#44) emits the family catalog does, so the panels and
+    # `just k6-report` read it with no query of its own.
+    source = (
+        REPO_ROOT / "backend/instances/src/Instances.Api/Http/RequestMetrics.cs"
+    ).read_text()
+
+    edges = re.search(r"LatencyBuckets =\s*\[([^\]]+)\]", source)[1]
+    buckets = tuple(float(edge) for edge in edges.split(","))
+    assert (*buckets, float("inf")) == DJANGO_PROMETHEUS_BUCKETS
+    assert '"http_requests_total"' in source
+    assert '"view", "method", "status"' in source
+    assert '"http_request_duration_seconds"' in source
+    assert '"db_queries_total"' in source
+    assert '"db_query_duration_seconds"' in source
