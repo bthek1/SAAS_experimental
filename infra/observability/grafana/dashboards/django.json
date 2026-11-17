@@ -513,6 +513,53 @@
       ],
       "title": "DB query latency",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(max_over_time(system_runtime_dotnet_thread_pool_queue_length[$__interval]))",
+          "legendFormat": "queued",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(max_over_time(system_runtime_dotnet_thread_pool_thread_count[$__interval]))",
+          "legendFormat": "threads",
+          "refId": "B"
+        }
+      ],
+      "title": "instances (.NET) thread pool",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
