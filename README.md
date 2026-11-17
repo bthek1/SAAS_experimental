@@ -48,13 +48,15 @@ just dev                # dbs + redis + celery in Docker, services and frontend 
 ```
 
 The API is on `:8005` through the gateway's dev router (`catalog` `:8006`, `instances` `:8007`), and the frontend on `:5174`. Run `just --list` for every command.
+`instances` runs under `dotnet watch`, which rebuilds and restarts it on every edit. Its
+`❌ Failed to read …staticwebassets.development.json` line is harmless: the service has no static files.
 
 `instances` runs on .NET (`backend/instances/`, #42 to #45), so `just dev` and the tests need
 the .NET 10 SDK. Either Microsoft's apt feed (`sudo apt install dotnet-sdk-10.0` on Ubuntu 24.04), or,
 without sudo, the official tarball in `~/.dotnet` (check its SHA-512 against
 `https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`, then put
-`~/.dotnet` on `PATH` and set `DOTNET_ROOT=~/.dotnet`). `global.json` pins the SDK band. Its tests
-and its parity run need Docker, for a throwaway Postgres. Its PDFs are drawn with
+`~/.dotnet` on `PATH` and set `DOTNET_ROOT=~/.dotnet` for running `dotnet` yourself; `just` recipes find
+`~/.dotnet` without it). `global.json` pins the SDK band. Its tests and its parity run need Docker, for a throwaway Postgres. Its PDFs are drawn with
 [QuestPDF](https://www.questpdf.com/license/) under the Community licence (free for this project's
 size), so hosts need no Pango or fonts. Its commands are verbs of the binary: `migrate`,
 `seed-loadtest [--questionnaires-per-owner N] [--seed N]`, `reset-db` and `clear-cache` (the last three

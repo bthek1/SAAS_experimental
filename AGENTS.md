@@ -88,7 +88,7 @@ Rarer tasks have no recipe. Run them directly:
 
 | Task | Command |
 |---|---|
-| Backend dev servers only | `just be-dev` (private helper: gateway router :8005, catalog :8006, instances :8007) |
+| Backend dev servers only | `just be-dev` (private helper: gateway router :8005, catalog :8006, instances :8007 under `dotnet watch`) |
 | Frontend dev server only | `just fe-dev` (private helper, :5174) |
 | catalog parity suite (#34) | `cd backend && uv run pytest parity` (starts `catalog` and a stub `instances` itself) |
 | instances API suite (#40) | `cd backend && uv run pytest parity_instances` (builds `instances`, a throwaway Postgres in Docker and a stub `catalog`) |
@@ -365,6 +365,15 @@ env var names. `backend/parity_instances/` pins its API; its `xUnit` tests are i
   `TreatWarningsAsErrors` and nullable are on. `InvariantGlobalization` is on, so only IANA zone names resolve,
   as with Python's `zoneinfo`. It shares no code with Python: it reads `backend/contracts/` and, in tests,
   `common/dev_keys.py` as files (`tests/test_service_boundary.py`).
+- **Finding the SDK.** It may be in `~/.dotnet`, off `PATH` (README's no-sudo install). The justfile puts
+  `~/.dotnet` first on `PATH` for every recipe when that folder exists (`tests/test_justfile.py`, #48), and the
+  parity suite and the Playwright integration config look there too. Any other place that runs `dotnet` must
+  do the same. `dotnet run` needs only `PATH`, not `DOTNET_ROOT`. Outside `just`, run `dotnet` as
+  `~/.dotnet/dotnet` or with `PATH="$HOME/.dotnet:$PATH"`.
+- **`dotnet watch` noise** (`just be-dev`): `❌ Failed to read …obj\Debug\…staticwebassets.development.json` is
+  `dotnet watch` building a Windows path on Linux. The service has no static files; it starts and reloads
+  regardless. `Hosting environment: Production` is ASP.NET's own setting, which the service ignores: its
+  profile is `SETTINGS` (default `dev`).
 - **DRF's wire format, kept on purpose.** Errors are `Http/ApiErrors.cs`, pages `Http/Pagination.cs` (absolute
   links from the request's `Host`, sorted query keys), timestamps Python's `isoformat()` with `Z`
   (`Http/ApiJson.cs`), and JSON columns are passed through as stored text (`RawJson`), never typed classes.

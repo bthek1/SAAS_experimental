@@ -8,6 +8,11 @@ set dotenv-load := false
 
 export VIRTUAL_ENV := ""
 
+# The .NET SDK (instances, #42, #48): README's no-sudo install puts it in ~/.dotnet, off PATH.
+# Added only if that folder exists, so an apt-installed SDK is used as it is.
+dotnet_home := home_directory() / ".dotnet"
+export PATH := if path_exists(dotnet_home) == "true" { dotnet_home + ":" + env_var("PATH") } else { env_var("PATH") }
+
 # Compose files live in infra/docker/. The project name is pinned to the repo folder name
 # so containers and the postgres_data volume keep the same names as before the move.
 
