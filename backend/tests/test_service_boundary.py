@@ -1,8 +1,9 @@
-"""The boundaries between the services and `common` (#13, #45).
+"""The boundaries between the services and `common` (#13, #45, #51).
 
-catalog is the one Python service (FastAPI, #38). instances is .NET (#42 to #45) and
+catalog is FastAPI (#38). instances runs on .NET (`instances_NET`, #42 to #45), which
 shares no code with Python: it reads `backend/contracts/` and, in tests,
-`common/dev_keys.py` as files.
+`common/dev_keys.py` as files. Its Django version is kept beside it (`instances_Django`,
+#51), with the Django infrastructure that left `common` in #45 in its own `shared/`.
 """
 
 import ast
@@ -12,11 +13,12 @@ import pytest
 
 BACKEND = Path(__file__).resolve().parent.parent
 CATALOG = BACKEND / "catalog"
-INSTANCES = BACKEND / "instances"
+INSTANCES_NET = BACKEND / "instances_NET"
+INSTANCES_DJANGO = BACKEND / "instances_Django"
 COMMON = BACKEND / "common" / "common"
 
 CATALOG_ONLY = ("catalog",)
-DJANGO = ("django", "rest_framework", "apps", "core")
+DJANGO = ("django", "rest_framework", "apps", "core", "shared")
 
 
 def imported_modules(source: str) -> set[str]:
@@ -55,9 +57,23 @@ def offenders(root: Path, targets: tuple[str, ...]) -> list[str]:
     ]
 
 
-def test_instances_has_no_python():
-    found = [str(p.relative_to(BACKEND)) for p in python_files(INSTANCES)]
+def test_instances_net_has_no_python():
+    found = [str(p.relative_to(BACKEND)) for p in python_files(INSTANCES_NET)]
     assert found == []
+
+
+def test_instances_django_imports_no_catalog():
+    # Like catalog, it reads only the shared dev keypair and gunicorn rules of `common`.
+    assert offenders(INSTANCES_DJANGO, CATALOG_ONLY) == []
+    common = {
+        module
+        for path in python_files(INSTANCES_DJANGO)
+        for module in imported_modules(path.read_text())
+        if module == "common" or module.startswith("common.")
+    }
+    allowed = ("common.dev_keys", "common.gunicorn_conf")
+    assert common, "expected instances_Django to read the dev keypair"
+    assert all(module.startswith(allowed) for module in common), common
 
 
 def test_common_imports_no_service():
@@ -65,7 +81,7 @@ def test_common_imports_no_service():
 
 
 def test_common_holds_only_what_catalog_and_the_tests_share():
-    # The Django infrastructure went with Django's instances (#45).
+    # The Django infrastructure left with Django's instances (#45): its `shared/` (#51).
     modules = {p.stem for p in python_files(COMMON)}
     assert modules == {"__init__", "dev_keys", "gunicorn_conf"}
 
@@ -97,12 +113,15 @@ def test_instances_parity_suite_imports_no_service_code():
 
 def test_no_python_package_reaches_into_instances():
     # Only the test harnesses that start it (parity_instances, tests/) know where it
-    # lives or what it is called.
+    # lives or what it is called. Neither implementation knows of the other.
     found = [
         str(path.relative_to(BACKEND))
-        for root in (CATALOG, BACKEND / "common")
+        for root in (CATALOG, BACKEND / "common", INSTANCES_DJANGO)
         for path in python_files(root)
-        if "Instances.Api" in path.read_text()
+        if any(
+            marker in path.read_text()
+            for marker in ("Instances.Api", "instances_NET", "instances_Django")
+        )
     ]
     assert found == []
 

@@ -12,7 +12,8 @@ Claude Code reads `CLAUDE.md` files; never put rules in a `CLAUDE.md` (`backend/
 |---|---|
 | Both backend services: service boundary, API rules, settings, auth, metrics, cache, parity suites | [`backend/AGENTS.md`](backend/AGENTS.md) |
 | `catalog` (FastAPI), Celery | [`backend/catalog/AGENTS.md`](backend/catalog/AGENTS.md) |
-| `instances` (.NET), dashboard | [`backend/instances/AGENTS.md`](backend/instances/AGENTS.md) |
+| `instances` (.NET), dashboard | [`backend/instances_NET/AGENTS.md`](backend/instances_NET/AGENTS.md) |
+| `instances` on Django, kept to compare (#51) | [`backend/instances_Django/AGENTS.md`](backend/instances_Django/AGENTS.md) |
 | React SPA | [`frontend/AGENTS.md`](frontend/AGENTS.md) |
 | k6, Prometheus/Grafana, baselines and the `/load-tests` page | [`loadtest/AGENTS.md`](loadtest/AGENTS.md) |
 | Docker files, Pulumi, Ansible | [`infra/AGENTS.md`](infra/AGENTS.md) |
@@ -29,9 +30,9 @@ change what an agent does.
 starter, as a decoupled monorepo:
 
 - **`backend/`**: two services, each with its own PostgreSQL database: `catalog` on FastAPI (Python 3.14,
-  Celery + Redis, a uv workspace with `common`) and `instances` on ASP.NET Core (.NET 10, `backend/instances/`).
+  Celery + Redis, a uv workspace with `common`) and `instances` on ASP.NET Core (.NET 10, `backend/instances_NET/`).
   Both began as Django and keep the tables and API Django left: `catalog` moved in #34 to #38, `instances`
-  in #40 to #45
+  in #40 to #45. The Django `instances` is kept beside it, never deployed (`backend/instances_Django/`, #51)
 - **`infra/gateway/`**: nginx route table that gives both services one public origin
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router + Query)
 - **`infra/docker/`**: Dockerfiles and compose files for both halves
@@ -45,7 +46,7 @@ Prefer documented conventions over one-off solutions.
 |----------|------|
 | Setup, endpoints and request/response shapes | [`README.md`](README.md) (Quick Start, API) |
 | Env vars | [`.env.example`](.env.example) |
-| JWT handling | `frontend/src/api/client.ts`, `backend/catalog/catalog/auth.py` (signs), `backend/instances/src/Instances.Api/Auth/OwnerAuth.cs` (`instances` verifies) |
+| JWT handling | `frontend/src/api/client.ts`, `backend/catalog/catalog/auth.py` (signs), `backend/instances_NET/src/Instances.Api/Auth/OwnerAuth.cs` (`instances` verifies) |
 | How the services talk, in the app | `frontend/src/routes/_authed/service-interface.tsx` (`/service-interface`, hand-written, #27) |
 | Active / finished plans | GitHub issues labelled `plan` (`gh issue list --label plan [--state closed]`) |
 
@@ -165,7 +166,7 @@ Other agents may edit this working tree at the same time.
 
   ```bash
   cd backend && uv run ruff check <paths> && uv run ruff format <paths>
-  cd backend/instances && dotnet format --include <paths>
+  cd backend/instances_NET && dotnet format --include <paths>
   cd frontend && npx eslint <paths>
   ```
 
@@ -177,7 +178,7 @@ Other agents may edit this working tree at the same time.
 
   ```bash
   cd backend && flock -o /tmp/agent-tests.lock uv run pytest -q -x <service>/<path>[::<test>]
-  cd backend/instances && flock -o /tmp/agent-tests.lock dotnet test   # counts as backend
+  cd backend/instances_NET && flock -o /tmp/agent-tests.lock dotnet test   # counts as backend
   cd frontend && flock -o /tmp/agent-tests.lock npx vitest run --reporter=dot <paths>
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e -- --workers=1
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e:integration -- --workers=1

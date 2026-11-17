@@ -85,7 +85,7 @@ compose *args:
 [group('backend')]
 be-migrate:
     cd backend && uv run python -m catalog migrate
-    cd backend/instances && dotnet run --project src/Instances.Api -- migrate
+    cd backend/instances_NET && dotnet run --project src/Instances.Api -- migrate
 
 # New migration after model changes: just be-makemigrations catalog "<message>" | instances <Name>
 [group('backend')]
@@ -95,7 +95,7 @@ be-makemigrations app message="change":
     cd backend
     case "{{ app }}" in
         catalog) cd catalog && uv run alembic revision --autogenerate -m "{{ message }}" ;;
-        instances) cd instances && dotnet tool restore && dotnet ef migrations add "{{ message }}" \
+        instances) cd instances_NET && dotnet tool restore && dotnet ef migrations add "{{ message }}" \
             --project src/Instances.Api --output-dir Data/Migrations ;;
         *) echo "unknown app {{ app }}: catalog (Alembic) or instances (EF Core)" >&2; exit 1 ;;
     esac
@@ -110,7 +110,8 @@ be-superuser:
 be-test:
     cd backend && uv run pytest catalog
     cd backend && uv run pytest parity
-    cd backend/instances && dotnet test
+    cd backend/instances_NET && dotnet test
+    cd backend/instances_Django && uv run pytest
     cd backend && uv run pytest parity_instances
     cd backend && uv run pytest tests
 
@@ -239,7 +240,7 @@ be-dev: be-migrate
     #!/usr/bin/env bash
     trap 'kill 0' EXIT
     (cd backend && uv run uvicorn catalog.app:app --host 0.0.0.0 --port 8006 --reload --reload-dir catalog) &
-    (cd backend/instances && ASPNETCORE_URLS=http://0.0.0.0:8007 dotnet watch --project src/Instances.Api run --no-launch-profile --non-interactive) &
+    (cd backend/instances_NET && ASPNETCORE_URLS=http://0.0.0.0:8007 dotnet watch --project src/Instances.Api run --no-launch-profile --non-interactive) &
     python3 infra/gateway/dev_router.py --port 8005 \
         --service catalog=http://localhost:8006 --service instances=http://localhost:8007 &
     wait

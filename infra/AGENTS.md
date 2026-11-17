@@ -69,7 +69,7 @@ in the repo.
     catalog` (Python 3.14), gunicorn with uvicorn workers under systemd (`saas-app.service`), and
     `saas-relay.service`, which retries events (`roles/app/tasks/python.yml`);
   - `instances` (#44, #45): the ASP.NET Core runtime in `/opt/dotnet` (pinned by version and sha256), the
-    service published on the control host (`dotnet publish` into the gitignored `backend/instances/publish/`,
+    service published on the control host (`dotnet publish` into the gitignored `backend/instances_NET/publish/`,
     needing the SDK there) and rsynced to `/srv/app/instances-dotnet`, run by `saas-instances.service` on
     Kestrel. No Python. Its commands are verbs of the binary (`migrate`, `reset-db`, `clear-cache`,
     `seed-loadtest`). `app_commands` in `roles/app/defaults/main.yml` holds each service's commands, and env

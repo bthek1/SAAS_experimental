@@ -1,14 +1,15 @@
 """What `instances` does over HTTP, as the SPA, respondents and `catalog` use it (#40).
 
 The suite starts `instances` as a real server next to a stub `catalog`, and talks to
-both only over HTTP. It imports no service code, which let it check the Django version
-against the .NET one (#42) until #45 removed Django. It is now `instances`' API suite:
+both only over HTTP. It imports no service code, so it checks either implementation
+(#42, #51), chosen by INSTANCES_IMPL:
 
-    cd backend && uv run pytest parity_instances
+    cd backend && uv run pytest parity_instances                        # .NET
+    cd backend && INSTANCES_IMPL=django uv run pytest parity_instances  # Django
 
-It builds `backend/instances` and runs it on a throwaway Postgres in Docker. The one
-thing it does outside HTTP is move rows in time for the dashboard tests
-(`support.Clock`).
+.NET is built from `backend/instances_NET`; Django runs from `backend/instances_Django`
+under gunicorn. Either runs on a throwaway Postgres in Docker. The one thing the suite
+does outside HTTP is move rows in time for the dashboard tests (`support.Clock`).
 """
 
 import contextlib
@@ -38,7 +39,11 @@ from .support import (
 )
 
 BACKEND = Path(__file__).resolve().parent.parent
-DOTNET_PROJECT = BACKEND / "instances" / "src" / "Instances.Api"
+DOTNET_PROJECT = BACKEND / "instances_NET" / "src" / "Instances.Api"
+DJANGO_PROJECT = BACKEND / "instances_Django"
+IMPLEMENTATIONS = ("dotnet", "django")
+# One gthread worker; `--bind` is added per run.
+GUNICORN = ("--config", "/dev/null", "--worker-class", "gthread", "--threads", "4")
 POSTGRES_IMAGE = "postgres:16-alpine"
 SPA_ORIGIN = "http://localhost:5174"
 
@@ -113,6 +118,37 @@ def _dotnet(port: int, tmp: Path, catalog_url: str) -> Iterator[Server]:
         )
 
 
+@contextlib.contextmanager
+def _django(port: int, tmp: Path, catalog_url: str) -> Iterator[Server]:
+    del tmp  # Nothing to build.
+    python = shutil.which("python") or "python"
+    bind = f"--bind=127.0.0.1:{port}"
+    with _postgres() as database:
+        yield Server(
+            commands=[
+                [python, "manage.py", "migrate", "--no-input", "-v", "0"],
+                # Not the service's gunicorn.conf.py: no multiprocess metrics here.
+                [python, "-m", "gunicorn", "core.wsgi:application", *GUNICORN, bind],
+            ],
+            cwd=DJANGO_PROJECT,
+            env={
+                "DJANGO_SETTINGS_MODULE": "core.settings.parity",
+                "SECRET_KEY": "parity-instances-not-a-secret",
+                "INSTANCES_DATABASE_URL": database,
+                "CATALOG_INTERNAL_URL": catalog_url,
+                "CORS_ALLOWED_ORIGINS": SPA_ORIGIN,
+            },
+            database=database,
+        )
+
+
+def _implementation() -> str:
+    impl = os.environ.get("INSTANCES_IMPL", "dotnet")
+    if impl not in IMPLEMENTATIONS:
+        raise pytest.UsageError(f"INSTANCES_IMPL={impl!r}: one of {IMPLEMENTATIONS}")
+    return impl
+
+
 def _die_with_parent() -> None:
     """Linux: the server gets SIGTERM if pytest dies, even by SIGKILL."""
     pr_set_pdeathsig = 1
@@ -151,7 +187,9 @@ def server(stub) -> Iterator[tuple[str, str]]:
     port = free_port()
     with (
         tempfile.TemporaryDirectory(prefix="parity-instances-") as tmp,
-        _dotnet(port, Path(tmp), stub.url) as spec,
+        {"dotnet": _dotnet, "django": _django}[_implementation()](
+            port, Path(tmp), stub.url
+        ) as spec,
     ):
         yield from _serve(spec, port, Path(tmp))
 

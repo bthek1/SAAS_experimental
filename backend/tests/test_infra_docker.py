@@ -278,7 +278,7 @@ def test_instances_images_are_dotnet(dockerfile: str) -> None:
     # instances runs on .NET (#44). Its PDFs are QuestPDF: no host libraries needed.
     text = (DOCKER_DIR / dockerfile).read_text()
     assert "FROM mcr.microsoft.com/dotnet/" in text
-    assert "COPY instances/src" in text
+    assert "COPY instances_NET/src" in text
 
 
 @pytest.mark.parametrize(

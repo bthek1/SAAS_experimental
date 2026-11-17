@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent
-PROGRAM = BACKEND / "instances" / "src" / "Instances.Api" / "Program.cs"
+PROGRAM = BACKEND / "instances_NET" / "src" / "Instances.Api" / "Program.cs"
 
 
 def test_kestrel_keepalive_outlasts_the_gateways() -> None:

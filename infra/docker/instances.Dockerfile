@@ -7,14 +7,14 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_USE_POLLING_FILE_WATCHER=1 \
     ASPNETCORE_URLS=http://+:8000
 
-WORKDIR /app/instances
+WORKDIR /app/instances_NET
 
 # Restore first, for layer caching.
-COPY instances/global.json instances/Directory.Build.props instances/Directory.Packages.props ./
-COPY instances/src/Instances.Api/Instances.Api.csproj src/Instances.Api/
+COPY instances_NET/global.json instances_NET/Directory.Build.props instances_NET/Directory.Packages.props ./
+COPY instances_NET/src/Instances.Api/Instances.Api.csproj src/Instances.Api/
 RUN dotnet restore src/Instances.Api
 
-COPY instances/ ./
+COPY instances_NET/ ./
 
 EXPOSE 8000
 

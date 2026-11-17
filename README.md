@@ -51,7 +51,7 @@ The API is on `:8005` through the gateway's dev router (`catalog` `:8006`, `inst
 `instances` runs under `dotnet watch`, which rebuilds and restarts it on every edit. Its
 `❌ Failed to read …staticwebassets.development.json` line is harmless: the service has no static files.
 
-`instances` runs on .NET (`backend/instances/`, #42 to #45), so `just dev` and the tests need
+`instances` runs on .NET (`backend/instances_NET/`, #42 to #45), so `just dev` and the tests need
 the .NET 10 SDK. Either Microsoft's apt feed (`sudo apt install dotnet-sdk-10.0` on Ubuntu 24.04), or,
 without sudo, the official tarball in `~/.dotnet` (check its SHA-512 against
 `https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`, then put
@@ -63,21 +63,23 @@ size), so hosts need no Pango or fonts. Its commands are verbs of the binary: `m
 dev or loadtest only), `reconcile-refs [--dry-run]` and `health`.
 
 The Django version of `instances` was measured against .NET (`loadtest/baselines/2026-11-14-instances-dotnet.md`)
-and removed in #45. It is at `6b47566`, with its admin site and `import_from_monolith`.
+and removed in #45. It is back in `backend/instances_Django/` (#51), with its admin site and `import_from_monolith`,
+for comparison only: nothing deploys it. `cd backend/instances_Django && uv run pytest` runs its tests.
 
 ### Tests
 
 ```bash
-just be-test            # backend: catalog's pytest, both API suites, instances' xUnit, then the repo-level checks
+just be-test            # backend: catalog's pytest, both API suites, instances' xUnit and Django tests, then the repo-level checks
 just fe-test            # frontend unit and route tests (Vitest)
 just infra-test         # Pulumi program and Ansible role checks, no containers needed
 
 cd backend
 uv run pytest parity    # catalog's API over real HTTP, against a stub instances (what the SPA and instances rely on)
 uv run pytest parity_instances   # instances' API over real HTTP, against a stub catalog (#40); needs Docker
+INSTANCES_IMPL=django uv run pytest parity_instances   # the same suite against instances_Django (#51)
 cd ..
 
-cd backend/instances
+cd backend/instances_NET
 dotnet test             # xUnit, on a throwaway Postgres (Testcontainers)
 cd ../..
 
@@ -223,7 +225,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 
 ---
 
-**AI assistants:** agent rules live in `AGENTS.md` files: [the root one](AGENTS.md) for the whole repo, and one per area (`backend/`, `backend/catalog/`, `backend/instances/`, `frontend/`, `loadtest/`, `infra/`) beside its code. Each has a `CLAUDE.md` beside it that only imports it (`@AGENTS.md`), for Claude Code. Add rules to the `AGENTS.md` for the area they govern, never to a `CLAUDE.md`.
+**AI assistants:** agent rules live in `AGENTS.md` files: [the root one](AGENTS.md) for the whole repo, and one per area (`backend/`, `backend/catalog/`, `backend/instances_NET/`, `backend/instances_Django/`, `frontend/`, `loadtest/`, `infra/`) beside its code. Each has a `CLAUDE.md` beside it that only imports it (`@AGENTS.md`), for Claude Code. Add rules to the `AGENTS.md` for the area they govern, never to a `CLAUDE.md`.
 
 ---
 
@@ -267,14 +269,14 @@ cd backend && uv run python -m catalog relay-outbox --once   # delivered: N, pen
   (catalog's admin, Outbox Event) says which. They drain by themselves once it is back.
 - **One event keeps failing while others deliver:** `instances` refuses it (`400`). The event's `last_error` has the
   reason. Fix the cause, or repair the copies with `reconcile-refs`.
-- After any long outage, `cd backend/instances && dotnet run --project src/Instances.Api -- reconcile-refs --dry-run`
+- After any long outage, `cd backend/instances_NET && dotnet run --project src/Instances.Api -- reconcile-refs --dry-run`
   shows whether copies differ (on LXC: `dotnet Instances.Api.dll reconcile-refs --dry-run` with the unit's environment).
 
 ### Moving a pre-split database
 
 A database from before #13 holds everything. It stays `catalog`'s, and instance rows are copied out.
 Each step needs the Django version that did it: `catalog`'s, removed in #38, is at `edb8acd` (the last
-commit with `adopt_monolith_db`), and `instances`', removed in #45, is at `6b47566` (the last with
+commit with `adopt_monolith_db`), and `instances`' is `backend/instances_Django/` (#51, with
 `import_from_monolith`). Then, on the current code:
 
 ```bash
@@ -282,12 +284,11 @@ cd backend
 # at edb8acd:
 uv run python catalog/manage.py adopt_monolith_db   # adds the new columns, safe to repeat
 uv run python catalog/manage.py migrate
-# at 6b47566:
-uv run python instances/manage.py migrate
-uv run python instances/manage.py import_from_monolith --source "$OLD_DATABASE_URL"
 # on the current code:
+uv run python instances_Django/manage.py migrate
+uv run python instances_Django/manage.py import_from_monolith --source "$OLD_DATABASE_URL"
 uv run python -m catalog migrate                     # adopts the Django-built schema (Alembic stamp)
-cd instances && dotnet run --project src/Instances.Api -- migrate             # adopts instances' the same way
+cd instances_NET && dotnet run --project src/Instances.Api -- migrate             # adopts instances' the same way
 dotnet run --project src/Instances.Api -- reconcile-refs --dry-run            # expect no differences, with both services up
 ```
 
@@ -306,9 +307,10 @@ their names and belong to `catalog`, so never drop those.
 │   ├── catalog/      Service on FastAPI: alembic.ini, gunicorn.conf.py, tests/
 │   │   └── catalog/  app, models, routers/ (accounts, types, internal, health and tasks), outbox,
 │   │                 admin, Celery, CLI (`python -m catalog`), migrations/ (Alembic)
-│   ├── instances/    Service on ASP.NET Core + EF Core (.NET 10, #42 to #45): Instances.slnx
+│   ├── instances_NET/     Service on ASP.NET Core + EF Core (.NET 10, #42 to #45): Instances.slnx
 │   │   ├── src/Instances.Api/     questionnaires, batteries, share links, dashboards, PDFs, type copies
 │   │   └── tests/Instances.Tests/ xUnit, on a throwaway Postgres
+│   ├── instances_Django/  The same service on Django REST Framework (#51), kept to compare, never deployed
 │   ├── contracts/    JSON shapes of /internal/ calls, tested by both services
 │   ├── parity/       catalog's API tested over HTTP only, against a stub instances (#34)
 │   ├── parity_instances/  instances' API tested over HTTP only, against a stub catalog (#40)

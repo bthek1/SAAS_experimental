@@ -57,7 +57,7 @@ function instances(port: number) {
   const dll = join(INSTANCES_BUILD, "Instances.Api.dll");
   return {
     command:
-      `${DOTNET} build instances/src/Instances.Api -c Release -o ${INSTANCES_BUILD} --nologo -v q` +
+      `${DOTNET} build instances_NET/src/Instances.Api -c Release -o ${INSTANCES_BUILD} --nologo -v q` +
       ` && until ${DOTNET} ${dll} migrate; do sleep 1; done` +
       ` && exec ${DOTNET} ${dll}`,
     cwd: "../backend",

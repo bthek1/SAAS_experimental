@@ -2,11 +2,11 @@
 #   docker build -f infra/docker/instances.prod.Dockerfile backend
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src/instances
-COPY instances/global.json instances/Directory.Build.props instances/Directory.Packages.props ./
-COPY instances/src/Instances.Api/Instances.Api.csproj src/Instances.Api/
+COPY instances_NET/global.json instances_NET/Directory.Build.props instances_NET/Directory.Packages.props ./
+COPY instances_NET/src/Instances.Api/Instances.Api.csproj src/Instances.Api/
 RUN --mount=type=cache,target=/root/.nuget/packages \
     dotnet restore src/Instances.Api
-COPY instances/src src
+COPY instances_NET/src src
 RUN --mount=type=cache,target=/root/.nuget/packages \
     dotnet publish src/Instances.Api -c Release -o /out --no-restore
 

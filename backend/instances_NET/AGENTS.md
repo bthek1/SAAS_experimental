@@ -1,16 +1,16 @@
-# backend/instances/AGENTS.md
+# backend/instances_NET/AGENTS.md
 
 `instances` on ASP.NET Core (.NET, #42 to #45). Read with the root [`AGENTS.md`](../../AGENTS.md) and
 [`backend/AGENTS.md`](../AGENTS.md), which hold the rules both services share.
 
-`backend/instances/`: ASP.NET Core with EF Core + Npgsql. It replaced the Django version (measured in
+`backend/instances_NET/`: ASP.NET Core with EF Core + Npgsql. It replaced the Django version (measured in
 `loadtest/baselines/2026-11-14-instances-dotnet.md`) on the same API, the same `instancesdb` schema and the same
 env var names. `backend/parity_instances/` pins its API; its `xUnit` tests are in `tests/Instances.Tests/`
 (Testcontainers Postgres, so they need Docker).
 
 ## Commands
 
-From `backend/instances/`, tests under the test lock (`dotnet test` counts as backend testing):
+From `backend/instances_NET/`, tests under the test lock (`dotnet test` counts as backend testing):
 
 | Task | Command |
 |---|---|

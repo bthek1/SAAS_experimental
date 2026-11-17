@@ -135,7 +135,7 @@ def test_dotnet_instances_emits_catalogs_names_and_buckets():
     # instances on .NET (#44) emits the family catalog does, so the panels and
     # `just k6-report` read it with no query of its own.
     source = (
-        REPO_ROOT / "backend/instances/src/Instances.Api/Http/RequestMetrics.cs"
+        REPO_ROOT / "backend/instances_NET/src/Instances.Api/Http/RequestMetrics.cs"
     ).read_text()
 
     edges = re.search(r"LatencyBuckets =\s*\[([^\]]+)\]", source)[1]

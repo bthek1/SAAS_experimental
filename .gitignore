@@ -269,8 +269,8 @@ infra/pulumi/Pulumi.loadtest.yaml
 infra/pulumi/.plan.json
 infra/pulumi/.venv/
 
-# .NET (backend/instances, #42, #45)
-backend/instances/**/bin/
-backend/instances/**/obj/
-backend/instances/**/TestResults/
-backend/instances/publish/
+# .NET (backend/instances_NET, #42, #45, #51)
+backend/instances_NET/**/bin/
+backend/instances_NET/**/obj/
+backend/instances_NET/**/TestResults/
+backend/instances_NET/publish/

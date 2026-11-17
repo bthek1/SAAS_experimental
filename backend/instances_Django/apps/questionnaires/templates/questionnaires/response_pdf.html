@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ title }}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 15mm;
+      @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: system-ui, sans-serif;
+        font-size: 8pt;
+        color: #737373;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           font-size: 10pt; line-height: 1.5; color: #171717; }
+    header { border-bottom: 2pt solid #1d4ed8; padding-bottom: 4mm; margin-bottom: 6mm; }
+    h1 { font-size: 18pt; font-weight: 700; }
+    .meta { color: #737373; font-size: 9pt; }
+    .section { font-size: 8pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+               color: #737373; margin: 6mm 0 3mm; }
+    .metrics { display: flex; gap: 4mm; flex-wrap: wrap; }
+    .metric { border: 1pt solid #e5e5e5; border-radius: 3pt; padding: 3mm 5mm; min-width: 40mm; }
+    .metric .label { color: #737373; font-size: 8.5pt; }
+    .metric .value { color: #1d4ed8; font-size: 16pt; font-weight: 700; }
+    .question { border: 1pt solid #e5e5e5; border-radius: 3pt; padding: 4mm 5mm; margin-bottom: 3mm;
+                page-break-inside: avoid; }
+    .question .title { font-weight: 600; margin-bottom: 1mm; }
+    .answer { color: #404040; }
+    .answer.empty { color: #a3a3a3; font-style: italic; }
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-top: 2mm; }
+    th { color: #737373; font-weight: 600; padding: 1.5mm 2mm; border-bottom: 1pt solid #e5e5e5; }
+    th.row { text-align: left; }
+    td { padding: 1.5mm 2mm; border-bottom: 0.5pt solid #e5e5e5; }
+    td.cell { text-align: center; }
+    .dot { display: inline-block; width: 4mm; height: 4mm; border-radius: 50%;
+           border: 1.2pt solid #1d4ed8; }
+    .dot.on { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{{ title }}</h1>
+    <div class="meta">
+      {% if instance.name %}{{ instance.name }} · {% endif %}Submitted {{ instance.submitted_at|date:"j N Y, H:i e" }}
+    </div>
+  </header>
+
+  {% if metrics %}
+  <div class="section">Scores</div>
+  <div class="metrics">
+    {% for m in metrics %}
+    <div class="metric"><div class="label">{{ m.label }}</div><div class="value">{{ m.value }}</div></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="section">Responses</div>
+  {% for q in questions %}
+  <div class="question">
+    <div class="title">{{ q.title }}</div>
+    {% if q.type == "matrix" %}
+    <table>
+      <thead><tr><th class="row"></th>{% for col in q.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in q.rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          {% for col in q.columns %}<td class="cell"><span class="dot{% if row.selected == col %} on{% endif %}"></span></td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% elif q.display_value %}
+    <div class="answer">{{ q.display_value }}</div>
+    {% else %}
+    <div class="answer empty">No answer</div>
+    {% endif %}
+  </div>
+  {% empty %}
+  <p class="answer empty">This questionnaire has no questions.</p>
+  {% endfor %}
+</body>
+</html>

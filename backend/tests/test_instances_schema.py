@@ -20,7 +20,7 @@ import pytest
 BACKEND = Path(__file__).resolve().parent.parent
 SNAPSHOT = Path(__file__).with_name("instances_django_schema.txt")
 DJANGO_BUILT = Path(__file__).with_name("instances_django_built.sql")
-SOLUTION = BACKEND / "instances"
+SOLUTION = BACKEND / "instances_NET"
 PROJECT = SOLUTION / "src" / "Instances.Api"
 IMAGE = "postgres:16-alpine"
 PASSWORD = "throwaway"

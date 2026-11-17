@@ -17,7 +17,7 @@
     group: app
     mode: "0755"
 
-# Excluded below, so --delete would keep what the Django version left there (#45).
+# What the Django version left there (#45). Harmless once gone.
 - name: Remove instances' folder from catalog's backend
   ansible.builtin.file:
     path: "{{ app_backend_dir }}/instances"
@@ -36,7 +36,9 @@
       - --chmod=Dgo-w,Fgo-w
       - --exclude=.venv
       # .NET: published, and synced to saas-instances alone (#44, #45).
-      - --exclude=instances/
+      # Django's (#51) is kept in the repo for the parity suite, never deployed.
+      - --exclude=instances_NET/
+      - --exclude=instances_Django/
       # Perishable: never stops rsync deleting a directory that is otherwise gone.
       - --filter=-p___pycache__  # "-p", "_" for the space, then the name
       # uv builds common's on the container, and --delete would remove it each run.

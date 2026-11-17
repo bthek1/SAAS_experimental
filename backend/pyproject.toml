@@ -4,18 +4,20 @@ version = "0.1.0"
 description = "SAAS_experimental: FastAPI + ASP.NET Core + React"
 authors = [{ name = "Benedict Thekkel", email = "bthekkel1@gmail.com" }]
 requires-python = ">=3.14"
-# Installs catalog and common into one dev environment. `instances` is .NET (#45), outside uv.
-# Images install one service each: `uv sync --package catalog`.
-dependencies = ["catalog", "common"]
+# Installs catalog, common and Django's instances (#51) into one dev environment. The
+# running `instances` is .NET (instances_NET, #45), outside uv. Images install one
+# service each: `uv sync --package catalog`.
+dependencies = ["catalog", "instances-django", "common"]
 
 [tool.uv]
 package = false
 
 [tool.uv.workspace]
-members = ["common", "catalog"]
+members = ["common", "catalog", "instances_Django"]
 
 [tool.uv.sources]
 catalog = { workspace = true }
+instances-django = { workspace = true }
 common = { workspace = true }
 
 [dependency-groups]
@@ -27,6 +29,11 @@ dev = [
   "flower>=2.2",
   "pytest-mock>=3.16",
   "pypdf>=6.0",
+  # instances_Django's suite (#51)
+  "pytest-django>=4.14",
+  "factory-boy>=3.3",
+  "faker>=40.0",
+  "freezegun>=1.5",
 ]
 
 
@@ -103,6 +110,8 @@ max-complexity = 10
 [tool.ruff.lint.per-file-ignores]
 "*/tests/*" = ["S101", "ARG", "PLR2004"]
 "*/migrations/*" = ["ALL"]
+# instances_Django's settings profiles build on one another with star imports (#51).
+"instances_Django/**/settings/*" = ["F405", "F403"]
 
 
 [tool.black]

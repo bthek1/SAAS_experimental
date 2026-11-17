@@ -64,8 +64,8 @@
     # changes what the sync below copies.
     - name: Publish the service (control host)
       ansible.builtin.command: >-
-        {{ control_dotnet }} publish {{ repo_root }}/backend/instances/src/Instances.Api
-        -c Release -o {{ repo_root }}/backend/instances/publish --nologo
+        {{ control_dotnet }} publish {{ repo_root }}/backend/instances_NET/src/Instances.Api
+        -c Release -o {{ repo_root }}/backend/instances_NET/publish --nologo
       delegate_to: localhost
       run_once: true
       become: false
@@ -82,7 +82,7 @@
 
     - name: Sync the published service
       ansible.posix.synchronize:
-        src: "{{ repo_root }}/backend/instances/publish/"
+        src: "{{ repo_root }}/backend/instances_NET/publish/"
         dest: "{{ app_dotnet_dir }}/"
         delete: true
         checksum: true

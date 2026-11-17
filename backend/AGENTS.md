@@ -1,12 +1,12 @@
 # backend/AGENTS.md
 
 Rules shared by both backend services. Read with the root [`AGENTS.md`](../AGENTS.md). Each service has its
-own file too: [`catalog/AGENTS.md`](catalog/AGENTS.md) (FastAPI) and [`instances/AGENTS.md`](instances/AGENTS.md)
-(.NET).
+own file too: [`catalog/AGENTS.md`](catalog/AGENTS.md) (FastAPI), [`instances_NET/AGENTS.md`](instances_NET/AGENTS.md)
+(.NET, the one that runs) and [`instances_Django/AGENTS.md`](instances_Django/AGENTS.md) (Django, kept to compare, #51).
 
 ## Commands
 
-Run Python commands from `backend/` and .NET ones from `backend/instances/`, under the test lock (root
+Run Python commands from `backend/` and .NET ones from `backend/instances_NET/`, under the test lock (root
 `AGENTS.md`, "Working alongside other agents").
 
 | Task | Command |
@@ -14,11 +14,13 @@ Run Python commands from `backend/` and .NET ones from `backend/instances/`, und
 | catalog unit tests | `uv run pytest catalog` |
 | catalog parity suite (#34) | `uv run pytest parity` (starts `catalog` and a stub `instances` itself) |
 | instances API suite (#40) | `uv run pytest parity_instances` (builds `instances`, a throwaway Postgres in Docker and a stub `catalog`) |
+| instances on Django (#51) | `cd instances_Django && uv run pytest` |
+| instances API suite, against Django (#51) | `INSTANCES_IMPL=django uv run pytest parity_instances` (default `dotnet`) |
 | Repo-level checks | `uv run pytest tests` |
 | Scoped lint / format (Python) | `uv run ruff check <paths> && uv run ruff format <paths>` |
-| Upgrade Python dependencies | `uv lock --upgrade` (the workspace root: `catalog` and `common`) |
+| Upgrade Python dependencies | `uv lock --upgrade` (the workspace root: `catalog`, `common` and `instances_Django`) |
 
-.NET package versions live in `backend/instances/Directory.Packages.props` only.
+.NET package versions live in `backend/instances_NET/Directory.Packages.props` only.
 
 ## Stack and history
 
@@ -28,18 +30,19 @@ PyJWT, sqladmin, Celery + Redis, gunicorn with uvicorn workers; uv, ruff, mypy, 
 prometheus-net, QuestPDF; xUnit v3 with Testcontainers. Both on PostgreSQL 16.
 
 Both services began as Django and kept the tables and the API it left. `catalog` moved to FastAPI in #34 to
-#38 (the Django version is at `edb8acd`), and `instances` to .NET in #40 to #45 (at `6b47566`). Both
-comparisons are in `loadtest/baselines/` and on `/load-tests`. `instances` on MongoDB was tried and removed
+#38 (the Django version is at `edb8acd`), and `instances` to .NET in #40 to #45 (at `6b47566`). The Django
+`instances` is back beside it as `instances_Django/` (#51): tested and checked by the API suite, never deployed.
+Both comparisons are in `loadtest/baselines/` and on `/load-tests`. `instances` on MongoDB was tried and removed
 (#29, #30): it was slower and got slower as rows grew (`loadtest/baselines/2026-11-06-instances-mongodb.md`).
 
-**Layout.** `catalog/` (Python package `catalog/catalog/`), `instances/` (`Instances.slnx`: `src/Instances.Api/`
-and `tests/Instances.Tests/`), `common/` (the published dev JWT pair and gunicorn settings, used by `catalog`
-and the tests), `contracts/` (JSON shapes of `/internal/`), `parity/` and `parity_instances/` (each service's
+**Layout.** `catalog/` (Python package `catalog/catalog/`), `instances_NET/` (`Instances.slnx`: `src/Instances.Api/`
+and `tests/Instances.Tests/`), `instances_Django/` (`apps/`, `core/`, `shared/`; #51), `common/` (the published
+dev JWT pair and gunicorn settings, used by `catalog`, `instances_Django` and the tests), `contracts/` (JSON shapes of `/internal/`), `parity/` and `parity_instances/` (each service's
 API over HTTP), `tests/` (repo-level checks).
 
 The services never import each other, including in tests: `catalog` is Python and `instances` is .NET, and
-`tests/test_service_boundary.py` checks that no Python reaches into `instances` and that `common` holds only
-`dev_keys` and `gunicorn_conf` (#13, #45).
+`tests/test_service_boundary.py` checks that no Python reaches into either `instances_*` folder, that Django stays
+inside `instances_Django`, and that `common` holds only `dev_keys` and `gunicorn_conf` (#13, #45, #51).
 
 ## Service boundary (#13)
 
@@ -147,11 +150,13 @@ the service on a free port, with a fresh SQLite database and a stub `instances` 
 retire. It imports no service code, so it outlived the Django version it was written against (#34). Pin there
 anything the SPA or `instances` relies on.
 
-`backend/parity_instances/` does the same for `instances` (#40), and checked Django against .NET until #45: it
-builds the service and runs it on a throwaway Postgres in Docker, with a stub `catalog` serving `/internal/`
-(switchable to 404, 500 or no answer). It plays `catalog` itself: tokens signed with the dev key, types sent as
-events. The dashboard tests move rows in time with a plain `UPDATE` (`support.Clock`), so it runs with the cache
-off. Pin there anything the SPA, respondents or `catalog` rely on from `instances`.
+`backend/parity_instances/` does the same for `instances` (#40), for either implementation (#42, #51):
+`INSTANCES_IMPL=dotnet` (default) builds `instances_NET`, `INSTANCES_IMPL=django` runs `instances_Django` under
+gunicorn with `core.settings.parity`. Both pass the same tests; a new test pins .NET, and if Django lacks the
+behaviour, mark it `xfail` under Django with the reason. It runs the service on a throwaway Postgres in Docker,
+with a stub `catalog` serving `/internal/` (switchable to 404, 500 or no answer). It plays `catalog` itself:
+tokens signed with the dev key, types sent as events. The dashboard tests move rows in time with a plain `UPDATE`
+(`support.Clock`), so it runs with the cache off. Pin there anything the SPA, respondents or `catalog` rely on from `instances`.
 
 Repo-level checks that are not tied to a service live in `backend/tests/`, run with `uv run pytest tests`.
 `tests/test_infra_docker.py` checks the `infra/docker/` layout; its `docker compose config` tests skip when

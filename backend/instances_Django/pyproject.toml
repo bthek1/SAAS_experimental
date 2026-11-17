@@ -1,0 +1,45 @@
+[project]
+name = "instances-django"
+version = "0.1.0"
+description = "instances on Django, as it was before .NET replaced it (#45); kept beside instances_NET (#51)"
+requires-python = ">=3.14"
+# The Django infrastructure that was in `common` until #45 is `shared/` now; of `common`
+# it reads only the dev keypair and the gunicorn rules, as catalog does.
+dependencies = [
+  "common",
+  "django ~=6.0",
+  "djangorestframework ~=3.18",
+  "djangorestframework-simplejwt ~=5.5",
+  "cryptography>=45",
+  "django-cors-headers ~=4.9",
+  "django-environ ~=0.14",
+  "django-prometheus ~=2.5",
+  "gunicorn ~=26.2",
+  "httpx ~=0.28",
+  "psycopg[binary] ~=3.3",
+  "redis~=6.4",
+  "tzdata>=2025.1",
+  "weasyprint>=70.0",
+]
+
+# Not installed as a package: `core`, `apps` and `shared` resolve from the working
+# directory (manage.py, gunicorn) or `pythonpath` below (pytest).
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+common = { workspace = true }
+
+[tool.pytest.ini_options]
+addopts = "--tb=short --show-capture=no -ra --ds=core.settings.test"
+pythonpath = ["."]
+python_files = ["test_*.py", "tests.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["apps"]
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "integration: marks tests as integration tests requiring external APIs",
+  "development: marks tests that only run with development settings",
+]

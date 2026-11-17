@@ -74,10 +74,10 @@ services:
     volumes:
       - ../../backend:/app
       # The host's build output is for host paths: the container keeps its own.
-      - /app/instances/src/Instances.Api/bin
-      - /app/instances/src/Instances.Api/obj
-      - /app/instances/tests/Instances.Tests/bin
-      - /app/instances/tests/Instances.Tests/obj
+      - /app/instances_NET/src/Instances.Api/bin
+      - /app/instances_NET/src/Instances.Api/obj
+      - /app/instances_NET/tests/Instances.Tests/bin
+      - /app/instances_NET/tests/Instances.Tests/obj
     ports:
       - "8007:8000"
     depends_on:
