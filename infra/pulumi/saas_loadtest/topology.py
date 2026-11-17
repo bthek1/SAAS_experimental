@@ -40,7 +40,8 @@ DEFAULT_SIZES = {
     # instances (1 + 3) that was within run-to-run variation (#24, Phase 3).
     "app": {"cores": 2, "memoryMb": 2048, "diskGb": 8},
     "db": {"cores": 2, "memoryMb": 1024, "diskGb": 10},
-    "monitor": {"cores": 1, "memoryMb": 1024, "diskGb": 10},
+    # Prometheus keeps 30 days and filled 10 GB with load-test runs (2026-11-17).
+    "monitor": {"cores": 1, "memoryMb": 1024, "diskGb": 20},
     # k6 holds about 1 MB per VU; stress tops out at 300 VUs.
     "loadgen": {"cores": 2, "memoryMb": 1024, "diskGb": 4},
     # Redis holds up to 256 MB (maxmemory) and writes nothing to disk (#11).
