@@ -223,7 +223,7 @@ All endpoints are under `/api/`. Authenticated endpoints need `Authorization: Be
 
 ---
 
-**AI assistants:** [AGENTS.md](AGENTS.md) holds all agent rules. `CLAUDE.md` only imports it (`@AGENTS.md`). Add new rules to `AGENTS.md`, not anywhere else.
+**AI assistants:** agent rules live in `AGENTS.md` files: [the root one](AGENTS.md) for the whole repo, and one per area (`backend/`, `backend/catalog/`, `backend/instances/`, `frontend/`, `loadtest/`, `infra/`) beside its code. Each has a `CLAUDE.md` beside it that only imports it (`@AGENTS.md`), for Claude Code. Add rules to the `AGENTS.md` for the area they govern, never to a `CLAUDE.md`.
 
 ---
 
@@ -330,7 +330,7 @@ their names and belong to `catalog`, so never drop those.
 ├── infra/pulumi/     Pulumi program: the load-test LXC containers on Proxmox (#9)
 ├── infra/ansible/    Ansible: configures those containers (just converge)
 ├── loadtest/         k6 scenarios (k6/), run.sh (`just k6`), report.py (`just k6-report`), baselines/, results/ (gitignored)
-└── AGENTS.md         Rules for AI coding agents
+└── AGENTS.md         Rules for AI coding agents (plus one per area; each with a CLAUDE.md that imports it)
 ```
 
 ---
