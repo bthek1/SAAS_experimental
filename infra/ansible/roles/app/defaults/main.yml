@@ -1,13 +1,21 @@
 app_root: /srv/app
+# Which implementation saas-instances runs (#52): `dotnet` (instances_NET, the default) or
+# `go` (instances_GO). Same port, env file, unit and verbs; switch with
+# `just converge --tags app --limit instances -e app_instances_impl=go`.
+app_instances_impl: dotnet
 app_backend_dir: "{{ app_root }}/backend"
 app_env_file: "/etc/{{ app_unit }}/app.env"
 app_python: "{{ app_backend_dir }}/.venv/bin/python"
 # Where the published .NET service lives on the container, and its runtime (#44).
 app_dotnet_dir: "{{ app_root }}/instances-dotnet"
 app_dotnet: /opt/dotnet/dotnet
+# Where the Go binary lives on the container (#52): one static file, no runtime.
+app_go_dir: "{{ app_root }}/instances-go"
 # Where the commands and the server run. catalog's gunicorn reads gunicorn.conf.py from
-# its folder of the synced backend; instances (.NET) runs from its published build.
-app_dir: "{{ app_backend_dir + '/catalog' if app_service == 'catalog' else app_dotnet_dir }}"
+# its folder of the synced backend; instances runs from its published build.
+app_dir: >-
+  {{ app_backend_dir + '/catalog' if app_service == 'catalog'
+     else (app_go_dir if app_instances_impl == 'go' else app_dotnet_dir) }}
 # Each operation, per service: catalog on FastAPI (#35 to #38), instances on .NET (#44,
 # #45). `exe` runs each command.
 app_commands:
@@ -25,7 +33,15 @@ app_commands:
     flush: reset-db
     clear_cache: clear-cache
     seed: seed-loadtest
-app_cmd: "{{ app_commands[app_service] }}"
+  # instances in Go (#52): the same verbs, on its own binary.
+  instances_go:
+    exe: "{{ app_go_dir }}/instances"
+    migrate: migrate
+    flush: reset-db
+    clear_cache: clear-cache
+    seed: seed-loadtest
+app_cmd: >-
+  {{ app_commands['instances_go' if (app_service == 'instances' and app_instances_impl == 'go') else app_service] }}
 # PEM files on one line: both services read JWT keys with `\\n` for newlines.
 app_jwt_verifying_key: "{{ jwt_verifying_key | trim | replace('\n', '\\n') }}"
 app_env_shared:
@@ -53,7 +69,8 @@ app_env_service:
   # Never the signing key: this service verifies tokens and cannot mint them.
   instances:
     INSTANCES_DATABASE_URL: "postgres://{{ instances_db_user }}:{{ instances_db_password }}@{{ guest_ips.db }}:{{ ports.postgres }}/{{ instances_db_name }}"
-# What only instances (.NET) reads: where Kestrel listens, and its tuning knobs.
+# What only instances reads: where it listens, and its tuning knobs. Go reads ASPNETCORE_URLS
+# and DB_POOL_SIZE too (#52), and ignores the thread pool's.
 app_env_dotnet:
   ASPNETCORE_URLS: "http://0.0.0.0:{{ ports.gunicorn }}"
   DB_POOL_SIZE: "{{ dotnet_db_pool_size | default(20) }}"

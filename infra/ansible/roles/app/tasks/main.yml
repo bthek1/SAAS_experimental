@@ -28,7 +28,7 @@
 
 # instances on .NET (#44): the ASP.NET runtime, and the service published on the control host.
 - name: .NET runtime
-  when: app_service == 'instances'
+  when: app_service == 'instances' and app_instances_impl == 'dotnet'
   block:
     - name: Download the ASP.NET Core runtime
       ansible.builtin.get_url:
@@ -93,6 +93,48 @@
           - --omit-dir-times
       notify: Restart the service
 
+# instances in Go (#52): one static binary, built on the control host. -trimpath and no VCS
+# stamp make the same source the same bytes, so an unchanged tree syncs nothing.
+- name: Go binary
+  when: app_service == 'instances' and app_instances_impl == 'go'
+  block:
+    - name: Build the service (control host)
+      ansible.builtin.command:
+        cmd: >-
+          {{ control_go }} build -trimpath -buildvcs=false
+          -o {{ repo_root }}/backend/instances_GO/publish/instances ./cmd/instances
+        chdir: "{{ repo_root }}/backend/instances_GO"
+      environment:
+        CGO_ENABLED: "0"
+        GOTOOLCHAIN: local
+      delegate_to: localhost
+      run_once: true
+      become: false
+      check_mode: false  # a local build, so --check compares against the real output
+      changed_when: false
+
+    - name: Go service directory
+      ansible.builtin.file:
+        path: "{{ app_go_dir }}"
+        state: directory
+        owner: app
+        group: app
+        mode: "0755"
+
+    - name: Sync the Go binary
+      ansible.posix.synchronize:
+        src: "{{ repo_root }}/backend/instances_GO/publish/"
+        dest: "{{ app_go_dir }}/"
+        delete: true
+        checksum: true
+        rsync_opts:
+          - --chown=app:app
+          - --chmod=Dgo-w,Fgo-w
+          - --omit-dir-times
+          # go build rewrites the binary every time: compare content (checksum), never mtimes.
+          - --no-times
+      notify: Restart the service
+
 - name: Environment file directory
   ansible.builtin.file:
     path: "{{ app_env_file | dirname }}"
@@ -153,7 +195,7 @@
   when: app_reset_db | bool
   changed_when: true
 
-- name: Write the service's unit (gunicorn, or Kestrel for .NET)
+- name: Write the service's unit (gunicorn, Kestrel for .NET, or the Go binary)
   ansible.builtin.template:
     src: saas-app.service.j2
     dest: "/etc/systemd/system/{{ app_unit }}.service"

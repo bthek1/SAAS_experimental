@@ -3,7 +3,8 @@
 catalog is FastAPI (#38). instances runs on .NET (`instances_NET`, #42 to #45), which
 shares no code with Python: it reads `backend/contracts/` and, in tests,
 `common/dev_keys.py` as files. Its Django version is kept beside it (`instances_Django`,
-#51), with the Django infrastructure that left `common` in #45 in its own `shared/`.
+#51), with the Django infrastructure that left `common` in #45 in its own `shared/`, and
+its Go version (`instances_GO`, #52) shares no code with Python either.
 """
 
 import ast
@@ -15,6 +16,7 @@ BACKEND = Path(__file__).resolve().parent.parent
 CATALOG = BACKEND / "catalog"
 INSTANCES_NET = BACKEND / "instances_NET"
 INSTANCES_DJANGO = BACKEND / "instances_Django"
+INSTANCES_GO = BACKEND / "instances_GO"
 COMMON = BACKEND / "common" / "common"
 
 CATALOG_ONLY = ("catalog",)
@@ -59,6 +61,11 @@ def offenders(root: Path, targets: tuple[str, ...]) -> list[str]:
 
 def test_instances_net_has_no_python():
     found = [str(p.relative_to(BACKEND)) for p in python_files(INSTANCES_NET)]
+    assert found == []
+
+
+def test_instances_go_has_no_python():
+    found = [str(p.relative_to(BACKEND)) for p in python_files(INSTANCES_GO)]
     assert found == []
 
 
@@ -120,7 +127,12 @@ def test_no_python_package_reaches_into_instances():
         for path in python_files(root)
         if any(
             marker in path.read_text()
-            for marker in ("Instances.Api", "instances_NET", "instances_Django")
+            for marker in (
+                "Instances.Api",
+                "instances_NET",
+                "instances_Django",
+                "instances_GO",
+            )
         )
     ]
     assert found == []

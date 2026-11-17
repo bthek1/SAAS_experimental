@@ -19,6 +19,11 @@ import {
   dotnetHoldOption,
   dotnetSoakCpuOption,
   dotnetSoakLatencyOption,
+  goCpuOption,
+  goHoldOption,
+  goKneeOption,
+  goSoakCpuOption,
+  goSoakLatencyOption,
   endpointMixedOption,
   endpointReadOption,
   fastapiHoldOption,
@@ -69,6 +74,10 @@ import {
   dotnetKneeTable,
   dotnetSoakMinutesTable,
   dotnetSoakTable,
+  goHoldTable,
+  goKneeTable,
+  goSoakMinutesTable,
+  goSoakTable,
   catalogTuningRunsTable,
   catalogTuningTable,
   catalogGroupTable,
@@ -746,6 +755,73 @@ export function DotnetTab() {
         <li>
           <strong>The dashboard still grows with rows.</strong> Rewriting it made each miss cheaper, not
           bounded.
+        </li>
+      </Findings>
+    </Section>
+  )
+}
+
+export function GoTab() {
+  const palette = useSeriesPalette()
+  return (
+    <Section title="instances in Go against .NET">
+      <Prose>
+        <code>instances</code> was written a third time, in Go, with the same API, tables, events and env vars,
+        checked by the same 212-test suite, and run on the same container. <strong>Go serves the same traffic
+        at about half .NET's latency on about a fifth of its CPU</strong>, with 0 failed requests in every run.
+        Its ceiling is higher too, though the host was quieter during its runs. <code>instances</code> stays
+        on .NET until that is settled; switching is one converge.
+      </Prose>
+
+      <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>
+      <Prose>
+        200 iterations per second, back to back, each from the same reset data. Go's p95 is a little over
+        half of .NET's. saas-db works less for Go as well, at the same queries per request, most likely because
+        Go's driver prepares each statement once per connection. Go has no warm-up: its first minute was as
+        fast as the rest.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Latency, ms" option={goHoldOption(palette)} height={barsHeight(4, 2)} />
+        <ChartCard title="CPU, %" option={goCpuOption(palette)} height={barsHeight(4, 2)} />
+      </div>
+      <TableDetails table={goHoldTable} />
+
+      <h3 className="font-medium">Ceiling</h3>
+      <Prose>
+        The ceiling search with owners logged in before the traffic, so no login burst ends it. Go held to
+        ~1,567 req/s mixed, and reached the run's maximum read rate without breaking, with{" "}
+        <code>instances</code> at only a quarter of its CPU. .NET's runs, from earlier the same day, had about
+        twice the host load, and host CPU contention is what ended them, so part of Go's gain may be the
+        host's.
+      </Prose>
+      <ChartCard title="Knee per ceiling search, req/s" option={goKneeOption(palette)} height={barsHeight(4, 1)} />
+      <TableDetails table={goKneeTable} />
+
+      <h3 className="font-medium">1-hour soak</h3>
+      <Prose>
+        The same command as .NET's soak, to about 479,000 rows. The slowest group still grows with rows,
+        since a dashboard miss aggregates in Postgres whichever language asks, but Go's CPU stayed below a
+        tenth of a core's worth throughout.
+      </Prose>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Slowest group p95 by minute, ms" option={goSoakLatencyOption(palette)} />
+        <ChartCard title="saas-instances CPU by minute, %" option={goSoakCpuOption(palette)} />
+      </div>
+      <TableDetails table={goSoakMinutesTable} />
+      <TableCard title="1-hour soak" table={goSoakTable} />
+
+      <Findings>
+        <li>
+          <strong>Less of everything.</strong> A fifth of the CPU and under half the memory of .NET at the
+          same rate, and no cold start.
+        </li>
+        <li>
+          <strong>Not yet settled:</strong> how much of the higher ceiling is Go's. Rerunning .NET's
+          ceiling search on a quiet host would split it from the host's.
+        </li>
+        <li>
+          <strong>.NET could close part of the database gap</strong> by preparing statements too (Npgsql's
+          automatic preparation), which is worth a run of its own.
         </li>
       </Findings>
     </Section>

@@ -435,3 +435,55 @@ export const dotnetKneeTable: ResultTableData = {
     ["Read: .NET, ceiling", "~1,378", "27 ms", "60 %", 0, "stress-20261114T080350Z"],
   ],
 }
+
+// #52: `instances` in Go against .NET, loadtest/baselines/2026-11-17-instances-go.md.
+// Fixed-rate runs at 200 iterations/s for 5 minutes, back to back, each from its own reset. CPU is the mean of
+// the run's full minutes, as a share of the container's 2 cores.
+export const goHoldTable: ResultTableData = {
+  columns: [{ title: "" }, { title: "Mixed, .NET", num: true }, { title: "Mixed, Go", num: true }, { title: "Read, .NET", num: true }, { title: "Read, Go", num: true }],
+  rows: [
+    ["Mean", "2.47 ms", "1.43 ms", "2.10 ms", "1.17 ms"],
+    ["p95", "5.50 ms", "2.97 ms", "4.52 ms", "2.84 ms"],
+    ["instances CPU", "25 %", "6 %", "18 %", "4 %"],
+    ["saas-db CPU", "11 %", "5 %", "7 %", "3 %"],
+    ["instances memory, max", "406 MiB", "282 MiB", "401 MiB", "307 MiB"],
+    ["Dropped iterations", 0, 0, 0, 0],
+    ["Test id", "load-20261117T081104Z", "load-20261117T081926Z", "load-20261117T082628Z", "load-20261117T083330Z"],
+  ],
+}
+
+/** The ceiling search with LOGIN=setup. .NET's runs are 2026-11-17-prelogin.md's, on a busier host. */
+export const goKneeTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Knee, req/s", num: true }, { title: "Slowest group p95", num: true }, { title: "instances CPU", num: true }, { title: "Host load", num: true }, { title: "Failed", num: true }, { title: "Test id", code: true }],
+  rows: [
+    ["Mixed: .NET", "~1,387", "56 ms", "57 %", "12.2", 0, "stress-20261117T051903Z"],
+    ["Mixed: Go", "~1,567", "43 ms", "24 %", "6.7", 0, "stress-20261117T084034Z"],
+    ["Read: .NET", "~1,525", "72 ms", "62 %", "8.2", 0, "stress-20261117T054059Z"],
+    ["Read: Go", "≥1,630, no knee", "14 ms", "26 %", "4.7", 0, "stress-20261117T090724Z"],
+  ],
+}
+
+/** Minutes of the 1-hour soaks at ~350 req/s, leaving out the re-login minute. .NET's is 2026-11-14's. */
+export const goSoakMinutesTable: ResultTableData = {
+  columns: [{ title: "Minute", num: true }, { title: "Slowest group p95, .NET", num: true }, { title: "Slowest group p95, Go", num: true }, { title: "instances CPU, .NET", num: true }, { title: "instances CPU, Go", num: true }],
+  rows: [
+    [5, "10 ms", "7 ms", "27 %", "6 %"],
+    [15, "21 ms", "17 ms", "27 %", "7 %"],
+    [25, "35 ms", "28 ms", "27 %", "7 %"],
+    [35, "48 ms", "40 ms", "27 %", "8 %"],
+    [44, "67 ms", "52 ms", "27 %", "8 %"],
+    [55, "85 ms", "65 ms", "27 %", "8 %"],
+  ],
+}
+
+export const goSoakTable: ResultTableData = {
+  columns: [{ title: "1-hour soak at ~350 req/s" }, { title: ".NET" }, { title: "Go" }],
+  rows: [
+    ["Requests, failed", "1,267,551, 0 failed", "1,266,973, 0 failed"],
+    ["Mean, p95", "3.6 ms, 6.6 ms", "2.6 ms, 4.0 ms"],
+    ["Dropped iterations", "958", "514"],
+    ["saas-db CPU, minute 5 → 55", "13 → 22 %", "6 → 15 %"],
+    ["instances memory", "491 to 736 MiB", "94 to 192 MiB"],
+    ["Test id", "soak-20261114T064208Z", "soak-20261117T095910Z"],
+  ],
+}

@@ -1,10 +1,10 @@
-"""`instances`' commands (#43, #45).
+"""`instances`' commands (#43, #45), on .NET and on Go (#52).
 
 `seed-loadtest` must give every load-test owner the shape Django's `seed_loadtest`
 gave (compared side by side until #45 removed it): 100 rows per owner, 20 of them in
 10 batteries, most submitted, spread over 90 days. `reconcile-refs` must repair copies
-from the parity suite's stub `catalog`. Throwaway Postgres; skips without Docker or
-the SDK.
+from the parity suite's stub `catalog`. Each test runs against both binaries.
+Throwaway Postgres; skips without Docker, and each binary without its toolchain.
 """
 
 import json
@@ -15,13 +15,17 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import psycopg
+import pytest
+from test_go_schema import go
+from test_go_schema import go_service as go_service
 from test_instances_schema import (  # Fixtures and helpers, not tests.
     BACKEND,
-    pytestmark,  # noqa: F401 (the same skips apply here)
+    docker_available,
+    dotnet,
     run,
 )
 from test_instances_schema import postgres as postgres
-from test_instances_schema import service as service
+from test_instances_schema import service as dotnet_service  # noqa: F401 (fixture)
 
 sys.path.insert(0, str(BACKEND))
 from parity_instances.stub_catalog import StubCatalog
@@ -29,6 +33,20 @@ from parity_instances.support import qtype_snapshot
 
 OWNERS = 3
 PER_OWNER = 100
+
+pytestmark = pytest.mark.skipif(not docker_available(), reason="needs Docker")
+
+
+@pytest.fixture(params=["dotnet", "go"])
+def service(request) -> list[str]:
+    """The binary under test: .NET's `Instances.Api.dll`, or Go's `instances`."""
+    if request.param == "dotnet":
+        if dotnet() is None:
+            pytest.skip("needs the .NET SDK")
+        return request.getfixturevalue("dotnet_service")
+    if go() is None:
+        pytest.skip("needs Go")
+    return request.getfixturevalue("go_service")
 
 
 def create_database(container: str, name: str) -> None:
@@ -88,8 +106,9 @@ def shape(url: str) -> dict:
 
 def test_the_seeder_gives_the_load_test_shape(postgres, service):
     container, base = postgres
-    url = f"{base}/seed"
-    create_database(container, "seed")
+    name = f"seed_{uuid.uuid4().hex[:8]}"
+    url = f"{base}/{name}"
+    create_database(container, name)
     env = {**os.environ, "SETTINGS": "dev", "INSTANCES_DATABASE_URL": url}
     run(*service, "migrate", env=env)
     owners = [uuid.UUID(int=n + 1) for n in range(OWNERS)]
@@ -131,8 +150,9 @@ def test_seeding_is_refused_outside_dev_and_loadtest(postgres, service):
 
 def test_reconcile_repairs_from_the_stub_catalog(postgres, service):
     container, base = postgres
-    url = f"{base}/reconcile"
-    create_database(container, "reconcile")
+    name = f"reconcile_{uuid.uuid4().hex[:8]}"
+    url = f"{base}/{name}"
+    create_database(container, name)
     env = {**os.environ, "SETTINGS": "test", "INSTANCES_DATABASE_URL": url}
     run(*service, "migrate", env=env)
     owner = uuid.uuid4()

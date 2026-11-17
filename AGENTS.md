@@ -14,6 +14,7 @@ Claude Code reads `CLAUDE.md` files; never put rules in a `CLAUDE.md` (`backend/
 | `catalog` (FastAPI), Celery | [`backend/catalog/AGENTS.md`](backend/catalog/AGENTS.md) |
 | `instances` (.NET), dashboard | [`backend/instances_NET/AGENTS.md`](backend/instances_NET/AGENTS.md) |
 | `instances` on Django, kept to compare (#51) | [`backend/instances_Django/AGENTS.md`](backend/instances_Django/AGENTS.md) |
+| `instances` in Go, not deployed (#52) | [`backend/instances_GO/AGENTS.md`](backend/instances_GO/AGENTS.md) |
 | React SPA | [`frontend/AGENTS.md`](frontend/AGENTS.md) |
 | k6, Prometheus/Grafana, baselines and the `/load-tests` page | [`loadtest/AGENTS.md`](loadtest/AGENTS.md) |
 | Docker files, Pulumi, Ansible | [`infra/AGENTS.md`](infra/AGENTS.md) |
@@ -32,7 +33,8 @@ starter, as a decoupled monorepo:
 - **`backend/`**: two services, each with its own PostgreSQL database: `catalog` on FastAPI (Python 3.14,
   Celery + Redis, a uv workspace with `common`) and `instances` on ASP.NET Core (.NET 10, `backend/instances_NET/`).
   Both began as Django and keep the tables and API Django left: `catalog` moved in #34 to #38, `instances`
-  in #40 to #45. The Django `instances` is kept beside it, never deployed (`backend/instances_Django/`, #51)
+  in #40 to #45. The Django `instances` is kept beside it, never deployed (`backend/instances_Django/`, #51), and a
+  Go one passes the same API suite (`backend/instances_GO/`, #52)
 - **`infra/gateway/`**: nginx route table that gives both services one public origin
 - **`frontend/`**: React 19 SPA (TypeScript, Vite, TanStack Router + Query)
 - **`infra/docker/`**: Dockerfiles and compose files for both halves
@@ -88,7 +90,7 @@ just compose <args> # any docker compose command against the dev stack
 just be-migrate
 just be-makemigrations <app>
 just be-superuser   # from DJANGO_SUPERUSER_* in .env
-just be-test        # catalog's pytest, both API suites, instances' xUnit, repo checks
+just be-test        # catalog's pytest, both API suites (instances on .NET and Go), instances' xUnit, Django and Go tests, repo checks
 just be-lint        # ruff check (note: pyproject sets fix = true, so this rewrites files)
 just be-fmt         # ruff format
 
@@ -179,6 +181,7 @@ Other agents may edit this working tree at the same time.
   ```bash
   cd backend && flock -o /tmp/agent-tests.lock uv run pytest -q -x <service>/<path>[::<test>]
   cd backend/instances_NET && flock -o /tmp/agent-tests.lock dotnet test   # counts as backend
+  cd backend/instances_GO && flock -o /tmp/agent-tests.lock go test ./...  # counts as backend
   cd frontend && flock -o /tmp/agent-tests.lock npx vitest run --reporter=dot <paths>
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e -- --workers=1
   cd frontend && flock -o /tmp/agent-tests.lock npm run e2e:integration -- --workers=1

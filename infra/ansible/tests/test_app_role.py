@@ -31,7 +31,7 @@ def unit_commands(service: str) -> set[str]:
     """The unit template's branch for this service: Kestrel for instances, else gunicorn."""
     unit = (ROLE / UNIT).read_text()
     dotnet, rest = unit.split("{% else %}\nWorkingDirectory", 1)
-    branch = dotnet if service == "instances" else rest
+    branch = dotnet if service.startswith("instances") else rest
     return set(re.findall(r"app_cmd\.(\w+)", branch))
 
 
@@ -46,6 +46,7 @@ def test_the_commands_cover_every_file_that_runs_one():
     [
         ("catalog", SHARED + CATALOG_ONLY),
         ("instances", SHARED + INSTANCES_ONLY),
+        ("instances_go", SHARED + INSTANCES_ONLY),
     ],
 )
 def test_every_command_the_role_runs_is_defined(service, files):
@@ -59,8 +60,20 @@ def test_only_catalog_gets_python():
     main = (ROLE / "tasks" / "main.yml").read_text()
     assert "include_tasks: python.yml" in main
     assert "when: app_service == 'catalog'\n  ansible.builtin.include_tasks: python.yml" in main
-    assert set(DEFAULTS["app_commands"]) == {"catalog", "instances"}
-    assert "instances_impl" not in (GROUP_VARS / "instances.yml").read_text()
+    assert set(DEFAULTS["app_commands"]) == {"catalog", "instances", "instances_go"}
+
+
+def test_instances_runs_dotnet_unless_told_otherwise():
+    # #52: Go is chosen per converge with -e app_instances_impl=go, never left in group_vars.
+    assert DEFAULTS["app_instances_impl"] == "dotnet"
+    assert "app_instances_impl" not in (GROUP_VARS / "instances.yml").read_text()
+    assert "instances_go" in DEFAULTS["app_cmd"]
+
+
+def test_go_has_the_verbs_dotnet_has():
+    commands = DEFAULTS["app_commands"]
+    assert set(commands["instances_go"]) == set(commands["instances"])
+    assert commands["instances_go"]["exe"] == "{{ app_go_dir }}/instances"
 
 
 def test_the_dotnet_runtime_is_pinned_by_version_and_sha256():

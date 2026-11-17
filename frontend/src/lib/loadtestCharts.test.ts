@@ -437,3 +437,47 @@ describe("instances on .NET against Django (#45)", () => {
     }
   })
 })
+
+describe("instances in Go against .NET (#52)", () => {
+  const ariaOf = (option: object) =>
+    (option as { aria: { label: { description: string } } }).aria.label.description
+
+  it("fixed-rate mean and p95, .NET then Go, with the label's figures in the table", () => {
+    const [dotnet, go] = seriesOf(charts.goHoldOption(palette))
+    expect(dotnet.data).toEqual([2.47, 5.5, 2.1, 4.52])
+    expect(go.data).toEqual([1.43, 2.97, 1.17, 2.84])
+    for (const value of ["2.47", "1.43", "5.50", "2.97", "2.10", "1.17", "4.52", "2.84"]) {
+      expect(ariaOf(charts.goHoldOption(palette))).toContain(value)
+    }
+  })
+
+  it("instances and saas-db CPU, .NET then Go", () => {
+    const [dotnet, go] = seriesOf(charts.goCpuOption(palette))
+    expect(dotnet.data).toEqual([25, 11, 18, 7])
+    expect(go.data).toEqual([6, 5, 4, 3])
+  })
+
+  it("charts each ceiling, Go in the series colour, with the figures in its label", () => {
+    const [knees] = seriesOf(charts.goKneeOption(palette)) as unknown as {
+      data: { value: number; itemStyle: { color: string } }[]
+    }[]
+    const values = [1387, 1567, 1525, 1630]
+    expect(knees.data.map((d) => d.value)).toEqual(values)
+    expect(knees.data[1].itemStyle.color).toBe("#1")
+    expect(knees.data[0].itemStyle.color).toBe("#off")
+    for (const knee of values) {
+      expect(ariaOf(charts.goKneeOption(palette))).toContain(knee.toLocaleString("en-US"))
+    }
+  })
+
+  it("soak lines end on the figures their end labels show", () => {
+    for (const [option, ends] of [
+      [charts.goSoakLatencyOption(palette), [85, 65]],
+      [charts.goSoakCpuOption(palette), [27, 8]],
+    ] as const) {
+      const series = seriesOf(option) as unknown as { data: [number, number][] }[]
+      expect(series.map((s) => s.data[s.data.length - 1][1])).toEqual(ends)
+      for (const end of ends) expect(ariaOf(option)).toContain(String(end))
+    }
+  })
+})
