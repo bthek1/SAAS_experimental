@@ -461,7 +461,7 @@ describe("instances in Go against .NET (#52)", () => {
     const [knees] = seriesOf(charts.goKneeOption(palette)) as unknown as {
       data: { value: number; itemStyle: { color: string } }[]
     }[]
-    const values = [1387, 1567, 1525, 1630]
+    const values = [1387, 1567, 1525, 2362]
     expect(knees.data.map((d) => d.value)).toEqual(values)
     expect(knees.data[1].itemStyle.color).toBe("#1")
     expect(knees.data[0].itemStyle.color).toBe("#off")

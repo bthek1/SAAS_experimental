@@ -769,8 +769,9 @@ export function GoTab() {
         <code>instances</code> was written a third time, in Go, with the same API, tables, events and env vars,
         checked by the same 212-test suite, and run on the same container. <strong>Go serves the same traffic
         at about half .NET's latency on about a fifth of its CPU</strong>, with 0 failed requests in every run.
-        Its ceiling is higher too, though the host was quieter during its runs. <code>instances</code> stays
-        on .NET until that is settled; switching is one converge.
+        Its ceiling is higher too: about 1.5 times .NET's for reads at similar host load, where the shared
+        host's CPU, not Go, set the limit. <code>instances</code> stays on .NET for now; switching is one
+        converge.
       </Prose>
 
       <h3 className="font-medium">Holding 5 minutes at a fixed rate, one run each</h3>
@@ -789,10 +790,10 @@ export function GoTab() {
       <h3 className="font-medium">Ceiling</h3>
       <Prose>
         The ceiling search with owners logged in before the traffic, so no login burst ends it. Go held to
-        ~1,567 req/s mixed, and reached the run's maximum read rate without breaking, with{" "}
-        <code>instances</code> at only a quarter of its CPU. .NET's runs, from earlier the same day, had about
-        twice the host load, and host CPU contention is what ended them, so part of Go's gain may be the
-        host's.
+        ~1,567 req/s mixed and ~2,362 read, with <code>instances</code> at only a quarter to a third of its
+        CPU. The read searches ran at similar host load; .NET's mixed run had about twice Go's, so part of
+        Go's mixed gain may be the host's. At Go's read ceiling no container was near its CPU limit, but all
+        of them waited longer for a CPU as the rate rose: the shared host is the limit there.
       </Prose>
       <ChartCard title="Knee per ceiling search, req/s" option={goKneeOption(palette)} height={barsHeight(4, 1)} />
       <TableDetails table={goKneeTable} />
@@ -816,8 +817,8 @@ export function GoTab() {
           same rate, and no cold start.
         </li>
         <li>
-          <strong>Not yet settled:</strong> how much of the higher ceiling is Go's. Rerunning .NET's
-          ceiling search on a quiet host would split it from the host's.
+          <strong>Not yet settled:</strong> how much of the higher mixed ceiling is Go's. Rerunning both
+          mixed searches back to back would split it from the host's.
         </li>
         <li>
           <strong>.NET could close part of the database gap</strong> by preparing statements too (Npgsql's

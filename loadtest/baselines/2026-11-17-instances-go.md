@@ -10,11 +10,11 @@ FastAPI `catalog`).
 **Summary.** **Go serves the same traffic at about half .NET's latency on about a fifth of its CPU**, with 0
 failed requests in every run. At a fixed 200 iterations/s its p95 is 2.97 against 5.50 ms (mixed) and 2.84
 against 4.52 ms (read), with `instances` at 5 to 6 % CPU against 25 to 26 %, and saas-db's CPU about halved too.
-In the ceiling search it held to **~1,567 req/s mixed** (.NET ~1,387 this morning) and **reached the run's
-maximum, ~1,630 req/s read, without a knee** (.NET broke at ~1,525), with `instances` at only 24 to 26 % CPU.
-The host was less loaded during Go's searches than during .NET's (6.7 and 4.7 against 12.2 and 8.2), so read
-the knee gains as an upper bound; the fixed-rate runs, back to back on a host at 2.8 to 5.4, are the fair
-comparison. The 1-hour soak held with **0 failed of 1,266,973**, mean 2.59
+In the ceiling search it held to **~1,567 req/s mixed** (.NET ~1,387 this morning) and, in a second read search
+that went past the first one's maximum (#55), to **~2,362 req/s read** (.NET broke at ~1,525), with `instances` at
+only 24 to 36 % CPU. The mixed search ran on a quieter host than .NET's (6.7 against 12.2), so read that gain as
+an upper bound; the read searches had similar host load (8.95 against 8.2). The fixed-rate runs, back to back on
+a host at 2.8 to 5.4, are the fairest comparison. The 1-hour soak held with **0 failed of 1,266,973**, mean 2.59
 against 3.63 ms, `instances` CPU flat at 6 to 8 % where .NET's was flat at 27 %.
 
 ## Deploy
@@ -59,14 +59,38 @@ today, not rerun.
 | Go `stress-20261117T084034Z` | mixed | 25 at **~1,567 req/s** | 43 ms | 24 % | 57 % | 185 MiB | 6.7 | 1,819,374 | 0 |
 | .NET `stress-20261117T054059Z` | read | 46 at **~1,525 req/s** | 72 ms | 62 % | 54 % | 651 MiB | 8.2 | 2,974,601 | 0 |
 | Go `stress-20261117T090724Z` | read | 50 at **~1,630 req/s**, no knee | 14 ms | 26 % | 39 % | 238 MiB | 4.7 | 3,317,902 | 0 |
+| Go `stress-20261117T153125Z` (#55) | read | 16 at **~2,362 req/s** | 32 ms | 36 % | 47 % | – | 8.95 | 1,908,750 | 0 |
 
 - **Go's mixed run** dropped 54 iterations in minute 19, then none until minute 26, when it passed k6's 1,000
   limit (1,208 in all). From minute 21 the slowest group's p95 rose (51 to 60 ms) while `instances` stayed at 22 to
   24 % CPU and saas-db climbed from 43 to 57 %: by then the database, not `instances`, was the busier side.
 - **Go's read run reached `MAX_RATE`** (1,500 iterations/s) and exited 0, with 74 dropped in all.
-- **What this does not show:** whether Go's higher knee is Go's or the quieter host's. .NET's runs had about
-  twice the host load, and the prelogin baseline found that host CPU contention, not `instances`, ended them.
-  What is clear is that Go reaches the same rates with less than half of `instances`' CPU.
+- **What this does not show:** how much of Go's higher mixed knee is Go's and how much the quieter host's.
+  .NET's mixed run had about twice the host load, and the prelogin baseline found that host CPU contention, not
+  `instances`, ended it. The read searches are closer: see the next section. What is clear is that Go reaches
+  the same rates with less than half of `instances`' CPU.
+
+### Go's read ceiling, past 1,500 iterations/s (#55)
+
+`stress-20261117T153125Z`: `just k6 stress TARGET=lxc STEP=50 STEP_TIME=1m START_RATE=1400 MAX_RATE=3000
+LOGIN=setup MIX=read`, from its own Go reset, with #52's Go code. **0 failed of 1,908,750.** k6 stopped in
+minute 17 (target ~2,200 iterations/s), when its 300 VUs (`maxVUs` in `stress.js`) ran out and dropped iterations
+passed 1,000, all in that minute; the whole run's p95 was 6.47 ms. Host load averaged 8.95 over the run, close to
+.NET's read search (8.2).
+
+| Minute | req/s | Slowest group p95 | Server p99 | `instances` CPU | saas-db CPU | `catalog` CPU | loadgen CPU | CPU pressure, instances / db (s/s) | Host load |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 1,379 | 5 ms | 10 ms | 20 % | 16 % | 16 % | 15 % | 0.21 / 0.09 | 6.9 |
+| 10 | 2,035 | 9 ms | 10 ms | 30 % | 28 % | 21 % | 19 % | 0.32 / 0.23 | 9.5 |
+| 16 | **2,362** | 32 ms | 47 ms | 36 % | 47 % | 28 % | 23 % | 0.39 / 0.36 | 10.0 |
+
+- **Last clean minute: 16, at ~2,362 req/s**, about 1.5 times .NET's ~1,525 at similar host load. Latency had
+  been rising since minute 11 (k6 mean 1.8 → 4.5 ms).
+- **No container was near its CPU limit.** `instances` used ~0.7 of 2 cores and saas-db ~0.9, and nothing was
+  throttled. Yet every container's CPU-pressure wait rose with the rate as host load went from 6.9 to 10.0. The
+  limit is the shared Proxmox host's CPU, as in [2026-11-17-prelogin.md](2026-11-17-prelogin.md). The VUs ran
+  out because slow tails (max 796 ms) held them.
+- `START_RATE` and `STEP` differ from the other searches, so compare the rate reached, not the minute.
 
 ## Soak
 
@@ -98,14 +122,15 @@ that burst is `catalog` hashing passwords. The stop rule never fired.
 - **One run per mix and implementation**, as on 2026-11-14, and one ceiling search per mix rather than the two a
   full baseline takes. The fixed-rate gaps (about half the latency, a fifth
   of the CPU) are far larger than the 20 to 35 % run-to-run variation seen here.
-- **Host load was not controlled.** It was similar for the back-to-back fixed-rate runs (2.8 to 5.4) and much
-  lower for Go's ceiling searches than for .NET's.
+- **Host load was not controlled.** It was similar for the back-to-back fixed-rate runs (2.8 to 5.4) and for
+  the read ceilings (8.95 against 8.2), and much lower for Go's mixed search than for .NET's.
 - **Same API, checked.** Before these runs Go passed the same 212-test parity suite as .NET
   (`INSTANCES_IMPL=go uv run pytest parity_instances`).
 
 ## Still open
 
-- **Rerun .NET's ceiling search on a quiet host**, or both back to back, to split Go's gain from the host's.
+- **Rerun the mixed ceiling searches back to back**, to split Go's mixed gain from the host's.
+- **Go's read ceiling is the host's**, not Go's: past ~2,362 req/s it needs a quieter host or pinned cores.
 - **Try Npgsql's `Max Auto Prepare`** on .NET: if prepared statements are why saas-db works less for Go, .NET
   can have that too.
 - **saas-instances runs .NET again** after these runs; switching is one converge

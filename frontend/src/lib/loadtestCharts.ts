@@ -1314,7 +1314,7 @@ export function goKneeOption(palette: SeriesPalette): EChartsOption {
   return barsOption(
     {
       label:
-        "Where each ceiling search broke, with owners logged in before the traffic. Mixed: .NET about 1,387 requests per second, Go about 1,567. Read-mostly: .NET about 1,525; Go reached the run's maximum, about 1,630, without breaking. The host was busier during .NET's runs. The table below has the same values.",
+        "Where each ceiling search broke, with owners logged in before the traffic. Mixed: .NET about 1,387 requests per second, Go about 1,567. Read-mostly: .NET about 1,525, Go about 2,362, at similar host load. The host was busier during .NET's mixed run. The table below has the same values.",
       categories: goKneeTable.rows.map((r) => String(r[0])),
       format: (value) => `~${value.toLocaleString("en-US")}`,
       labelWidth: 100,

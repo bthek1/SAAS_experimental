@@ -452,14 +452,17 @@ export const goHoldTable: ResultTableData = {
   ],
 }
 
-/** The ceiling search with LOGIN=setup. .NET's runs are 2026-11-17-prelogin.md's, on a busier host. */
+/**
+ * The ceiling search with LOGIN=setup. .NET's runs are 2026-11-17-prelogin.md's. Go's read run is the
+ * second one (#55): the first reached its MAX_RATE at ~1,630 without a knee.
+ */
 export const goKneeTable: ResultTableData = {
   columns: [{ title: "Run" }, { title: "Knee, req/s", num: true }, { title: "Slowest group p95", num: true }, { title: "instances CPU", num: true }, { title: "Host load", num: true }, { title: "Failed", num: true }, { title: "Test id", code: true }],
   rows: [
     ["Mixed: .NET", "~1,387", "56 ms", "57 %", "12.2", 0, "stress-20261117T051903Z"],
     ["Mixed: Go", "~1,567", "43 ms", "24 %", "6.7", 0, "stress-20261117T084034Z"],
     ["Read: .NET", "~1,525", "72 ms", "62 %", "8.2", 0, "stress-20261117T054059Z"],
-    ["Read: Go", "≥1,630, no knee", "14 ms", "26 %", "4.7", 0, "stress-20261117T090724Z"],
+    ["Read: Go", "~2,362", "32 ms", "36 %", "8.95", 0, "stress-20261117T153125Z"],
   ],
 }
 
