@@ -70,6 +70,7 @@ import {
 import {
   CHANGES,
   catalogAloneTable,
+  cpuWeightTable,
   dotnetHoldTable,
   dotnetKneeTable,
   dotnetSoakMinutesTable,
@@ -862,8 +863,11 @@ export function MethodTab() {
               traffic (<code>LOGIN=setup</code>), the .NET knees rose only 5 to 11 %, to ~1,387 req/s
               mixed and ~1,525 read: k6's login burst was how those runs ended, not what limited them.
               At every break since, no container was near its CPU limit, yet each one waited longer for
-              a CPU as the rate rose. The shared Proxmox host is the limit, and a run with pinned
-              cores or a quiet host is the next step.
+              a CPU as the rate rose. The shared Proxmox host is the limit. Raising the containers' CPU
+              weight from 1024 to 4096 (#56) changed nothing: at 200 iterations/s, saas-instances still
+              waited 0.12 s/s for a CPU, and latency stayed within run-to-run variation. A weight only
+              orders a busy core's queue; pinned cores, set on the Proxmox host, are the next step.
+              <TableDetails table={cpuWeightTable} summary="Show the CPU-weight runs" />
             </li>
           </Findings>
         </CardContent>

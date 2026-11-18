@@ -43,6 +43,8 @@ describe("/load-tests", () => {
     expect(await screen.findByRole("region", { name: "Still open" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "How this was measured" })).toBeInTheDocument()
     expect(screen.queryByTestId("echart")).not.toBeInTheDocument()
+    expect(screen.getByText("Show the CPU-weight runs")).toBeInTheDocument()
+    expect(screen.getByText("load-20261117T161649Z")).toBeInTheDocument()
   })
 
   it("keeps each charted table available for exact numbers", async () => {

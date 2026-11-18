@@ -490,3 +490,12 @@ export const goSoakTable: ResultTableData = {
     ["Test id", "soak-20261114T064208Z", "soak-20261117T095910Z"],
   ],
 }
+
+/** 2026-11-17-cpu-weight.md (#56): the same fixed-rate run with Proxmox `cpuunits` 1024 and 4096. */
+export const cpuWeightTable: ResultTableData = {
+  columns: [{ title: "Run" }, { title: "Host load", num: true }, { title: "Mean", num: true }, { title: "p95", num: true }, { title: "CPU wait, instances", num: true }, { title: "CPU wait, saas-db", num: true }, { title: "Dropped", num: true }, { title: "Test id", code: true }],
+  rows: [
+    ["Weight 1024", 5.9, "2.47 ms", "5.50 ms", "0.127 s/s", "0.019 s/s", 0, "load-20261117T081104Z"],
+    ["Weight 4096", 4.7, "2.88 ms", "5.84 ms", "0.123 s/s", "0.029 s/s", 17, "load-20261117T161649Z"],
+  ],
+}
